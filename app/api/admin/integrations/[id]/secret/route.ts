@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { can, getAdminIdentity } from "../../../../../../lib/auth/permissions";
+import { encryptIntegrationSecret } from "../../../../../../lib/integrations/secrets";
 import { createSupabaseServiceClient } from "../../../../../../lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -12,7 +13,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!body.secret || body.secret.trim().length < 4) return NextResponse.json({ error: "Khóa API quá ngắn." }, { status: 400 });
   const service = createSupabaseServiceClient();
   if (!service) return NextResponse.json({ error: "Supabase service role chưa được cấu hình." }, { status: 503 });
-  const { error } = await service.rpc("service_store_api_secret", { integration_uuid: id, secret_value: body.secret.trim() });
+  let secretCiphertext: string;
+  try {
+    secretCiphertext = encryptIntegrationSecret(body.secret.trim());
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Không thể mã hóa khóa API." }, { status: 503 });
+  }
+  const { error } = await service
+    .from("api_integrations")
+    .update({ secret_ciphertext: secretCiphertext, secret_updated_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   await service.from("audit_logs").insert({ actor_id: identity!.id, action: "integration.secret.update", resource_type: "api_integrations", resource_id: id });
   return NextResponse.json({ ok: true });

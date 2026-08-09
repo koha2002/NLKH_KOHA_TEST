@@ -2,7 +2,6 @@
 -- Chạy trong Supabase SQL Editor hoặc bằng Supabase CLI.
 
 create extension if not exists pgcrypto;
-create extension if not exists vault with schema vault;
 
 create table if not exists public.roles (
   id text primary key,
@@ -495,12 +494,18 @@ create table if not exists public.api_integrations (
   query_template jsonb not null default '{}'::jsonb,
   body_template jsonb not null default '{}'::jsonb,
   key_placeholder text not null default '{{API_KEY}}',
-  secret_id uuid,
+  -- Giá trị API được mã hóa AES-256-GCM ở server Render; không bao giờ trả ra client.
+  secret_ciphertext text,
+  secret_updated_at timestamptz,
   scope text not null default 'authenticated' check (scope in ('public','authenticated','admin')),
   timeout_ms integer not null default 30000,
   active boolean not null default false,
   updated_at timestamptz not null default now()
 );
+
+-- An toàn khi chạy lại migration sau một lần cài đặt bị dừng giữa chừng.
+alter table public.api_integrations add column if not exists secret_ciphertext text;
+alter table public.api_integrations add column if not exists secret_updated_at timestamptz;
 
 create table if not exists public.scheduled_api_jobs (
   id uuid primary key default gen_random_uuid(),
@@ -553,40 +558,10 @@ begin
   end loop;
 end $$;
 
--- API secret chỉ được đọc/ghi qua server sử dụng service_role.
-create or replace function public.service_store_api_secret(integration_uuid uuid, secret_value text)
-returns uuid
-language plpgsql
-security definer
-set search_path = public, vault
-as $$
-declare new_secret_id uuid;
-begin
-  if length(trim(secret_value)) < 4 then
-    raise exception 'Secret is too short';
-  end if;
-  select vault.create_secret(secret_value, 'nlkh-api-' || integration_uuid::text) into new_secret_id;
-  update public.api_integrations set secret_id = new_secret_id where id = integration_uuid;
-  return new_secret_id;
-end;
-$$;
-
-create or replace function public.service_get_api_secret(integration_uuid uuid)
-returns text
-language sql
-security definer
-set search_path = public, vault
-as $$
-  select ds.decrypted_secret
-  from public.api_integrations ai
-  join vault.decrypted_secrets ds on ds.id = ai.secret_id
-  where ai.id = integration_uuid;
-$$;
-
-revoke all on function public.service_store_api_secret(uuid,text) from public, anon, authenticated;
-revoke all on function public.service_get_api_secret(uuid) from public, anon, authenticated;
-grant execute on function public.service_store_api_secret(uuid,text) to service_role;
-grant execute on function public.service_get_api_secret(uuid) to service_role;
+-- API secret được mã hóa AES-256-GCM tại Render bằng INTEGRATION_SECRETS_KEY.
+-- Không dùng extension vault để migration hoạt động trên mọi project Supabase Cloud.
+drop function if exists public.service_store_api_secret(uuid,text);
+drop function if exists public.service_get_api_secret(uuid);
 
 -- RLS
 alter table public.roles enable row level security;
@@ -660,7 +635,7 @@ create policy data_collections_read on public.data_collections for select using 
     select 1
     from public.data_items di
     join public.user_data_access uda on uda.item_id = di.id
-    where di.collection_id = id
+    where di.collection_id = data_collections.id
       and di.visible
       and uda.user_id = auth.uid()
       and (uda.expires_at is null or uda.expires_at > now())
@@ -671,7 +646,7 @@ create policy data_collections_manage on public.data_collections for all to auth
 create policy data_items_read on public.data_items for select using (
   (visible and visibility = 'public')
   or (visible and visibility = 'authenticated' and auth.uid() is not null)
-  or exists (select 1 from public.user_data_access uda where uda.item_id = id and uda.user_id = auth.uid() and (uda.expires_at is null or uda.expires_at > now()))
+  or exists (select 1 from public.user_data_access uda where uda.item_id = data_items.id and uda.user_id = auth.uid() and (uda.expires_at is null or uda.expires_at > now()))
   or public.has_permission('data.manage')
 );
 create policy data_items_manage on public.data_items for all to authenticated using (public.has_permission('data.manage')) with check (public.has_permission('data.manage'));

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { decryptIntegrationSecret } from "./secrets";
 
 type Integration = {
   id: string;
@@ -11,6 +12,7 @@ type Integration = {
   query_template: unknown;
   body_template: unknown;
   key_placeholder: string;
+  secret_ciphertext: string | null;
   timeout_ms: number;
   active: boolean;
 };
@@ -39,8 +41,9 @@ function renderTemplate(value: unknown, payload: Record<string, unknown>, secret
 
 export async function invokeIntegration(client: SupabaseClient, integration: Integration, payload: Record<string, unknown>, endpointOverride = "") {
   if (!integration.active) throw new Error("Kết nối API đang bị tắt.");
-  const { data: secret, error: secretError } = await client.rpc("service_get_api_secret", { integration_uuid: integration.id });
-  if (secretError || !secret) throw new Error("API chưa có khóa bí mật hoặc không thể giải mã khóa.");
+  void client;
+  if (!integration.secret_ciphertext) throw new Error("API chưa có khóa bí mật.");
+  const secret = decryptIntegrationSecret(integration.secret_ciphertext);
 
   const endpoint = endpointOverride || renderString(integration.endpoint_template || "/", payload, "", integration.key_placeholder);
   const target = new URL(endpoint, integration.base_url.endsWith("/") ? integration.base_url : `${integration.base_url}/`);

@@ -18,3 +18,7 @@ export function hasR2Env() {
     process.env.R2_BUCKET_NAME,
   );
 }
+
+export function hasIntegrationSecretsEnv() {
+  return Boolean(process.env.INTEGRATION_SECRETS_KEY && process.env.INTEGRATION_SECRETS_KEY.trim().length >= 24);
+}
