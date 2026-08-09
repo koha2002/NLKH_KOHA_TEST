@@ -1,0 +1,2 @@
+"use client";
+import { AdminResourcePanel } from "../../../../components/admin/AdminResourcePanel";import { configs } from "../../../../components/admin/resource-configs";const only=(row:Record<string,unknown>)=>row.slug==="comtrade";export default function Page(){return <AdminResourcePanel config={{...configs.tools,title:"Cấu hình COMTRADE",description:"Cấu hình riêng COMTRADE. Bộ phân tích CFG/DAT chạy offline trong module độc lập."}} filter={only}/>}

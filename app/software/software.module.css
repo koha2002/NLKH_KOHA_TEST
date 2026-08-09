@@ -1,0 +1,45 @@
+.hero { background: var(--hero-bg); color: var(--hero-ink); padding: 72px 0 64px; border-bottom: 1px solid var(--hero-line); }
+.hero .container > p, .hero > div > p { color: var(--cyan-400); font: 700 10px var(--font-mono), monospace; letter-spacing: .16em; text-transform: uppercase; margin: 0; }
+.hero h1 { max-width: 900px; font-size: clamp(38px, 4.7vw, 58px); line-height: 1.06; letter-spacing: -.05em; margin: 22px 0 0; }
+.hero > div > span { display: block; color: #afbdd0; max-width: 680px; line-height: 1.7; font-size: 16px; }
+.searchWrap { margin-top: 38px; max-width: 850px; min-height: 62px; padding: 0 16px 0 21px; border: 1px solid var(--hero-line); background: var(--hero-surface); border-radius: 12px; display: flex; align-items: center; gap: 14px; }
+.searchWrap > span { color: var(--cyan-400); font-size: 24px; }
+.searchWrap input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--hero-ink); font-size: 16px; }
+.searchWrap input::placeholder { color: var(--hero-muted); }
+.searchWrap kbd { border: 1px solid var(--hero-line); border-radius: 6px; padding: 7px 9px; color: var(--hero-muted); font: 650 10px var(--font-mono), monospace; white-space: nowrap; }
+
+.catalog { padding-top: 52px; padding-bottom: 100px; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
+.filters button { border: 1px solid var(--line); background: var(--surface); color: var(--muted); padding: 10px 16px; border-radius: 999px; cursor: pointer; font-size: 13px; }
+.filters button:hover, .filters button.active { color: white; background: var(--blue-600); border-color: var(--blue-600); }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.card { min-height: 330px; padding: 22px; display: flex; flex-direction: column; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); transition: transform 170ms ease, box-shadow 170ms ease; }
+.card:hover { transform: translateY(-5px); box-shadow: var(--shadow-sm); }
+.cardTop, .cardFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mark { width: 56px; height: 56px; display: grid; place-items: center; background: white; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.mark img { width: 82%; height: 82%; object-fit: contain; }
+.category { color: #929cab; font: 650 9px var(--font-mono), monospace; letter-spacing: .1em; text-transform: uppercase; }
+.card h2 { font-size: 22px; letter-spacing: -.03em; margin: 0 0 11px; }
+.card p { color: var(--muted); font-size: 15px; line-height: 1.7; margin: 0; }
+.cardFooter { border-top: 1px solid var(--line); padding-top: 15px; }
+.cardFooter > span { color: #929cab; font-size: 10px; }
+.cardFooter a { display: inline-flex; gap: 12px; align-items: center; color: var(--blue-600); font-size: 13px; font-weight: 700; }
+.cardFooter i { font-style: normal; font-size: 15px; }
+.noResult { min-height: 340px; display: grid; place-items: center; background: var(--surface); border: 1px dashed var(--line); color: var(--muted); }
+.policy { background: var(--surface); border-top: 1px solid var(--line); }
+.policyInner { min-height: 230px; display: grid; grid-template-columns: 62px 1fr; gap: 28px; align-items: center; }
+.policyInner > span { width: 62px; height: 62px; display: grid; place-items: center; border-radius: 50%; background: #dff7ec; color: #16835e; font-size: 24px; font-weight: 800; }
+.policy h2 { font-size: 24px; letter-spacing: -.03em; margin: 0 0 10px; }
+.policy p { color: var(--muted); max-width: 850px; line-height: 1.7; margin: 0; font-size: 14px; }
+
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 620px) {
+  .hero { padding: 62px 0 58px; }
+  .hero h1 { font-size: 45px; }
+  .searchWrap { margin-top: 34px; }
+  .searchWrap kbd { display: none; }
+  .catalog { padding-top: 40px; padding-bottom: 72px; }
+  .grid { grid-template-columns: 1fr; }
+  .card { min-height: 300px; }
+  .policyInner { padding: 55px 0; grid-template-columns: 1fr; }
+}

@@ -1,0 +1,328 @@
+body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        .dark body {
+            background-color: #1a1a2e;
+        }
+        .app-container {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            flex-grow: 1;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card {
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 100%;
+            height: 100%;
+            max-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            border-radius: 0;
+        }
+        @media (min-width: 640px) {
+            .app-container {
+                padding: 1.5rem;
+            }
+            .card {
+                border-radius: 1rem;
+                height: calc(100vh - 3rem);
+                max-height: 850px;
+            }
+        }
+        .dark .card {
+            background-color: rgba(26, 26, 46, 0.85);
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .btn {
+             transition: all 0.2s ease-in-out;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .answer-btn {
+            background-color: white;
+            color: #1f2937;
+            border: 2px solid #d1d5db;
+        }
+        .answer-btn:hover {
+            background-color: #f3f4f6;
+        }
+        .answer-btn.correct {
+            background-color: #15803d !important;
+            color: white !important;
+            border-color: #22c55e !important;
+            box-shadow: 0 0 0 3px rgba(34, 197, 94, .24) !important;
+        }
+        .answer-btn.wrong {
+            background-color: #b91c1c !important;
+            color: white !important;
+            border-color: #f87171 !important;
+            box-shadow: 0 0 0 3px rgba(248, 113, 113, .24) !important;
+        }
+        .answer-btn.correct::after,
+        .answer-btn.wrong::after {
+            display: block;
+            margin-top: 7px;
+            font-size: .78rem;
+            font-weight: 800;
+            letter-spacing: .02em;
+        }
+        .answer-btn.correct::after { content: "✓ Đáp án đúng"; }
+        .answer-btn.wrong::after { content: "✕ Bạn chọn sai"; }
+        .answer-btn.selected {
+            background-color: #667eea !important;
+            color: white !important;
+            border-color: #5a67d8 !important;
+        }
+        html[data-theme="dark"] .answer-btn.correct,
+        .dark .answer-btn.correct {
+            background-color: #166534 !important;
+            color: #f0fdf4 !important;
+            border-color: #4ade80 !important;
+            box-shadow: 0 0 0 3px rgba(74, 222, 128, .3) !important;
+        }
+        html[data-theme="dark"] .answer-btn.wrong,
+        .dark .answer-btn.wrong {
+            background-color: #991b1b !important;
+            color: #fff7f7 !important;
+            border-color: #fb7185 !important;
+            box-shadow: 0 0 0 3px rgba(251, 113, 133, .3) !important;
+        }
+        .timer-bar-inner {
+            height: 100%;
+            background: linear-gradient(90deg, #4ade80, #facc15, #f87171);
+            background-size: 200%;
+            transition: width 1s linear, background-position 1s linear;
+            border-radius: 8px;
+        }
+        .custom-control input { display: none; }
+        .custom-control span {
+            height: 28px;
+            width: 28px;
+            border: 2px solid #9ca3af;
+            display: inline-block;
+            position: relative;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .custom-radio span, .custom-checkbox span {
+            border-radius: 50%;
+        }
+        .custom-checkbox span {
+            border-radius: 4px;
+        }
+        .custom-control input:checked + span { border-color: #28a745; background-color: #28a745; }
+        .custom-control input:checked + span::after {
+            content: ''; position: absolute;
+        }
+        .custom-radio input:checked + span::after {
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .custom-checkbox input:checked + span::after {
+            left: 9px;
+            top: 4px;
+            width: 8px;
+            height: 15px;
+            border: solid white;
+            border-width: 0 3px 3px 0;
+            transform: rotate(45deg);
+        }
+        .question-preview-item.dragging {
+            opacity: 0.5;
+            background: #e0e0e0;
+        }
+        .question-preview-item.drag-over {
+            border-top: 2px dashed #3498db;
+        }
+        .rich-text-editor {
+            border: 2px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+            min-height: 100px;
+            background-color: white;
+            color: black;
+        }
+        .rich-text-editor:focus-within {
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.3);
+        }
+        .rich-text-toolbar button {
+            width: 32px;
+            height: 32px;
+            border-radius: 0.25rem;
+        }
+        .rich-text-toolbar button.active {
+            background-color: #e0e7ff;
+            color: #4f46e5;
+        }
+        #export-modal input[type="radio"] {
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+
+/*
+ * Giao diện nhúng toàn trang: giữ phần chức năng trong module.js độc lập,
+ * chỉ đồng bộ phần trình bày với layout chung tại đây.
+ */
+body {
+    display: block;
+    min-height: 0;
+    background: var(--module-page) !important;
+}
+.app-container {
+    width: 100%;
+    min-height: 0;
+    padding: 0 !important;
+    align-items: stretch;
+    background: var(--module-page) !important;
+}
+.app-container > div {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0;
+    margin: 0 !important;
+}
+.card {
+    width: 100%;
+    min-height: 760px;
+    height: auto !important;
+    max-height: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: clamp(24px, 4vw, 56px) !important;
+}
+.card h1 { font-size: clamp(1.9rem, 3.5vw, 2.8rem) !important; line-height: 1.15; }
+.card h2 { font-size: clamp(1.45rem, 2.4vw, 2rem) !important; }
+.card p, .card label, .card button, .card input, .card select { font-size: 1rem; }
+
+/* Luôn ẩn đúng màn hình kể cả khi Tailwind CDN tải chậm. */
+.hidden { display: none !important; }
+
+/* Danh sách dùng chiều cao tự nhiên, không kéo thẻ theo chiều cao iframe. */
+#home-screen > .my-8 {
+    display: block !important;
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+}
+#quiz-list {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    flex: 0 0 auto !important;
+    overflow: visible !important;
+    align-items: stretch;
+    grid-auto-rows: 190px !important;
+}
+.quiz-card-shell,
+.quiz-card {
+    height: 190px !important;
+    min-height: 190px !important;
+    max-height: 190px !important;
+}
+.quiz-card { overflow: hidden !important; }
+
+/* Màn hình tạo đề lớn theo nội dung, không tạo vùng cuộn lồng nhau. */
+#creator-screen > .flex-grow,
+#wrong-answers-screen > .flex-grow {
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* Bản xem trước câu hỏi có độ tương phản riêng cho từng giao diện. */
+#questions-preview {
+    background: #f1f5f9 !important;
+    color: #172033 !important;
+    border: 1px solid #cbd5e1;
+}
+.question-preview-item {
+    background: #e2e8f0 !important;
+    color: #172033 !important;
+    border: 1px solid #cbd5e1;
+}
+.question-preview-item > span,
+.question-preview-item .text-gray-400 {
+    color: #334155 !important;
+}
+html[data-theme="dark"] #questions-preview,
+.dark #questions-preview {
+    background: #081322 !important;
+    color: #f8fafc !important;
+    border-color: #31445f;
+}
+html[data-theme="dark"] .question-preview-item,
+.dark .question-preview-item {
+    background: #16263b !important;
+    color: #f8fafc !important;
+    border-color: #405775;
+}
+html[data-theme="dark"] .question-preview-item > span,
+html[data-theme="dark"] .question-preview-item .text-gray-400,
+.dark .question-preview-item > span,
+.dark .question-preview-item .text-gray-400 {
+    color: #f8fafc !important;
+}
+
+/* Các trường soạn câu hỏi và bản xem trước luôn đủ tương phản ở dark mode. */
+html[data-theme="dark"] #creator-screen input,
+html[data-theme="dark"] #creator-screen textarea,
+html[data-theme="dark"] #creator-screen select,
+html[data-theme="dark"] #new-question,
+html[data-theme="dark"] .answer-text,
+.dark #creator-screen input,
+.dark #creator-screen textarea,
+.dark #creator-screen select,
+.dark #new-question,
+.dark .answer-text {
+    background: #0e1c2e !important;
+    color: #f8fafc !important;
+    border-color: #405775 !important;
+}
+html[data-theme="dark"] #creator-screen input::placeholder,
+html[data-theme="dark"] #creator-screen textarea::placeholder,
+.dark #creator-screen input::placeholder,
+.dark #creator-screen textarea::placeholder {
+    color: #9fb0c7 !important;
+    opacity: 1 !important;
+}
+html[data-theme="dark"] #questions-preview *,
+.dark #questions-preview * { color: #f8fafc !important; }
+
+@media (max-width: 640px) {
+    .card {
+        min-height: 680px;
+        padding: 22px 16px !important;
+    }
+    .card h1 { font-size: 1.9rem !important; }
+    #quiz-list {
+        grid-template-columns: minmax(0, 1fr) !important;
+        grid-auto-rows: 150px !important;
+    }
+    .quiz-card-shell,
+    .quiz-card {
+        height: 150px !important;
+        min-height: 150px !important;
+        max-height: 150px !important;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 980px) {
+    #quiz-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}

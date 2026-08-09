@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Đọc và phân tích bản ghi COMTRADE ngay trên thiết bị, không tải tệp lên máy chủ."
+    />
+    <title>KoHa COMTRADE Studio</title>
+    <link rel="icon" href="/favicon.png" />
+    <link rel="stylesheet" href="/tool-modules/shared/module-base.css" />
+    <link rel="stylesheet" href="./module.css" />
+    <script defer src="./vendor/plotly-2.24.1.min.js"></script>
+    <script defer src="./comtrade-core.js"></script>
+    <script defer src="./module.js"></script>
+  </head>
+  <body>
+    <main class="studioShell">
+      <section class="studioHeader" aria-labelledby="studioTitle">
+        <div class="brandBlock">
+          <span class="brandIcon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" role="img">
+              <path d="M5 29h7l4-14 6 24 6-29 5 19h10" />
+              <circle cx="24" cy="24" r="20" />
+            </svg>
+          </span>
+          <div>
+            <p class="eyebrow" data-i18n="eyebrow">PHÂN TÍCH SỰ CỐ · TẠI THIẾT BỊ</p>
+            <h1 id="studioTitle" data-i18n="title">COMTRADE Studio</h1>
+          </div>
+        </div>
+
+        <div class="headerControls">
+          <span class="localBadge"><i></i><span data-i18n="localBadge">100% cục bộ</span></span>
+          <label class="languageField">
+            <span class="srOnly" data-i18n="languageLabel">Ngôn ngữ</span>
+            <select id="langSelect" aria-label="Ngôn ngữ">
+              <option value="vi">Tiếng Việt</option>
+              <option value="en">English</option>
+              <option value="ru">Русский</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="uploadSection" aria-labelledby="uploadTitle">
+        <div class="sectionIntro">
+          <div>
+            <span class="stepNumber">01</span>
+            <h2 id="uploadTitle" data-i18n="uploadTitle">Nạp bản ghi</h2>
+            <p data-i18n="uploadDescription">
+              Chọn đồng thời tệp cấu hình CFG và dữ liệu DAT. Tệp chỉ được xử lý trong trình duyệt này.
+            </p>
+          </div>
+
+          <label class="encodingField" for="encodingSelect">
+            <span data-i18n="encodingLabel">Bảng mã tệp CFG</span>
+            <select id="encodingSelect">
+              <option value="auto" data-i18n="encodingAuto">Tự nhận diện</option>
+              <option value="gb18030" data-i18n="encodingGbk">GB18030 / GBK (Tiếng Trung)</option>
+              <option value="utf-8" data-i18n="encodingUtf8">UTF-8 (Quốc tế)</option>
+              <option value="windows-1258" data-i18n="encodingVi">Windows-1258 (Tiếng Việt cũ)</option>
+              <option value="windows-1252" data-i18n="encodingWest">Windows-1252 (Phương Tây)</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-describedby="dropHint">
+          <input id="fileInput" type="file" accept=".cfg,.dat" multiple />
+          <span class="uploadIcon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>
+          </span>
+          <strong data-i18n="dropTitle">Thả cặp tệp CFG + DAT vào đây</strong>
+          <span id="dropHint" data-i18n="dropHint">hoặc chạm để chọn tệp từ máy</span>
+          <small data-i18n="dropPrivacy">Không tải dữ liệu lên Internet</small>
+        </div>
+
+        <div id="fileStatus" class="fileStatus" aria-live="polite">
+          <article id="cfgStatus" class="fileChip missing">
+            <span class="fileType">CFG</span>
+            <div><strong data-i18n="cfgMissing">Chưa chọn tệp cấu hình</strong><small>—</small></div>
+          </article>
+          <article id="datStatus" class="fileChip missing">
+            <span class="fileType">DAT</span>
+            <div><strong data-i18n="datMissing">Chưa chọn tệp dữ liệu</strong><small>—</small></div>
+          </article>
+        </div>
+
+        <div class="primaryActions">
+          <button id="processBtn" class="primaryButton" type="button" disabled>
+            <span data-i18n="processWaiting">Chọn đủ hai tệp để phân tích</span>
+            <span aria-hidden="true">→</span>
+          </button>
+          <button id="resetBtn" class="secondaryButton" type="button" data-i18n="reset">Đặt lại</button>
+        </div>
+
+        <div id="errorMsg" class="message errorMessage" role="alert" hidden>
+          <strong data-i18n="errorTitle">Không thể đọc bản ghi</strong>
+          <span id="errorText"></span>
+        </div>
+        <div id="warningMsg" class="message warningMessage" role="status" hidden>
+          <strong data-i18n="warningTitle">Lưu ý</strong>
+          <span id="warningText"></span>
+        </div>
+      </section>
+
+      <section id="resultsArea" class="resultsArea" aria-labelledby="resultTitle" hidden>
+        <div class="resultsHeading">
+          <div>
+            <span class="stepNumber">02</span>
+            <h2 id="resultTitle" data-i18n="resultTitle">Kết quả phân tích</h2>
+          </div>
+          <button id="exportBtn" class="secondaryButton" type="button">
+            <span data-i18n="exportCsv">Xuất dữ liệu CSV</span><span aria-hidden="true">↓</span>
+          </button>
+        </div>
+
+        <div id="metadataGrid" class="metadataGrid"></div>
+
+        <div class="channelToolbar">
+          <label for="channelSearch">
+            <span data-i18n="channelSearchLabel">Lọc kênh hiển thị</span>
+            <input id="channelSearch" type="search" data-i18n-placeholder="channelSearchPlaceholder" placeholder="Nhập tên kênh…" />
+          </label>
+          <p id="channelCount" aria-live="polite"></p>
+        </div>
+
+        <section class="chartSection" aria-labelledby="analogTitle">
+          <div class="chartHeading">
+            <div><span>ANALOG</span><h3 id="analogTitle" data-i18n="analogTitle">Kênh tương tự</h3></div>
+            <p data-i18n="chartHint">Kéo để phóng to · nhấp đúp để đặt lại</p>
+          </div>
+          <div id="analogEmpty" class="emptyState" data-i18n="noAnalog" hidden>Bản ghi không có kênh tương tự.</div>
+          <div id="analogChart" class="chart" aria-label="Biểu đồ kênh tương tự"></div>
+        </section>
+
+        <section class="chartSection" aria-labelledby="digitalTitle">
+          <div class="chartHeading">
+            <div><span>DIGITAL</span><h3 id="digitalTitle" data-i18n="digitalTitle">Kênh trạng thái</h3></div>
+            <p data-i18n="digitalHint">Mức 0/1 được xếp theo từng kênh</p>
+          </div>
+          <div id="digitalEmpty" class="emptyState" data-i18n="noDigital" hidden>Bản ghi không có kênh trạng thái.</div>
+          <div id="digitalChart" class="chart digitalChart" aria-label="Biểu đồ kênh trạng thái"></div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

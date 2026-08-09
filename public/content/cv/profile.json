@@ -1,0 +1,49 @@
+{
+  "name": "Nguyễn Lê Khánh Hòa",
+  "role": { "vi": "Kỹ sư điện", "en": "Electrical Engineer" },
+  "headline": {
+    "vi": "Kỹ sư điện với trải nghiệm từ hiện trường đến thiết kế.",
+    "en": "An electrical engineer experienced from field testing to design."
+  },
+  "summary": {
+    "vi": "Tốt nghiệp loại Giỏi chuyên ngành Tự động hóa Hệ thống điện, có kinh nghiệm thí nghiệm thiết bị, thiết kế tủ điều khiển - bảo vệ và chuẩn bị dự án.",
+    "en": "Graduated with distinction in Power System Automation, with experience in equipment testing, protection and control panel design, and project preparation."
+  },
+  "born": "15/05/2002",
+  "address": { "vi": "Thanh Xuân, Hà Nội", "en": "Thanh Xuan, Hanoi" },
+  "phone": "0343 434 584",
+  "phoneHref": "+84343434584",
+  "email": "khanhhoa2002.hh@gmail.com",
+  "photo": "/profile.jpg",
+  "pdf": "/content/cv/current.pdf",
+  "education": {
+    "period": "2020—2025",
+    "school": { "vi": "Trường Đại học Điện lực", "en": "Electric Power University" },
+    "major": {
+      "vi": "Tự động hóa Hệ thống điện · Hệ kỹ sư · Tốt nghiệp loại Giỏi",
+      "en": "Power System Automation · Engineering degree · Graduated with distinction"
+    }
+  },
+  "certificates": {
+    "vi": ["Tiếng Anh B1 - Đại học Điện lực (2023)", "ICDL 5 kỹ năng (2025)", "Giấy phép lái xe hạng B2"],
+    "en": ["B1 English - Electric Power University (2023)", "ICDL 5 modules (2025)", "B2 driving license"]
+  },
+  "skills": {
+    "vi": ["AutoCAD", "EPLAN", "Microsoft Excel", "Microsoft Word", "Đọc tài liệu kỹ thuật", "Tiếng Anh B1"],
+    "en": ["AutoCAD", "EPLAN", "Microsoft Excel", "Microsoft Word", "Technical documentation", "B1 English"]
+  },
+  "jobs": {
+    "vi": [
+      { "time": "11/2025 - nay", "company": "Công ty TNHH Công nghệ Việt", "role": "Kỹ sư điện - Phòng chuẩn bị dự án", "description": "Kiểm tra thông số thiết bị, hỗ trợ mua sắm và rà soát bảng đáp ứng yêu cầu kỹ thuật." },
+      { "time": "06/2025 - 11/2025", "company": "Công ty CP Entec Kỹ thuật Năng lượng", "role": "Kỹ sư thiết kế", "description": "Thiết kế tủ điều khiển - bảo vệ cho trạm biến áp từ 110 kV và kiểm thử tủ sau sản xuất." },
+      { "time": "05/2024 - 06/2025", "company": "Công ty TNHH MTV Đo lường Thí nghiệm điện miền Bắc", "role": "Kỹ sư thí nghiệm điện", "description": "Kiểm định thiết bị trạm biến áp, thí nghiệm định kỳ và hoàn thiện hồ sơ công trình." },
+      { "time": "06/2023 - 10/2025", "company": "Hoàng Mai Mobile", "role": "Kỹ thuật viên · Quản lý từ xa", "description": "Hỗ trợ kỹ thuật và quản lý hoạt động vận hành từ xa." }
+    ],
+    "en": [
+      { "time": "Nov 2025 - present", "company": "Viet Technology Co., Ltd.", "role": "Electrical Engineer - Project Preparation", "description": "Equipment specification reviews, procurement support and technical compliance checks." },
+      { "time": "Jun 2025 - Nov 2025", "company": "Entec Energy Engineering JSC", "role": "Design Engineer", "description": "Protection and control panel design for 110 kV substations and factory acceptance testing." },
+      { "time": "May 2024 - Jun 2025", "company": "Northern Electrical Testing Co., Ltd.", "role": "Electrical Testing Engineer", "description": "Substation equipment testing, periodic inspections and project documentation." },
+      { "time": "Jun 2023 - Oct 2025", "company": "Hoang Mai Mobile", "role": "Technician · Remote Manager", "description": "Technical support and remote operations management." }
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+.header { position: sticky; top: 0; z-index: 50; background: var(--header); border-bottom: 1px solid var(--line); backdrop-filter: blur(18px); }
+.inner { height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.nav { display: flex; align-items: center; gap: 30px; }
+.nav > a { color: var(--muted); font-size: 15px; font-weight: 620; transition: color 160ms ease; }
+.nav > a:hover { color: var(--blue-600); }
+.actions { display: flex; align-items: center; gap: 14px; }
+.theme { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: grid; place-items: center; }
+.language { display: flex; align-items: center; gap: 7px; border-left: 1px solid var(--line); padding-left: 20px; }
+.language span { color: #abb2be; font-size: 11px; }
+.language button, .mobileLanguage button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font: 700 12px var(--font-mono), monospace; padding: 5px 2px; }
+.language button.active, .mobileLanguage button.active { color: var(--blue-600); }
+.menu { display: none; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); cursor: pointer; position: relative; }
+.menu span { position: absolute; width: 16px; height: 1.5px; background: var(--ink); left: 12px; top: 17px; }
+.menu span:last-child { top: 23px; }
+.mobileLanguage { display: none; }
+
+@media (max-width: 780px) {
+  .inner { height: 68px; justify-content: flex-end; }
+  .language, .theme { display: none; }
+  .menu { display: block; }
+  .nav { position: absolute; top: 68px; left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 0; padding: 12px 20px 22px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+  .nav.open { display: flex; }
+  .nav > a { padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
+  .mobileLanguage { display: flex; gap: 14px; padding-top: 15px; }
+}
+
+@media (max-width: 420px) {
+  .inner { gap: 12px; }
+}

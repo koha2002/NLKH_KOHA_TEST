@@ -1,0 +1,12 @@
+.page { min-height: calc(100vh - 76px); display: grid; place-items: center; padding: 56px 20px; background: radial-gradient(circle at 12% 10%, color-mix(in srgb, var(--cyan-400) 14%, transparent), transparent 30%), var(--paper); }
+.panel { width: min(520px, 100%); padding: clamp(28px, 6vw, 56px); border: 1px solid var(--line); border-radius: 28px; background: var(--surface); box-shadow: var(--shadow-lg); }
+.eyebrow { margin: 0; color: var(--blue-600); font: 800 11px var(--font-mono); letter-spacing: .16em; }
+.panel h1 { margin: 14px 0 8px; font-size: clamp(40px, 7vw, 64px); line-height: .98; letter-spacing: -.055em; }
+.lead { margin: 0 0 28px; color: var(--muted); }
+.panel form { display: grid; gap: 16px; }
+.panel label { display: grid; gap: 7px; color: var(--muted); font-size: 14px; font-weight: 650; }
+.panel input { width: 100%; padding: 14px 15px; color: var(--ink); border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.panel form > button { min-height: 52px; display: flex; justify-content: space-between; align-items: center; padding: 0 18px; border: 0; border-radius: 12px; background: var(--orange-500); color: #111; font-weight: 800; cursor: pointer; }
+.panel form > button:disabled { opacity: .6; cursor: wait; }
+.message { margin: 0; padding: 12px; border-radius: 10px; background: color-mix(in srgb, var(--blue-500) 12%, var(--surface)); color: var(--ink); font-size: 14px; }
+.switcher { margin-top: 20px; border: 0; padding: 0; background: transparent; color: var(--blue-600); cursor: pointer; font-weight: 700; }

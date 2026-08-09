@@ -1,0 +1,2 @@
+"use client";
+import { AdminResourcePanel } from "../../../../components/admin/AdminResourcePanel";import { configs } from "../../../../components/admin/resource-configs";const only=(row:Record<string,unknown>)=>row.slug==="pdf";export default function Page(){return <AdminResourcePanel config={{...configs.tools,title:"Cấu hình PDF",description:"Cấu hình riêng PDF Studio. Các thao tác local không cần API; dịch vụ online gọi qua integration slug trong settings."}} filter={only}/>}
