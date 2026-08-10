@@ -1,0 +1,98 @@
+[
+  {
+    "id": "aaa",
+    "slug": "aaa",
+    "href": "aaaa",
+    "code": "aaaaa",
+    "title": {
+      "vi": "aaa",
+      "en": "aaa"
+    },
+    "description": {
+      "vi": "â",
+      "en": "aaa"
+    },
+    "status": "ready",
+    "icon": "aa",
+    "accent": "aa",
+    "showHome": true,
+    "showOrbit": true,
+    "orbitRing": 1,
+    "orbitAngle": 0,
+    "requiresAuth": false,
+    "allowedRoles": [],
+    "hasInlineHtml": false
+  },
+  {
+    "id": "quiz",
+    "slug": "quiz",
+    "href": "/tools/quiz",
+    "code": "QUIZ",
+    "title": {
+      "vi": "Ôn thi & tạo đề",
+      "en": "Quiz & exam practice"
+    },
+    "description": {
+      "vi": "Tạo, nhập, chỉnh sửa và luyện đề ngay trên trình duyệt.",
+      "en": "Create, import, edit and practise quizzes in the browser."
+    },
+    "status": "ready",
+    "icon": "quiz",
+    "accent": "#06b6d4",
+    "showHome": true,
+    "showOrbit": true,
+    "orbitRing": 1,
+    "orbitAngle": 222,
+    "requiresAuth": false,
+    "allowedRoles": [],
+    "hasInlineHtml": false
+  },
+  {
+    "id": "pdf",
+    "slug": "pdf",
+    "href": "/tools/pdf",
+    "code": "PDF",
+    "title": {
+      "vi": "PDF Studio",
+      "en": "PDF Studio"
+    },
+    "description": {
+      "vi": "Xử lý PDF cục bộ, ưu tiên riêng tư.",
+      "en": "Local-first PDF processing."
+    },
+    "status": "ready",
+    "icon": "pdf",
+    "accent": "#2563eb",
+    "showHome": true,
+    "showOrbit": true,
+    "orbitRing": 2,
+    "orbitAngle": 326,
+    "requiresAuth": false,
+    "allowedRoles": [],
+    "hasInlineHtml": false
+  },
+  {
+    "id": "comtrade",
+    "slug": "comtrade",
+    "href": "/tools/comtrade",
+    "code": "CFG",
+    "title": {
+      "vi": "COMTRADE",
+      "en": "COMTRADE"
+    },
+    "description": {
+      "vi": "Đọc CFG/DAT và biểu diễn kênh analog, digital.",
+      "en": "Read CFG/DAT and plot analog and digital channels."
+    },
+    "status": "ready",
+    "icon": "comtrade",
+    "accent": "#8b5cf6",
+    "showHome": true,
+    "showOrbit": true,
+    "orbitRing": 3,
+    "orbitAngle": 198,
+    "requiresAuth": false,
+    "allowedRoles": [],
+    "hasInlineHtml": false
+  }
+]

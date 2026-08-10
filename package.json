@@ -1,22 +1,25 @@
 {
   "name": "nguyen-le-khanh-hoa",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
+    "predev": "node scripts/prepare-pdf-vendor.mjs && node scripts/patch-pdf-mode.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/sync-admin-cms.mjs && node scripts/prepare-pdf-vendor.mjs && node scripts/patch-pdf-mode.mjs",
     "build": "next build",
-    "start": "next start",
+    "start": "node serve-static.mjs",
     "lint": "eslint .",
-    "test:comtrade": "node scripts/test-comtrade.mjs"
+    "test:comtrade": "node scripts/test-comtrade.mjs",
+    "postbuild": "node scripts/build-static-redirects.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.864.0",
     "@aws-sdk/s3-request-presigner": "^3.864.0",
     "@supabase/ssr": "^0.6.1",
-    "@supabase/supabase-js": "^2.54.0",
+    "@supabase/supabase-js": "^2.57.4",
     "marked": "^16.1.1",
     "next": "16.2.6",
     "pdf-lib": "^1.17.1",

@@ -2,56 +2,159 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../../components/LanguageProvider";
+import { invokeEdge, supabase } from "../../lib/supabase-browser";
 import styles from "./cv.module.css";
 
-type Profile = { id:string; name:string; role_vi:string; role_en:string; headline_vi:string; headline_en:string; summary_vi:string; summary_en:string; birth_date?:string; address_vi:string; address_en:string; phone?:string; email?:string; photo_url?:string; pdf_url?:string };
-type Section = { id:string; section_type:string; title_vi:string; title_en:string; subtitle_vi:string; subtitle_en:string; period:string; description_vi:string; description_en:string; organization:string; url?:string; data?:Record<string, unknown> };
+type Localized = { vi: string; en: string };
+type Job = { time: string; company: string; role: string; description: string };
+type Extra = { id:string; type:string; period:string; url?:string; title:Localized; subtitle:Localized; organization:Localized; description:Localized; data?:Record<string,unknown> };
+type Profile = {
+  visible?: boolean;
+  name: string; role: Localized; headline: Localized; summary: Localized; born: string; address: Localized;
+  phone: string; phoneHref: string; email: string; photo: string; pdf: string; pdfAccess?:"public"|"authenticated"|"hidden"; pdfMediaId?:string;
+  theme?: {layout?:string;accent?:string;show_photo?:boolean;show_contact?:boolean;show_download_pdf?:boolean};
+  education: { period: string; school: Localized; major: Localized };
+  certificates: { vi: string[]; en: string[] }; skills: { vi: string[]; en: string[] }; jobs: { vi: Job[]; en: Job[] };
+  extraSections?: Extra[];
+};
 
-const sectionLabels: Record<string, { vi:string; en:string }> = {
-  experience:{ vi:"Kinh nghiệm", en:"Experience" }, education:{ vi:"Học vấn", en:"Education" }, certificate:{ vi:"Chứng chỉ", en:"Certificates" },
-  skill:{ vi:"Kỹ năng", en:"Skills" }, project:{ vi:"Dự án", en:"Projects" }, language:{ vi:"Ngôn ngữ", en:"Languages" }, custom:{ vi:"Thông tin khác", en:"Additional information" },
+const extraLabels:Record<string,Localized>={
+  project:{vi:"Dự án",en:"Projects"},language:{vi:"Ngôn ngữ",en:"Languages"},custom:{vi:"Thông tin thêm",en:"Additional information"}
 };
 
 export default function CvPage() {
   const { language, t } = useLanguage();
   const cv = t.cv;
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [sections, setSections] = useState<Section[]>([]);
+  const [loaded,setLoaded]=useState(false);
+  const [pdfMessage,setPdfMessage]=useState("");
 
   useEffect(() => {
-    fetch("/api/public/cv").then((response) => response.json()).then((payload) => { setProfile(payload.profile ?? null); setSections(payload.sections ?? []); }).catch(() => setProfile(null));
+    fetch("/content/cv/profile.json",{cache:"no-store"})
+      .then((response) => response.json())
+      .then((data)=>setProfile(data))
+      .catch(() => setProfile(null))
+      .finally(()=>setLoaded(true));
   }, []);
 
-  const grouped = useMemo(() => sections.reduce<Record<string, Section[]>>((result, section) => {
-    (result[section.section_type] ??= []).push(section); return result;
-  }, {}), [sections]);
-  const local = (row: Section, key: "title" | "subtitle" | "description") => row[`${key}_${language}` as keyof Section] as string || row[`${key}_vi` as keyof Section] as string;
+  const extras=useMemo(()=>{
+    const map=new Map<string,Extra[]>();
+    for(const x of profile?.extraSections||[]){const key=x.type||"custom";map.set(key,[...(map.get(key)||[]),x])}
+    return [...map.entries()];
+  },[profile]);
 
-  if (!profile) return <main className={styles.loading}><p>{language === "vi" ? "CV chưa được xuất bản trong Admin." : "No CV has been published in Admin."}</p></main>;
-  const role = language === "vi" ? profile.role_vi : profile.role_en || profile.role_vi;
+  if (!loaded) return <main className={styles.loading}><p>{language === "vi" ? "Đang tải hồ sơ…" : "Loading profile…"}</p></main>;
+  if (!profile || profile.visible === false) return <main className={styles.loading}><p>{language === "vi" ? "Hồ sơ CV hiện đang được ẩn bởi quản trị viên." : "The CV is currently hidden by the administrator."}</p></main>;
 
-  return <main>
-    <section className={styles.hero}><div className={`container ${styles.heroGrid}`}>
-      <div className={styles.heroCopy}><p className={styles.eyebrow}>{cv.eyebrow}</p><h1>{language === "vi" ? profile.headline_vi : profile.headline_en || profile.headline_vi}</h1><p>{language === "vi" ? profile.summary_vi : profile.summary_en || profile.summary_vi}</p>
-        <div className={styles.actions}>{profile.pdf_url && <a href={profile.pdf_url}>{cv.download}<span>↓</span></a>}{profile.email && <a href={`mailto:${profile.email}`}>{cv.email}<span>↗</span></a>}</div>
-      </div>
-      <div className={styles.identityCard}>{profile.photo_url ? <img src={profile.photo_url} alt={profile.name} /> : <div className={styles.photoFallback}>{profile.name.split(" ").slice(-2).map((part) => part[0]).join("")}</div>}<div><strong>{profile.name}</strong><span>{role}</span></div><p>POWER SYSTEMS · AUTOMATION</p></div>
-    </div></section>
+  const theme=profile.theme||{};
+  const showPhoto=theme.show_photo!==false;
+  const showContact=theme.show_contact!==false;
+  const showPdf=theme.show_download_pdf!==false && profile.pdfAccess!=="hidden";
 
-    <section className={`container ${styles.summary}`}>
-      <aside className={styles.sidebar}>
-        <section><h2>{cv.personal}</h2><dl>
-          {profile.birth_date && <div><dt>{cv.born}</dt><dd>{profile.birth_date}</dd></div>}
-          <div><dt>{cv.address}</dt><dd>{language === "vi" ? profile.address_vi : profile.address_en || profile.address_vi}</dd></div>
-          {profile.phone && <div><dt>{cv.phone}</dt><dd><a href={`tel:${profile.phone.replace(/\s/g, "")}`}>{profile.phone}</a></dd></div>}
-          {profile.email && <div><dt>Email</dt><dd><a href={`mailto:${profile.email}`}>{profile.email}</a></dd></div>}
-        </dl></section>
-        {Object.entries(grouped).filter(([type]) => type !== "experience").map(([type, rows]) => <section key={type}><h2>{sectionLabels[type]?.[language] ?? type}</h2>{rows.map((row) => <article key={row.id}><p className={styles.year}>{row.period}</p><h3>{local(row,"title")}</h3>{row.organization && <strong>{row.organization}</strong>}<p>{local(row,"subtitle") || local(row,"description")}</p></article>)}</section>)}
-      </aside>
-      <div className={styles.experience}><div className={styles.sectionTitle}><span>02</span><h2>{cv.experience}</h2></div><div className={styles.timeline}>
-        {(grouped.experience ?? []).map((row) => <article key={row.id}><span className={styles.dot}/><p className={styles.jobTime}>{row.period}</p><h3>{row.organization || local(row,"title")}</h3><h4>{row.organization ? local(row,"title") : local(row,"subtitle")}</h4><p>{local(row,"description")}</p></article>)}
-        {!grouped.experience?.length && <p>{language === "vi" ? "Thêm mục Kinh nghiệm trong Admin để hiển thị tại đây." : "Add Experience sections in Admin to display them here."}</p>}
-      </div></div>
-    </section>
-  </main>;
+  async function openPdf(){
+    setPdfMessage("");
+    const currentProfile = profile;
+    if (!currentProfile) {
+      setPdfMessage(language === "vi" ? "Hồ sơ CV chưa sẵn sàng." : "The CV profile is not ready yet.");
+      return;
+    }
+    try{
+      if(currentProfile.pdfAccess==="authenticated"){
+        const{data:{session}}=await supabase.auth.getSession();
+        if(!session){window.location.href="/login?next=/cv";return}
+      }
+      if(currentProfile.pdfMediaId){
+        const out:any=await invokeEdge("r2-file",{action:"presign-download",media_id:currentProfile.pdfMediaId});
+        if(!out?.url)throw new Error(language==="vi"?"Không tạo được liên kết PDF R2.":"Could not create an R2 PDF link.");
+        window.open(out.url,"_blank","noopener,noreferrer");return;
+      }
+      if(currentProfile.pdf){window.open(currentProfile.pdf,"_blank","noopener,noreferrer");return}
+      throw new Error(language==="vi"?"CV chưa có file PDF.":"No PDF resume is available yet.");
+    }catch(e){setPdfMessage(e instanceof Error?e.message:String(e))}
+  }
+
+  return (
+    <main>
+      <section className={styles.hero}>
+        <div className={`container ${styles.heroGrid}`}>
+          <div className={styles.heroCopy}>
+            <p className={styles.eyebrow}>{cv.eyebrow}</p>
+            <h1>{profile.headline?.[language] || profile.name}</h1>
+            <p>{profile.summary?.[language]}</p>
+            <div className={styles.actions}>
+              {showPdf && (profile.pdf || profile.pdfMediaId) ? <a href="#" onClick={(e)=>{e.preventDefault();openPdf()}}>{profile.pdfAccess==="authenticated"?(language==="vi"?"Đăng nhập để tải CV":"Login to download CV"):cv.download}<span>↓</span></a> : null}
+              {showContact && profile.email ? <a href={`mailto:${profile.email}`}>{cv.email}<span>↗</span></a> : null}
+            </div>
+            {pdfMessage ? <p style={{marginTop:"10px",color:"var(--muted)"}}>{pdfMessage}</p> : null}
+          </div>
+          {showPhoto ? <div className={styles.identityCard}>
+            {profile.photo ? <img src={profile.photo} alt={profile.name} width={325} height={352} /> : null}
+            <div><strong>{profile.name}</strong><span>{profile.role?.[language]}</span></div>
+            <p>POWER SYSTEMS · AUTOMATION</p>
+          </div> : null}
+        </div>
+      </section>
+
+      <section className={`container ${styles.summary}`}>
+        <aside className={styles.sidebar}>
+          {showContact ? <section>
+            <h2>{cv.personal}</h2>
+            <dl>
+              {profile.born ? <div><dt>{cv.born}</dt><dd>{profile.born}</dd></div> : null}
+              {profile.address?.[language] ? <div><dt>{cv.address}</dt><dd>{profile.address[language]}</dd></div> : null}
+              {profile.phone ? <div><dt>{cv.phone}</dt><dd><a href={`tel:${profile.phoneHref}`}>{profile.phone}</a></dd></div> : null}
+              {profile.email ? <div><dt>Email</dt><dd><a href={`mailto:${profile.email}`}>{profile.email}</a></dd></div> : null}
+            </dl>
+          </section> : null}
+
+          {profile.education?.school?.[language] || profile.education?.major?.[language] ? <section>
+            <h2>{cv.education}</h2>
+            {profile.education.period ? <p className={styles.year}>{profile.education.period}</p> : null}
+            <h3>{profile.education.school?.[language]}</h3>
+            <p>{profile.education.major?.[language]}</p>
+          </section> : null}
+
+          {profile.certificates?.[language]?.length ? <section>
+            <h2>{cv.certificates}</h2>
+            <ul>{profile.certificates[language].map((cert) => <li key={cert}>{cert}</li>)}</ul>
+          </section> : null}
+
+          {profile.skills?.[language]?.length ? <section>
+            <h2>{cv.skills}</h2>
+            <div className={styles.skills}>{profile.skills[language].map((skill) => <span key={skill}>{skill}</span>)}</div>
+          </section> : null}
+        </aside>
+
+        <div className={styles.experience}>
+          {profile.jobs?.[language]?.length ? <>
+            <div className={styles.sectionTitle}><span>02</span><h2>{cv.experience}</h2></div>
+            <div className={styles.timeline}>
+              {profile.jobs[language].map((job) => (
+                <article key={`${job.time}-${job.company}-${job.role}`}>
+                  <span className={styles.dot} />
+                  <p className={styles.jobTime}>{job.time}</p>
+                  <h3>{job.company}</h3>
+                  <h4>{job.role}</h4>
+                  <p>{job.description}</p>
+                </article>
+              ))}
+            </div>
+          </> : null}
+
+          {extras.map(([type,rows],groupIndex)=><section key={type} style={{marginTop:(groupIndex>0 || !!profile.jobs?.[language]?.length)?"46px":"0"}}>
+            <div className={styles.sectionTitle}><span>{String(groupIndex+3).padStart(2,"0")}</span><h2>{(extraLabels[type]||extraLabels.custom)[language]}</h2></div>
+            <div className={styles.timeline}>{rows.map(x=><article key={x.id}>
+              <span className={styles.dot}/>
+              {x.period ? <p className={styles.jobTime}>{x.period}</p> : null}
+              <h3>{x.organization?.[language] || x.title?.[language]}</h3>
+              {x.organization?.[language] ? <h4>{x.title?.[language]}</h4> : null}
+              {x.subtitle?.[language] ? <p>{x.subtitle[language]}</p> : null}
+              {x.description?.[language] ? <p>{x.description[language]}</p> : null}
+              {x.url ? <a href={x.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
+            </article>)}</div>
+          </section>)}
+        </div>
+      </section>
+    </main>
+  );
 }

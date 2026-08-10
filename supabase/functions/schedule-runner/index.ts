@@ -1,0 +1,8 @@
+import{adminClient}from"../_shared/auth.ts";import{json,corsHeaders}from"../_shared/cors.ts";
+Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});const secret=req.headers.get("x-scheduler-secret");if(!secret||secret!==Deno.env.get("SCHEDULER_SECRET"))return json(req,{error:"Forbidden"},403);try{
+ const admin=adminClient(),now=new Date().toISOString(),{data:jobs,error}=await admin.from("scheduled_api_jobs").select("*,api_integrations(slug)").eq("enabled",true).lte("next_run_at",now).limit(20);if(error)throw error;const results=[];
+ for(const job of jobs||[]){let ok=true,message="ok";try{if(job.handler==="supabase_keepalive"){const r=await admin.from("site_settings").select("id",{head:true,count:"exact"});if(r.error)throw r.error}else if(job.handler==="integration"){const slug=(job as any).api_integrations?.slug;if(!slug)throw new Error("Integration slug missing");const r=await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/integration-proxy`,{method:"POST",headers:{"Content-Type":"application/json","x-scheduler-secret":secret},body:JSON.stringify({slug,payload:job.request_payload||{}})});if(!r.ok)throw new Error(await r.text())}}catch(e){ok=false;message=e instanceof Error?e.message:String(e)}
+   const next=new Date(Date.now()+Number(job.interval_minutes||1440)*60000).toISOString();await admin.from("scheduled_api_jobs").update({last_run_at:now,last_status:ok?"success":"error",last_message:message,next_run_at:next}).eq("id",job.id);results.push({id:job.id,ok,message})
+ }
+ return json(req,{ok:true,count:results.length,results});
+}catch(e){return json(req,{error:e instanceof Error?e.message:String(e)},500)}})

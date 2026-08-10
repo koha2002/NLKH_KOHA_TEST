@@ -1,18 +1,7 @@
 import type { MetadataRoute } from "next";
-import { absoluteSiteUrl } from "../lib/public/site-content";
-
-/**
- * Cho phép công cụ tìm kiếm thu thập các trang công khai.
- * Đường dẫn dữ liệu riêng không nên đặt trong sitemap.
- */
-export default function robots(): MetadataRoute.Robots {
-  return {
-    rules: {
-      userAgent: "*",
-      allow: "/",
-      disallow: ["/admin/", "/api/", "/account/", "/auth/"],
-    },
-    sitemap: absoluteSiteUrl("/sitemap.xml"),
-    host: absoluteSiteUrl("/"),
-  };
+import { adminSite } from "../data/admin-generated";
+export const dynamic="force-static";
+export default function robots():MetadataRoute.Robots{
+ const site=String((adminSite as any).site_url||"https://nguyenlekhanhhoa.com").replace(/\/$/,"");
+ return{rules:{userAgent:"*",allow:"/",disallow:["/account/","/login/"]},sitemap:`${site}/sitemap.xml`,host:site};
 }

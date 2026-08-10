@@ -1,13 +1,20 @@
-import type { Metadata } from "next";
-import { NewsArticle } from "../../../components/NewsArticle";
-import { createSupabaseServerClient } from "../../../lib/supabase/server";
+import { notFound } from "next/navigation";
+import { adminNewsArticles } from "../../../data/admin-generated";
+import { NewsArticleClient } from "../../../components/NewsArticleClient";
+import { buildMetadata } from "../../../lib/admin-seo";
+import { AdminSeoJsonLd } from "../../../components/AdminSeoJsonLd";
 
-export async function generateMetadata({ params }: { params: Promise<{ slug:string }> }): Promise<Metadata> {
-  const { slug } = await params;
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return { title:"Tin tức" };
-  const { data } = await supabase.from("news_articles").select("title_vi,excerpt_vi,cover_image").eq("slug", slug).eq("status", "published").maybeSingle();
-  return data ? { title:data.title_vi, description:data.excerpt_vi, openGraph:{ title:data.title_vi, description:data.excerpt_vi, images:data.cover_image ? [data.cover_image] : [] } } : { title:"Không tìm thấy bài viết" };
+export const dynamicParams=false;
+export function generateStaticParams(){
+  const articles=adminNewsArticles as readonly any[];
+  if(!articles.length)return[{slug:"__placeholder__"}];
+  return articles.map((x:any)=>({slug:String(x.slug)}));
 }
-
-export default async function ArticlePage({ params }: { params: Promise<{ slug:string }> }) { const { slug } = await params; return <NewsArticle slug={slug} />; }
+export async function generateMetadata({params}:{params:Promise<{slug:string}>}){
+  const{slug}=await params;const a:any=(adminNewsArticles as readonly any[]).find((x:any)=>x.slug===slug);
+  return buildMetadata(`/news/${slug}`,{title:a?.title_vi,description:a?.excerpt_vi,image:a?.cover_image,type:"article"});
+}
+export default async function NewsArticlePage({params}:{params:Promise<{slug:string}>}){
+  const{slug}=await params;const article:any=(adminNewsArticles as readonly any[]).find((x:any)=>x.slug===slug);if(!article)notFound();
+  return <><AdminSeoJsonLd route={`/news/${slug}`}/><NewsArticleClient article={article}/></>;
+}

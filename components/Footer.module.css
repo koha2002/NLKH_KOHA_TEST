@@ -7,9 +7,10 @@
 .grid > div:not(.about) { display: flex; flex-direction: column; align-items: flex-start; }
 .grid > div:not(.about) a { color: var(--footer-muted); font-size: 15px; padding: 6px 0; transition: color 160ms ease; }
 .grid > div:not(.about) a:hover { color: var(--cyan-400); }
+.linkWithIcon { display: inline-flex !important; align-items: center; gap: 8px; }
+.linkWithIcon img { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex: 0 0 auto; }
 .bottom { min-height: 68px; border-top: 1px solid var(--footer-line); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .bottom p { margin: 0; color: var(--footer-muted); font-size: 12px; }
-
 @media (max-width: 680px) {
   .grid { grid-template-columns: 1fr 1fr; gap: 38px 26px; }
   .about { grid-column: 1 / -1; }

@@ -1,31 +1,22 @@
 import type { MetadataRoute } from "next";
-import { createSupabaseServiceClient } from "../lib/supabase/server";
-import { absoluteSiteUrl } from "../lib/public/site-content";
+import { adminContentPages, adminCvVisible, adminNewsArticles, adminSeoEntries, adminSite, adminTools } from "../data/admin-generated";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
+const site=String((adminSite as any).site_url||"https://nguyenlekhanhhoa.com").replace(/\/$/,"");
+const seoMap=new Map((adminSeoEntries as readonly any[]).map((x:any)=>[String(x.route),x]));
 
-const fallbackRoutes = [
-  ["/", "weekly", 1], ["/cv", "monthly", .9], ["/tools", "weekly", .9],
-  ["/tools/quiz", "monthly", .8], ["/tools/pdf", "monthly", .8], ["/tools/comtrade", "monthly", .8],
-  ["/software", "weekly", .8], ["/data", "weekly", .7], ["/news", "daily", .8],
-] as const;
+function meta(route:string,defaults:{changeFrequency?:any;priority?:number}={}){
+  const s:any=seoMap.get(route);
+  if(s?.indexable===false)return null;
+  return {url:`${site}${route==="/"?"":route}/`.replace(/([^:]\/)\/+/g,"$1"),changeFrequency:(s?.change_frequency||defaults.changeFrequency||"weekly") as any,priority:Number(s?.priority??defaults.priority??.7)};
+}
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const service = createSupabaseServiceClient();
-  const now = new Date().toISOString();
-  const fallback = fallbackRoutes.map(([route,changeFrequency,priority]) => ({ url:absoluteSiteUrl(route), changeFrequency, priority })) as MetadataRoute.Sitemap;
-  if (!service) return fallback;
-  const [seo, tools, news, pages] = await Promise.all([
-    service.from("seo_entries").select("route,change_frequency,priority,updated_at").eq("indexable", true),
-    service.from("tools").select("route,updated_at").eq("visible", true).eq("requires_auth", false),
-    service.from("news_articles").select("slug,updated_at").eq("status", "published").or(`published_at.is.null,published_at.lte.${now}`),
-    service.from("content_pages").select("slug,updated_at").eq("status", "published").eq("requires_auth", false).or(`published_at.is.null,published_at.lte.${now}`),
-  ]);
-  const rows = new Map<string, MetadataRoute.Sitemap[number]>();
-  fallback.forEach((entry) => rows.set(new URL(entry.url).pathname, entry));
-  for (const entry of seo.data ?? []) rows.set(entry.route, { url: absoluteSiteUrl(entry.route), lastModified: entry.updated_at, changeFrequency: entry.change_frequency, priority: Number(entry.priority) });
-  for (const tool of tools.data ?? []) if (!rows.has(tool.route)) rows.set(tool.route, { url: absoluteSiteUrl(tool.route), lastModified: tool.updated_at, changeFrequency: "monthly", priority: .7 });
-  for (const article of news.data ?? []) rows.set(`/news/${article.slug}`, { url: absoluteSiteUrl(`/news/${article.slug}`), lastModified: article.updated_at, changeFrequency: "monthly", priority: .7 });
-  for (const page of pages.data ?? []) rows.set(`/p/${page.slug}`, { url:absoluteSiteUrl(`/p/${page.slug}`), lastModified:page.updated_at, changeFrequency:"monthly", priority:.6 });
-  return [...rows.values()];
+export default function sitemap():MetadataRoute.Sitemap{
+  const out:MetadataRoute.Sitemap=[];
+  const fixed:[string,any,number][]=[["/","weekly",1],["/cv","monthly",.9],["/tools","weekly",.9],["/software","weekly",.8],["/data","weekly",.4],["/news","daily",.9]];
+  for(const[r,c,p]of fixed){if(r==="/cv"&&!adminCvVisible)continue;const x=meta(r,{changeFrequency:c,priority:p});if(x)out.push(x)}
+  for(const t of adminTools as readonly any[]){if(t.requiresAuth)continue;const x=meta(t.href||`/tools/${t.slug}`,{changeFrequency:"monthly",priority:.8});if(x)out.push(x)}
+  for(const a of adminNewsArticles as readonly any[]){const x=meta(`/news/${a.slug}`,{changeFrequency:"monthly",priority:a.featured?.85:.7});if(x)out.push(x)}
+  for(const p of adminContentPages as readonly any[]){if(p.requires_auth)continue;const x=meta(`/p/${p.slug}`,{changeFrequency:"monthly",priority:.6});if(x)out.push(x)}
+  const seen=new Set<string>();return out.filter(x=>!seen.has(x.url)&&(seen.add(x.url),true));
 }

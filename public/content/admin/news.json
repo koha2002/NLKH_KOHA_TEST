@@ -1,0 +1,33 @@
+[
+  {
+    "id": "4ea6a4e0-883c-4780-8558-e7277e7e72b9",
+    "slug": "aaaaa",
+    "category_id": null,
+    "title_vi": "aaaaa",
+    "title_en": "aaaaa",
+    "subtitle_vi": "aaa",
+    "subtitle_en": "aaaa",
+    "excerpt_vi": "aaaaa",
+    "excerpt_en": "aaaaa",
+    "content_vi": "aaaa",
+    "content_en": "aaaa",
+    "cover_image": "aaaaaaaaaaaaaa",
+    "cover_alt_vi": "aaaaaaaaaaa",
+    "cover_alt_en": "aaaaaaaaaaa",
+    "author_name": "aaaaaaaa",
+    "translator_name": "aaaaaa",
+    "editor_name": "aaaaaaaaaaaaa",
+    "source_name": "aaaaaaaaa",
+    "source_url": "aaaaaaaaa",
+    "tags": [],
+    "status": "published",
+    "featured": true,
+    "allow_comments": true,
+    "published_at": null,
+    "created_by": null,
+    "updated_by": null,
+    "created_at": "2026-08-09T07:48:14.696029+00:00",
+    "updated_at": "2026-08-09T07:48:14.696029+00:00",
+    "cover_media_id": null
+  }
+]

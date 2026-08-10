@@ -1,0 +1,262 @@
+import React,{useEffect,useMemo,useState}from"react";
+import{supabase}from"../lib/supabase";
+import MediaPicker from"./MediaPicker";
+import{notify}from"../lib/notify";
+
+const empty=v=>v===null||v===undefined||v===""||(Array.isArray(v)&&v.length===0);
+const isRequired=(f,form={})=>!!(typeof f.requiredWhen==="function"?f.requiredWhen(form):f.required);
+function helpText(f,form={}){
+  if(f.help)return f.help;
+  if(f.type==="sort")return "Thứ tự hiển thị. Hệ thống tự đánh lại 1, 2, 3… sau khi lưu/xóa; số nhỏ đứng trước.";
+  if(f.type==="relation")return "Chọn từ dữ liệu đã có; không cần nhớ hoặc nhập ID kỹ thuật.";
+  if(f.type==="checks")return "Có thể tích nhiều mục. Bỏ tích để thu hồi lựa chọn/quyền tương ứng.";
+  if(f.type==="media")return "Tải trực tiếp lên Cloudflare R2 hoặc chọn ID R2 đã có trong thư viện; không cần dán URL thủ công.";
+  if(f.type==="checkbox")return "Tùy chọn bật/tắt. Có thể thay đổi lại bất cứ lúc nào.";
+  if(f.type==="json")return "Cấu hình nâng cao dạng JSON. Nếu không dùng, giữ mẫu sẵn có hoặc {}. Hệ thống sẽ chỉ đúng ô nếu JSON sai.";
+  if(f.type==="url")return "Nhập URL đầy đủ bắt đầu bằng https:// nếu dùng liên kết bên ngoài.";
+  if(f.type==="datetime")return "Chọn ngày/giờ bằng ô lịch để tránh sai định dạng.";
+  return isRequired(f,form)?`${f.label} là trường bắt buộc.`:`${f.label} là trường không bắt buộc; có thể để trống nếu chưa dùng.`;
+}
+
+function parseField(f,v){
+  // Optional media/relation fields are backed by FK/UUID columns.
+  // An unselected control uses an empty string in the browser, but Postgres UUID
+  // columns require NULL rather than "".
+  if((f.type==="media"||f.type==="relation")&&(v===""||v===undefined||v===null))return null;
+  if(f.type==="number"||f.type==="sort")return v===""?null:Number(v);
+  if(f.type==="checkbox")return!!v;
+  if(f.type==="json"){
+    if(typeof v!=="string")return v??{};
+    if(!v.trim())return{};
+    return JSON.parse(v);
+  }
+  if(f.type==="array"||f.type==="checks"){
+    if(Array.isArray(v))return v;
+    return String(v||"").split(",").map(x=>x.trim()).filter(Boolean);
+  }
+  return v===""&&f.nullable?null:v;
+}
+function display(v){if(v==null)return"";if(typeof v==="object")return JSON.stringify(v);return String(v)}
+
+function extractServerError(error,fields){
+  const constraint=String(error?.constraint||error?.message?.match(/constraint ["']([^"']+)["']/i)?.[1]||"");
+  const byConstraint=fields.find(f=>constraint&&constraint.includes(`_${f.name}_`));
+  const msg=error?.message||"Không thể lưu dữ liệu.";
+  const details=error?.details||"";
+  if(error?.code==="23505"){
+    const match=details.match(/\(([^)]+)\)=\(([^)]*)\)/);
+    if(match){
+      const field=fields.find(f=>f.name===match[1]);
+      return {field:match[1],message:`${field?.label||match[1]} “${match[2]}” đã tồn tại. Hãy đổi giá trị này.`};
+    }
+    return {message:"Có một giá trị bị trùng với dữ liệu đã có. Kiểm tra các trường mã/slug/đường dẫn."};
+  }
+  if(error?.code==="23502"){
+    const name=error?.column||details.match(/column "([^"]+)"/)?.[1];
+    const field=fields.find(f=>f.name===name);
+    return{field:name,message:`${field?.label||name||"Một trường bắt buộc"} đang để trống. Hãy điền đúng ô này.`};
+  }
+  if(error?.code==="23503"){
+    const name=byConstraint?.name||details.match(/Key \(([^)]+)\)=/)?.[1]||details.match(/column ["']?([^"' ]+)/i)?.[1];
+    const field=fields.find(f=>f.name===name);
+    return{field:name,message:field?`${field.label} đang trỏ tới một mục không còn tồn tại. Hãy chọn lại ngay ô “${field.label}”.`:`Không thể lưu vì một mục liên quan đã bị xóa/không còn tồn tại. Hãy chọn lại menu cha, nhóm, vai trò hoặc ID R2.`};
+  }
+  if(error?.code==="23514"){
+    const field=byConstraint||fields.find(f=>`${msg} ${details}`.includes(f.name));
+    return{field:field?.name,message:field?`${field.label} có giá trị không hợp lệ theo quy tắc hệ thống. ${details||msg}`:`Giá trị không đúng quy tắc của hệ thống. ${details||msg}`};
+  }
+  if(error?.code==="22P02")return{message:`Sai định dạng dữ liệu: ${details||msg}. Kiểm tra ô ID, số, ngày/giờ hoặc JSON vừa sửa.`};
+  if(error?.code==="22007")return{message:"Ngày/giờ không đúng định dạng. Hãy chọn lại bằng ô ngày/giờ thay vì nhập chuỗi tự do."};
+  if(error?.code==="PGRST204")return{message:`Cấu trúc Admin và database chưa đồng bộ: ${msg}. Hãy chạy migration V4 rồi thử lại.`};
+  if(error?.code==="42501")return{message:"Tài khoản hiện tại không có quyền thực hiện thay đổi này. Kiểm tra vai trò/quyền của tài khoản."};
+  return{message:[msg,details].filter(Boolean).join(" — ")};
+}
+
+function FieldLabel({f}){
+  const help=f.help||helpText(f);
+  return <div className="fieldLabel">
+    <span>{f.label}{f.required&&<b className="requiredMark">*</b>}</span>
+    <button className="helpDot" type="button" title={help} aria-label={`Trợ giúp ${f.label}`}>?</button>
+  </div>
+}
+
+function RelationInput({f,value,onChange}){
+  const[options,setOptions]=useState([]),[error,setError]=useState("");
+  useEffect(()=>{
+    let q=supabase.from(f.relation.table).select(f.relation.select||"*");
+    if(f.relation.filter)Object.entries(f.relation.filter).forEach(([k,v])=>q=q.eq(k,v));
+    if(f.relation.orderBy)q=q.order(f.relation.orderBy,{ascending:f.relation.ascending!==false});
+    q.then(({data,error})=>{if(error)setError(error.message);else setOptions(data||[])});
+  },[f.relation.table]);
+  const valueKey=f.relation.valueKey||"id",labelKey=f.relation.labelKey||"name";
+  return <><select value={value??""} onChange={e=>onChange(e.target.value)}>
+    <option value="">{f.placeholder||"— Không chọn —"}</option>
+    {options.map(o=><option key={o[valueKey]} value={o[valueKey]}>{typeof f.relation.label==="function"?f.relation.label(o):(o[labelKey]||o[valueKey])}</option>)}
+  </select>{error&&<small className="fieldError">{error}</small>}</>
+}
+function ChecksInput({f,value,onChange}){
+  const[options,setOptions]=useState(f.options||[]);
+  useEffect(()=>{
+    if(f.options){setOptions(f.options);return;}
+    if(!f.relation)return;
+    let q=supabase.from(f.relation.table).select(f.relation.select||"*");
+    if(f.relation.filter)Object.entries(f.relation.filter).forEach(([k,v])=>q=q.eq(k,v));
+    if(f.relation.orderBy)q=q.order(f.relation.orderBy,{ascending:true});
+    q.then(({data})=>setOptions(data||[]));
+  },[f.relation?.table,JSON.stringify(f.options||[])]);
+  const current=Array.isArray(value)?value:[];
+  const valueKey=f.relation?.valueKey||"value",labelKey=f.relation?.labelKey||"label";
+  const toggle=(v,checked)=>onChange(checked?[...new Set([...current,v])]:current.filter(x=>x!==v));
+  return <div className="checkGrid">{options.map(o=>{
+    const val=typeof o==="string"?o:o[valueKey],label=typeof o==="string"?o:(typeof f.relation?.label==="function"?f.relation.label(o):(o[labelKey]||val));
+    const note=typeof o==="object"?o.note:null;
+    return <label className="checkCard" key={val}><input type="checkbox" checked={current.includes(val)} onChange={e=>toggle(val,e.target.checked)}/><span><b>{label}</b>{note&&<small>{note}</small>}</span></label>
+  })}</div>
+}
+
+function Input({f,value,onChange,onMirror,form={}}){
+  if(f.type==="media"){
+    const mediaVisibility=typeof f.visibility==="function"?f.visibility(form):(f.visibility||"public");
+    return <MediaPicker value={value} onChange={onChange} kind={f.kind||"image"} visibility={mediaVisibility} label={f.label} help={f.help} required={f.required} onMirrorUrl={onMirror}/>;
+  }
+  if(f.type==="relation")return <RelationInput f={f} value={value} onChange={onChange}/>;
+  if(f.type==="checks")return <ChecksInput f={f} value={value} onChange={onChange}/>;
+  if(f.type==="textarea"||f.type==="html")return <textarea rows={f.rows||8} value={value??""} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||""}/>;
+  if(f.type==="json")return <textarea rows={f.rows||9} value={typeof value==="string"?value:JSON.stringify(value??{},null,2)} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||'{\n  "key": "value"\n}'}/>;
+  if(f.type==="array")return <input value={Array.isArray(value)?value.join(", "):(value??"")} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||"Nhập nhiều giá trị, cách nhau bằng dấu phẩy"}/>;
+  if(f.type==="checkbox")return <label className="switchRow"><input type="checkbox" checked={!!value} onChange={e=>onChange(e.target.checked)}/><span>{f.trueLabel||"Bật"}</span></label>;
+  if(f.type==="select")return <select value={value??""} onChange={e=>onChange(e.target.value)}>{f.placeholder&&<option value="">{f.placeholder}</option>}{(f.options||[]).map(o=><option key={String(o.value)} value={o.value}>{o.label}</option>)}</select>;
+  if(f.type==="color")return <div className="colorInput"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value||"")?value:"#3157f6"} onChange={e=>onChange(e.target.value)}/><input value={value??""} onChange={e=>onChange(e.target.value)} placeholder="#3157f6"/></div>;
+  const type=f.type==="number"||f.type==="sort"?"number":f.type==="url"?"url":f.type==="datetime"?"datetime-local":"text";
+  return <input type={type} min={f.min} max={f.max} step={f.step} value={value??""} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||""}/>;
+}
+
+export default function TableManager({
+  title,description="",table,fields,idField="id",orderBy="updated_at",ascending=false,
+  allowDelete=true,allowAdd=true,defaults={},singleRow=false,openId=null,onChanged
+}){
+  const[rows,setRows]=useState([]),[edit,setEdit]=useState(null),[form,setForm]=useState({}),[msg,setMsg]=useState(""),
+    [fieldErrors,setFieldErrors]=useState({}),[htmlPreview,setHtmlPreview]=useState("");
+  const visible=useMemo(()=>fields.filter(f=>!f.hidden),[fields]);
+
+  async function load(){
+    let q=supabase.from(table).select("*");
+    if(orderBy)q=q.order(orderBy,{ascending});
+    const{data,error}=await q;
+    if(error)setMsg(error.message);else{
+      setRows(data||[]);
+      if(singleRow&&data?.length&&!edit)start(data[0],data||[]);
+      if(openId&&data?.length){
+        const found=data.find(r=>String(r[idField])===String(openId));
+        if(found)start(found,data||[]);
+      }
+    }
+  }
+  useEffect(()=>{load()},[table,openId]);
+
+  function defaultFor(f){
+    if(f.name in defaults)return typeof defaults[f.name]==="function"?defaults[f.name]():defaults[f.name];
+    if(f.type==="checkbox")return false;
+    if(f.type==="json")return{};
+    if(f.type==="array"||f.type==="checks")return[];
+    if(f.type==="sort")return rows.reduce((m,r)=>Math.max(m,Number(r[f.name]||0)),0)+1;
+    return"";
+  }
+  function start(row=null,currentRows=rows){
+    setEdit(row?row[idField]:"__new__");setMsg("");setFieldErrors({});
+    const b={};
+    fields.forEach(f=>{
+      if(row)b[f.name]=row[f.name]??defaultFor(f);
+      else if(f.type==="sort")b[f.name]=currentRows.reduce((m,r)=>Math.max(m,Number(r[f.name]||0)),0)+1;
+      else b[f.name]=defaultFor(f);
+    });
+    setForm(b);
+  }
+
+  function validate(){
+    const errors={};
+    fields.forEach(f=>{
+      if(f.hidden||f.readonly|| (f.showWhen && !f.showWhen(form)))return;
+      const v=form[f.name];
+      if(isRequired(f,form)&&empty(v))errors[f.name]=`${f.label} là trường bắt buộc trong lựa chọn hiện tại.`;
+      if(!errors[f.name]&&f.type==="url"&&v){
+        try{new URL(v)}catch{errors[f.name]=`${f.label} phải là URL đầy đủ, ví dụ https://...`}
+      }
+      if(!errors[f.name]&&f.type==="json"&&typeof v==="string"&&v.trim()){
+        try{JSON.parse(v)}catch(e){errors[f.name]=`${f.label} có JSON sai cú pháp: ${e.message}`}
+      }
+      if(!errors[f.name]&&f.validate){
+        const result=f.validate(v,form);
+        if(result)errors[f.name]=result;
+      }
+    });
+    setFieldErrors(errors);
+    return Object.keys(errors).length===0;
+  }
+
+  async function normalizeSortRows(){
+    const sortField=fields.find(f=>f.type==="sort");
+    if(!sortField)return;
+    const{data,error}=await supabase.from(table).select(`${idField},${sortField.name}`).order(sortField.name,{ascending:true}).order(idField,{ascending:true});
+    if(error)return;
+    for(let i=0;i<(data||[]).length;i++){
+      const row=data[i],target=i+1;
+      if(Number(row[sortField.name])!==target)await supabase.from(table).update({[sortField.name]:target}).eq(idField,row[idField]);
+    }
+  }
+
+  async function save(e){
+    e.preventDefault();setMsg("");
+    if(!validate()){setMsg("Có trường chưa đúng. Mình đã đánh dấu đúng ô cần sửa bên dưới.");notify("Chưa thể lưu: có trường cần kiểm tra lại.","error");return}
+    try{
+      const payload={};
+      for(const f of fields){
+        if(f.readonly||f.skipSave)continue;
+        try{const raw=typeof f.derive==="function"?f.derive(form):form[f.name];payload[f.name]=parseField(f,raw)}
+        catch(err){setFieldErrors(x=>({...x,[f.name]:`${f.label}: ${err.message}`}));setMsg(`Không thể lưu vì trường “${f.label}” chưa đúng.`);return}
+      }
+      const result=edit==="__new__"?await supabase.from(table).insert(payload):await supabase.from(table).update(payload).eq(idField,edit);
+      if(result.error)throw result.error;
+      if(!singleRow)setEdit(null);await normalizeSortRows();setMsg("Đã lưu thành công.");notify("Đã lưu thay đổi thành công.","success");await load();
+      if(table==="tools")window.dispatchEvent(new Event("nlkh:tools-changed"));
+      onChanged?.();
+    }catch(error){
+      const info=extractServerError(error,fields);
+      if(info.field)setFieldErrors(x=>({...x,[info.field]:info.message}));
+      setMsg(info.message);notify(info.message,"error",6500);
+    }
+  }
+
+  async function del(row){
+    if(!confirm(`Xóa mục “${display(row[visible[0]?.name]||row[idField])}”?`))return;
+    const{error}=await supabase.from(table).delete().eq(idField,row[idField]);
+    if(error){const info=extractServerError(error,fields);setMsg(info.message);return}
+    await normalizeSortRows();setMsg("Đã xóa.");notify("Đã xóa mục.","success");await load();if(table==="tools")window.dispatchEvent(new Event("nlkh:tools-changed"));onChanged?.();
+  }
+
+  return <section className="adminSection">
+    <div className="sectionTitle"><div><h1>{title}</h1>{description&&<p className="sectionDescription">{description}</p>}<small>{table}</small></div>{allowAdd&&!singleRow&&<button className="primary" onClick={()=>start()}>+ Thêm mới</button>}</div>
+    {msg&&<div className={`notice ${Object.keys(fieldErrors).length?"noticeError":""}`}>{msg}</div>}
+    {!singleRow&&<div className="tableWrap"><table><thead><tr>{visible.slice(0,5).map(f=><th key={f.name}>{f.label}</th>)}<th/></tr></thead><tbody>{rows.map((r,i)=><tr key={r[idField]??i}>{visible.slice(0,5).map(f=><td key={f.name}>{f.type==="checkbox"?(r[f.name]?"Có":"Không"):f.type==="media"?(r[f.name]?"Đã chọn R2":"—"):display(r[f.name]).slice(0,110)}</td>)}<td className="rowActions"><button onClick={()=>start(r)}>Sửa</button>{allowDelete&&<button onClick={()=>del(r)}>Xóa</button>}</td></tr>)}</tbody></table></div>}
+
+    {edit&&<div className={singleRow?"inlineEditor":"modal"}><form className={singleRow?"editor inline":"editor"} onSubmit={save} noValidate>
+      {!singleRow&&<div className="editorHead"><div><h2>{edit==="__new__"?"Thêm":"Chỉnh sửa"} · {title}</h2><small>Dấu <b className="requiredMark">*</b> là bắt buộc. Trường không có dấu * có thể để trống.</small></div><button type="button" onClick={()=>setEdit(null)}>✕</button></div>}
+      <div className="formGrid">{fields.filter(f=>!f.hidden&&!f.readonly&&(!f.showWhen||f.showWhen(form))).map(f=>{
+        const dynamicRequired=isRequired(f,form);
+        const ef={...f,required:dynamicRequired,help:helpText({...f,required:dynamicRequired},form)};
+        const mirror=(url)=>{if(f.mirrorUrlField)setForm(x=>({...x,[f.mirrorUrlField]:url}))};
+        if(f.type==="media")return <div key={f.name} className="wide fieldBlock"><Input f={ef} value={form[f.name]} onChange={v=>setForm(x=>({...x,[f.name]:v}))} onMirror={mirror} form={form}/>{fieldErrors[f.name]&&<div className="fieldError">{fieldErrors[f.name]}</div>}</div>;
+        return <div key={f.name} className={`${f.wide?"wide":""} fieldBlock`}>
+          <FieldLabel f={ef}/>
+          <Input f={ef} value={form[f.name]} onChange={v=>setForm(x=>({...x,[f.name]:v}))} form={form}/>
+          <small className="fieldHelp">{ef.help}</small>
+          {f.type==="html"&&form[f.name]&&<button type="button" className="previewCode" onClick={()=>setHtmlPreview(form[f.name])}>▶ Chạy thử HTML trong khung an toàn</button>}
+          {fieldErrors[f.name]&&<div className="fieldError">{fieldErrors[f.name]}</div>}
+        </div>
+      })}</div>
+      <div className="editorActions">{!singleRow&&<button type="button" onClick={()=>setEdit(null)}>Hủy</button>}<button className="primary">Lưu thay đổi</button></div>
+    </form></div>}
+
+    {htmlPreview&&<div className="modal"><div className="htmlPreviewPanel"><div className="editorHead"><div><h2>Xem thử code tool</h2><small>Chỉ là iframe thử nghiệm; chưa lưu thì website chưa thay đổi.</small></div><button type="button" onClick={()=>setHtmlPreview("")}>✕</button></div><iframe sandbox="allow-scripts allow-forms allow-downloads" srcDoc={htmlPreview} title="Tool HTML preview"/></div></div>}
+  </section>
+}

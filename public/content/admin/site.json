@@ -1,0 +1,23 @@
+{
+  "id": "57ebc864-8dcc-4096-b726-b95aa0f61497",
+  "site_name": "Nguyễn Lê Khánh Hòa",
+  "site_url": "https://nguyenlekhanhhoa.com",
+  "default_title_vi": "Nguyễn Lê Khánh Hòa | Kỹ sư điện",
+  "default_title_en": "Nguyen Le Khanh Hoa | Electrical Engineer",
+  "title_template": "%s | Nguyễn Lê Khánh Hòa",
+  "description_vi": "Website cá nhân của Nguyễn Lê Khánh Hòa - kỹ sư điện, sản phẩm số và công cụ làm việc.",
+  "description_en": "The personal website of Nguyen Le Khanh Hoa - electrical engineer and digital product builder.",
+  "default_og_image": "",
+  "contact_email": "khanhhoa2002.hh@gmail.com",
+  "footer_intro_vi": "Kỹ sư điện, người xây dựng các công cụ số phục vụ công việc và học tập.",
+  "footer_intro_en": "Electrical engineer building practical digital tools for work and learning.",
+  "copyright_text": "© 2025 Nguyễn Lê Khánh Hòa",
+  "news_enabled": true,
+  "registration_enabled": true,
+  "maintenance_mode": false,
+  "extra": {},
+  "updated_at": "2026-08-10T09:39:49.247207+00:00",
+  "og_media_id": null,
+  "favicon_url": "",
+  "favicon_media_id": null
+}

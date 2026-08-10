@@ -1,0 +1,19 @@
+name: NLKH Supabase Scheduler
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run due jobs
+        env:
+          FUNCTION_URL: ${{ secrets.SUPABASE_SCHEDULE_RUNNER_URL }}
+          SCHEDULER_SECRET: ${{ secrets.SCHEDULER_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -X POST "$FUNCTION_URL" \
+            -H "Content-Type: application/json" \
+            -H "x-scheduler-secret: $SCHEDULER_SECRET" \
+            -d '{}'

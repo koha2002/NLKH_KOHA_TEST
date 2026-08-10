@@ -1,29 +1,50 @@
 .header { position: sticky; top: 0; z-index: 50; background: var(--header); border-bottom: 1px solid var(--line); backdrop-filter: blur(18px); }
 .inner { height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 32px; }
 .nav { display: flex; align-items: center; gap: 30px; }
-.nav > a { color: var(--muted); font-size: 15px; font-weight: 620; transition: color 160ms ease; }
-.nav > a:hover { color: var(--blue-600); }
-.actions { display: flex; align-items: center; gap: 14px; }
+.navGroup { position: relative; }
+.navGroup > a { color: var(--muted); font-size: 15px; font-weight: 620; transition: color 160ms ease; display: inline-flex; align-items: center; gap: 7px; }
+.navGroup > a:hover { color: var(--blue-600); }
+.navGroup img, .submenu img { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; }
+.chevron { font-size: 11px; opacity: .6; }
+.submenu { display: none; position: absolute; left: -14px; top: calc(100% + 16px); min-width: 230px; padding: 8px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm); border-radius: 12px; }
+.navGroup:hover .submenu, .navGroup:focus-within .submenu { display: grid; }
+.submenu a { display: flex; align-items: center; gap: 9px; padding: 10px 11px; border-radius: 8px; color: var(--muted); font-size: 14px; }
+.submenu a:hover { background: var(--surface-soft); color: var(--ink); }
+.actions { display: flex; align-items: center; gap: 14px; margin-left: auto; }
 .theme { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: grid; place-items: center; }
 .language { display: flex; align-items: center; gap: 7px; border-left: 1px solid var(--line); padding-left: 20px; }
 .language span { color: #abb2be; font-size: 11px; }
 .language button, .mobileLanguage button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font: 700 12px var(--font-mono), monospace; padding: 5px 2px; }
 .language button.active, .mobileLanguage button.active { color: var(--blue-600); }
+.loginButton { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 15px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 750; white-space: nowrap; transition: border-color 160ms ease, color 160ms ease, background 160ms ease; }
+.loginButton:hover { color: var(--blue-600); border-color: color-mix(in srgb, var(--blue-600) 45%, var(--line)); background: var(--surface-soft); }
+.accountWrap { position: relative; }
+.avatarButton { width: 38px; height: 38px; padding: 0; overflow: hidden; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; font: 800 11px var(--font-mono), monospace; cursor: pointer; }
+.avatarButton img { width: 100%; height: 100%; object-fit: cover; }
+.accountMenu { position: absolute; right: 0; top: calc(100% + 12px); width: 240px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm); border-radius: 12px; padding: 12px; display: grid; gap: 5px; }
+.accountMenu strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.accountMenu small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+.accountMenu a { padding: 9px 10px; border-radius: 8px; font-size: 13px; color: var(--muted); }
+.accountMenu a:hover { background: var(--surface-soft); color: var(--ink); }
 .menu { display: none; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); cursor: pointer; position: relative; }
 .menu span { position: absolute; width: 16px; height: 1.5px; background: var(--ink); left: 12px; top: 17px; }
 .menu span:last-child { top: 23px; }
 .mobileLanguage { display: none; }
 
+@media (max-width: 980px) {
+  .nav { gap: 18px; }
+  .navGroup > a { font-size: 13px; }
+}
 @media (max-width: 780px) {
   .inner { height: 68px; justify-content: flex-end; }
-  .language, .theme { display: none; }
+  .language, .theme, .accountWrap, .loginButton { display: none; }
   .menu { display: block; }
-  .nav { position: absolute; top: 68px; left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 0; padding: 12px 20px 22px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+  .nav { position: absolute; top: 68px; left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 0; padding: 12px 20px 22px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-sm); max-height: calc(100vh - 68px); overflow: auto; }
   .nav.open { display: flex; }
-  .nav > a { padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
-  .mobileLanguage { display: flex; gap: 14px; padding-top: 15px; }
+  .navGroup { border-bottom: 1px solid var(--line); }
+  .navGroup > a { width: 100%; padding: 14px 0; font-size: 16px; }
+  .submenu { position: static; display: grid; box-shadow: none; border: 0; background: transparent; padding: 0 0 8px 12px; }
+  .mobileLanguage { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding-top: 15px; }
+  .mobileLanguage a { color: var(--blue-600); font-size: 13px; font-weight: 700; }
 }
-
-@media (max-width: 420px) {
-  .inner { gap: 12px; }
-}
+@media (max-width: 420px) { .inner { gap: 12px; } }

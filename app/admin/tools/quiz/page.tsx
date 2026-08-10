@@ -1,2 +1,0 @@
-"use client";
-import { AdminResourcePanel } from "../../../../components/admin/AdminResourcePanel";import { configs } from "../../../../components/admin/resource-configs";const only=(row:Record<string,unknown>)=>row.slug==="quiz";export default function Page(){return <AdminResourcePanel config={{...configs.tools,title:"Cấu hình Quiz",description:"Cấu hình hiển thị, quyền truy cập và thông số riêng của Quiz. Mã xử lý Quiz vẫn ở public/tool-modules/quiz."}} filter={only}/>}

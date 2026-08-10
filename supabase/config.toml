@@ -1,0 +1,19 @@
+project_id = "nlkh-koha-admin-v4"
+
+[functions.r2-file]
+verify_jwt = false
+
+[functions.integration-secret]
+verify_jwt = false
+
+[functions.integration-proxy]
+verify_jwt = false
+
+[functions.schedule-runner]
+verify_jwt = false
+
+[functions.render-deploy]
+verify_jwt = false
+
+[functions.news-comment]
+verify_jwt = false

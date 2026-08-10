@@ -1,15 +1,8 @@
-"use client";
-
-import { ToolFrame } from "../../../components/ToolFrame";
-import { QuizDataPicker } from "../../../components/QuizDataPicker";
-import { useLanguage } from "../../../components/LanguageProvider";
-import styles from "../tool-page.module.css";
-
-export default function QuizPage() {
-  const { language } = useLanguage();
-  const vi = language === "vi";
-  return <main className={styles.fullTool}>
-    <QuizDataPicker />
-    <ToolFrame src="/tool-modules/quiz/index.html?v=10" title={vi ? "Công cụ ôn thi" : "Quiz practice tool"} tall flush importTarget="quiz" />
-  </main>;
-}
+import { notFound } from "next/navigation";
+import { adminTools } from "../../../data/admin-generated";
+import { AdminToolRoute } from "../../../components/AdminToolRoute";
+import { buildMetadata } from "../../../lib/admin-seo";
+import { AdminSeoJsonLd } from "../../../components/AdminSeoJsonLd";
+const fixedTool:any=adminTools.find((x:any)=>x.slug==="quiz");
+export const metadata=buildMetadata("/tools/quiz",{title:fixedTool?.title?.vi,description:fixedTool?.description?.vi});
+export default function Page(){const tool:any=fixedTool;if(!tool)notFound();return <><AdminSeoJsonLd route="/tools/quiz"/><AdminToolRoute tool={tool}/></>}
