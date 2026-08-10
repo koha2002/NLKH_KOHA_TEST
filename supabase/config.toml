@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.news-comment]
 verify_jwt = false
+
+[functions.legacy-import]
+verify_jwt = false
+
+[functions.cloudflare-redirect-sync]
+verify_jwt = false

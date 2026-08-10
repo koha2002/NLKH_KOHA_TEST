@@ -77,8 +77,8 @@ try {
       born: cv.birth_date || "",
       address: { vi: cv.address_vi || "", en: cv.address_en || cv.address_vi || "" },
       phone: cv.phone || "", phoneHref: phoneHref(cv.phone), email: cv.email || "",
-      photo: cv.photo_url || "/profile.jpg",
-      pdf: (cv.pdf_access || "public") === "public" ? (cv.pdf_url || "/content/cv/current.pdf") : "",
+      photo: cv.photo_url || (cv.photo_media_id ? "" : "/profile.jpg"), photoMediaId: cv.photo_media_id || "",
+      pdf: (cv.pdf_access || "public") === "public" ? (cv.pdf_url || (cv.pdf_media_id ? "" : "/content/cv/current.pdf")) : "",
       pdfAccess: cv.pdf_access || "public", pdfMediaId: cv.pdf_media_id || "",
       theme: cv.theme || {layout:"source-default",accent:"blue",show_photo:true,show_contact:true,show_download_pdf:true},
       education: {

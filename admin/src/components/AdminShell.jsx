@@ -5,7 +5,7 @@ import{notify}from"../lib/notify";
 
 const baseNav=[
   ["/site","Cấu hình chung"],["/navigation","Menu & Footer"],["/content","Trang nội dung"],["/seo","SEO"],["/redirects","Redirect"],
-  ["/tools","Danh sách Tool"],["/news","Tin tức"],["/software","Phần mềm"],["/data","Dữ liệu & quyền"],["/cv","CV"],["/users","Người dùng & quyền"],["/media","Thư viện R2"],["/api","API & lịch chạy"]
+  ["/tools","Danh sách Tool"],["/news","Tin tức"],["/software","Phần mềm"],["/data","Dữ liệu & quyền"],["/cv","CV"],["/users","Người dùng & quyền"],["/media","Thư viện R2"],["/migration","Nhập dữ liệu cũ"],["/api","API & lịch chạy"]
 ];
 function initials(name=""){const p=name.trim().split(/\s+/).filter(Boolean);return(p.slice(-2).map(x=>x[0]?.toUpperCase()).join("")||"U")}
 export default function AdminShell({children,access}){

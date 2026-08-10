@@ -11,7 +11,7 @@ type Extra = { id:string; type:string; period:string; url?:string; title:Localiz
 type Profile = {
   visible?: boolean;
   name: string; role: Localized; headline: Localized; summary: Localized; born: string; address: Localized;
-  phone: string; phoneHref: string; email: string; photo: string; pdf: string; pdfAccess?:"public"|"authenticated"|"hidden"; pdfMediaId?:string;
+  phone: string; phoneHref: string; email: string; photo: string; photoMediaId?:string; pdf: string; pdfAccess?:"public"|"authenticated"|"hidden"; pdfMediaId?:string;
   theme?: {layout?:string;accent?:string;show_photo?:boolean;show_contact?:boolean;show_download_pdf?:boolean};
   education: { period: string; school: Localized; major: Localized };
   certificates: { vi: string[]; en: string[] }; skills: { vi: string[]; en: string[] }; jobs: { vi: Job[]; en: Job[] };
@@ -28,6 +28,7 @@ export default function CvPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loaded,setLoaded]=useState(false);
   const [pdfMessage,setPdfMessage]=useState("");
+  const [photoUrl,setPhotoUrl]=useState("");
 
   useEffect(() => {
     fetch("/content/cv/profile.json",{cache:"no-store"})
@@ -36,6 +37,17 @@ export default function CvPage() {
       .catch(() => setProfile(null))
       .finally(()=>setLoaded(true));
   }, []);
+
+  useEffect(()=>{
+    let cancelled=false;
+    const fallback=profile?.photo||"";
+    setPhotoUrl(fallback);
+    if(!profile?.photoMediaId)return;
+    invokeEdge("r2-file",{action:"presign-download",media_id:profile.photoMediaId})
+      .then((out:any)=>{if(!cancelled&&out?.url)setPhotoUrl(out.url)})
+      .catch(()=>{});
+    return()=>{cancelled=true};
+  },[profile?.photoMediaId,profile?.photo]);
 
   const extras=useMemo(()=>{
     const map=new Map<string,Extra[]>();
@@ -88,7 +100,7 @@ export default function CvPage() {
             {pdfMessage ? <p style={{marginTop:"10px",color:"var(--muted)"}}>{pdfMessage}</p> : null}
           </div>
           {showPhoto ? <div className={styles.identityCard}>
-            {profile.photo ? <img src={profile.photo} alt={profile.name} width={325} height={352} /> : null}
+            {photoUrl ? <img src={photoUrl} alt={profile.name} width={325} height={352} /> : null}
             <div><strong>{profile.name}</strong><span>{profile.role?.[language]}</span></div>
             <p>POWER SYSTEMS · AUTOMATION</p>
           </div> : null}
