@@ -190,30 +190,6 @@ export const adminSocial = [
 ];
 export const adminTools = [
   {
-    "id": "aaa",
-    "slug": "aaa",
-    "href": "aaaa",
-    "code": "aaaaa",
-    "title": {
-      "vi": "aaa",
-      "en": "aaa"
-    },
-    "description": {
-      "vi": "test public",
-      "en": "aaa"
-    },
-    "status": "ready",
-    "icon": "aa",
-    "accent": "aa",
-    "showHome": true,
-    "showOrbit": true,
-    "orbitRing": 1,
-    "orbitAngle": 0,
-    "requiresAuth": false,
-    "allowedRoles": [],
-    "hasInlineHtml": false
-  },
-  {
     "id": "quiz",
     "slug": "quiz",
     "href": "/tools/quiz",
@@ -500,6 +476,23 @@ export const adminRedirects = [
     "subpath_matching": true,
     "preserve_path_suffix": true,
     "cloudflare_synced_at": "2026-08-10T11:15:21.444+00:00",
+    "cloudflare_error": null
+  },
+  {
+    "id": "f14db819-8fd2-4106-ac16-259daf632ab8",
+    "source_path": "/",
+    "target_url": "https://nguyenlekhanhhoa.com/",
+    "status_code": 301,
+    "active": true,
+    "preserve_query": true,
+    "note": "",
+    "hit_count": 0,
+    "updated_at": "2026-08-10T11:32:04.641334+00:00",
+    "source_host": "nguyenlekhanhhoa.name.vn",
+    "include_subdomains": true,
+    "subpath_matching": false,
+    "preserve_path_suffix": false,
+    "cloudflare_synced_at": null,
     "cloudflare_error": null
   }
 ];

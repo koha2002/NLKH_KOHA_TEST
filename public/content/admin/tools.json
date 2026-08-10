@@ -1,29 +1,5 @@
 [
   {
-    "id": "aaa",
-    "slug": "aaa",
-    "href": "aaaa",
-    "code": "aaaaa",
-    "title": {
-      "vi": "aaa",
-      "en": "aaa"
-    },
-    "description": {
-      "vi": "test public",
-      "en": "aaa"
-    },
-    "status": "ready",
-    "icon": "aa",
-    "accent": "aa",
-    "showHome": true,
-    "showOrbit": true,
-    "orbitRing": 1,
-    "orbitAngle": 0,
-    "requiresAuth": false,
-    "allowedRoles": [],
-    "hasInlineHtml": false
-  },
-  {
     "id": "quiz",
     "slug": "quiz",
     "href": "/tools/quiz",

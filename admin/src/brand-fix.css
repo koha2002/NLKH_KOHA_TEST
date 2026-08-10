@@ -1,0 +1,19 @@
+/* V4.7.1 — larger Admin brand + favicon polish */
+.sidebar .logo{
+  font-size:32px !important;
+  line-height:1 !important;
+  letter-spacing:.035em;
+  padding:10px 12px 26px !important;
+}
+.sidebar .logo span{
+  display:inline-block;
+  margin-top:6px;
+  font-size:11px !important;
+  letter-spacing:.24em !important;
+}
+@media(max-width:900px){
+  .sidebar .logo{
+    font-size:28px !important;
+    padding:8px 10px 16px !important;
+  }
+}
