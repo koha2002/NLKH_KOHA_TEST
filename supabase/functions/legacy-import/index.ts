@@ -215,14 +215,64 @@ async function importCv(admin: any, s3: S3Client, report: any) {
   }
 
   const del = await admin.from("cv_sections").delete().eq("profile_id", profileId); must(del.error, "Xóa section CV cũ");
+
+  // PostgREST bulk insert can turn keys omitted from some objects into NULL for the
+  // whole INSERT column set. cv_sections has several NOT NULL text columns, so every
+  // legacy section is normalized to a complete row instead of relying on DB defaults.
+  const cvSection = (input: any) => ({
+    profile_id: profileId,
+    section_type: String(input.section_type || "custom"),
+    title_vi: String(input.title_vi || ""),
+    title_en: String(input.title_en || ""),
+    subtitle_vi: String(input.subtitle_vi || ""),
+    subtitle_en: String(input.subtitle_en || ""),
+    period: String(input.period || ""),
+    description_vi: String(input.description_vi || ""),
+    description_en: String(input.description_en || ""),
+    organization: String(input.organization || ""),
+    organization_en: String(input.organization_en || ""),
+    url: input.url ? String(input.url) : null,
+    sort_order: Number(input.sort_order || 0),
+    visible: input.visible !== false,
+    data: input.data && typeof input.data === "object" ? input.data : {},
+  });
+
   const rows: any[] = [];
-  if (cv.education) rows.push({ profile_id: profileId, section_type: "education", title_vi: cv.education.major?.vi || "", title_en: cv.education.major?.en || "", period: cv.education.period || "", organization: cv.education.school?.vi || "", organization_en: cv.education.school?.en || "", sort_order: 1, visible: true, data: {} });
-  (cv.certificates?.vi || []).forEach((x: string, i: number) => rows.push({ profile_id: profileId, section_type: "certificate", title_vi: x, title_en: cv.certificates?.en?.[i] || x, sort_order: rows.length + 1, visible: true, data: {} }));
+  if (cv.education) rows.push(cvSection({
+    section_type: "education",
+    title_vi: cv.education.major?.vi || "",
+    title_en: cv.education.major?.en || "",
+    period: cv.education.period || "",
+    organization: cv.education.school?.vi || "",
+    organization_en: cv.education.school?.en || "",
+    sort_order: 1,
+  }));
+  (cv.certificates?.vi || []).forEach((x: string, i: number) => rows.push(cvSection({
+    section_type: "certificate",
+    title_vi: x,
+    title_en: cv.certificates?.en?.[i] || x,
+    sort_order: rows.length + 1,
+  })));
   (cv.jobs?.vi || []).forEach((x: any, i: number) => {
     const en = cv.jobs?.en?.[i] || {};
-    rows.push({ profile_id: profileId, section_type: "experience", title_vi: x.role || "", title_en: en.role || x.role || "", period: x.time || "", organization: x.company || "", organization_en: en.company || x.company || "", description_vi: x.description || "", description_en: en.description || x.description || "", sort_order: rows.length + 1, visible: true, data: {} });
+    rows.push(cvSection({
+      section_type: "experience",
+      title_vi: x.role || "",
+      title_en: en.role || x.role || "",
+      period: x.time || "",
+      organization: x.company || "",
+      organization_en: en.company || x.company || "",
+      description_vi: x.description || "",
+      description_en: en.description || x.description || "",
+      sort_order: rows.length + 1,
+    }));
   });
-  (cv.skills?.vi || []).forEach((x: string, i: number) => rows.push({ profile_id: profileId, section_type: "skill", title_vi: x, title_en: cv.skills?.en?.[i] || x, sort_order: rows.length + 1, visible: true, data: {} }));
+  (cv.skills?.vi || []).forEach((x: string, i: number) => rows.push(cvSection({
+    section_type: "skill",
+    title_vi: x,
+    title_en: cv.skills?.en?.[i] || x,
+    sort_order: rows.length + 1,
+  })));
   if (rows.length) { const q = await admin.from("cv_sections").insert(rows); must(q.error, "Lưu section CV legacy"); }
   report.cv = { profile: 1, sections: rows.length, photoR2: photo?.asset_code || null, pdfR2: pdf?.asset_code || null, mediaWarnings };
 }
