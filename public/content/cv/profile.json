@@ -21,14 +21,17 @@
   "phone": "0343 434 584",
   "phoneHref": "0343434584",
   "email": "khanhhoa2002.hh@gmail.com",
-  "photo": "/profile.jpg",
-  "pdf": "/content/cv/current.pdf",
+  "photo": "",
+  "photoMediaId": "d37a3228-a5d5-48e8-9d9d-ff7d5f2b5fe8",
+  "pdf": "",
   "pdfAccess": "public",
-  "pdfMediaId": "",
+  "pdfMediaId": "c4c89dc7-34cf-4365-b3d4-8b3176524a97",
   "theme": {
     "accent": "blue",
     "layout": "source-default",
-    "show_photo": true
+    "show_photo": true,
+    "show_contact": true,
+    "show_download_pdf": true
   },
   "education": {
     "period": "2020—2025",
@@ -37,8 +40,8 @@
       "en": "Electric Power University"
     },
     "major": {
-      "vi": "Tự động hóa Hệ thống điện",
-      "en": "Power System Automation"
+      "vi": "Tự động hóa Hệ thống điện · Hệ kỹ sư · Tốt nghiệp loại Giỏi",
+      "en": "Power System Automation · Engineering degree · Graduated with distinction"
     }
   },
   "certificates": {

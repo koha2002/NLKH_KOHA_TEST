@@ -84,7 +84,7 @@ export function buildMetadata(
     "website"
   ) as any;
 
-  const favicon = String(site.favicon_url || "").trim();
+  const favicon = String(site.favicon_url || "/favicon.png").trim();
 
   return {
     metadataBase: new URL(absoluteSiteUrl("/")),

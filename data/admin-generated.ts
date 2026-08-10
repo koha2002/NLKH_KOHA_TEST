@@ -199,7 +199,7 @@ export const adminTools = [
       "en": "aaa"
     },
     "description": {
-      "vi": "â",
+      "vi": "test public",
       "en": "aaa"
     },
     "status": "ready",
@@ -484,5 +484,23 @@ export const adminSeoEntries = [
     "og_media_id": null
   }
 ];
-export const adminRedirects = [];
+export const adminRedirects = [
+  {
+    "id": "7a254415-0c8b-4a69-b3d6-47a1fda40421",
+    "source_path": "/",
+    "target_url": "https://nguyenlekhanhhoa.com/",
+    "status_code": 301,
+    "active": true,
+    "preserve_query": true,
+    "note": "",
+    "hit_count": 0,
+    "updated_at": "2026-08-10T11:15:21.560673+00:00",
+    "source_host": "koha.io.vn",
+    "include_subdomains": true,
+    "subpath_matching": true,
+    "preserve_path_suffix": true,
+    "cloudflare_synced_at": "2026-08-10T11:15:21.444+00:00",
+    "cloudflare_error": null
+  }
+];
 export const adminCvVisible = true;

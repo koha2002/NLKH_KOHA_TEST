@@ -1,0 +1,94 @@
+/* V4.7 — Admin desktop: sidebar and content scroll independently. */
+@media (min-width: 901px) {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .adminLayout {
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar .logo {
+    flex: 0 0 auto;
+  }
+
+  .sidebar nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding-right: 4px;
+  }
+
+  .sidebar nav::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .sidebar nav::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 999px;
+  }
+
+  .sidebar nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sidebarFoot {
+    flex: 0 0 auto;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+    background: var(--side);
+  }
+
+  .adminMain {
+    height: 100vh;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+  }
+
+  .adminTop {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: var(--bg);
+  }
+}
+
+/* On mobile keep the original single-page scrolling behavior. */
+@media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: auto;
+  }
+
+  .adminLayout,
+  .adminMain {
+    height: auto;
+    overflow: visible;
+  }
+
+  .sidebar,
+  .sidebar nav {
+    overflow: visible;
+  }
+}
