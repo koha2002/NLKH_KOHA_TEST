@@ -46,6 +46,15 @@ async function edge(name, body={}) {
   return data;
 }
 function safeSlug(s="") { return String(s).toLowerCase().trim().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,""); }
+function cleanInlineHtml(raw="") {
+  let html = String(raw || "").trim();
+  if (!html) return "";
+  // Trình duyệt/AdGuard có thể chèn script local.adguard.org khi copy HTML từ tab ChatGPT.
+  // Những script này chỉ hợp lệ trên máy người copy và làm tool deploy/preview lỗi hoặc trắng.
+  html = html.replace(/<script\b[^>]*\bsrc=["\'](?:https?:)?\/\/local\.adguard\.org[^>]*>[\s\S]*?<\/script>/gi, "");
+  html = html.replace(/<script\b[^>]*\bsrc=["\']https?:\/\/local\.adguard\.org[^>]*>[\s\S]*?<\/script>/gi, "");
+  return html.trim();
+}
 function phoneHref(s=""){ return String(s||"").replace(/(?!^\+)\D/g, ""); }
 
 if (!URL || !KEY) {
@@ -150,7 +159,9 @@ try {
     description:{vi:t.description_vi||"",en:t.description_en||t.description_vi||""},
     status:t.status||"ready", icon:t.icon_url||t.icon||"", accent:t.accent||"blue",
     showHome:!!t.show_home, showOrbit:!!t.show_orbit, orbitRing:Number(t.orbit_ring||1), orbitAngle:Number(t.orbit_angle||0),
-    requiresAuth:!!t.requires_auth, allowedRoles:t.allowed_roles||[], hasInlineHtml:!!String(t.inline_html||"").trim(),
+    requiresAuth:!!t.requires_auth, allowedRoles:t.allowed_roles||[],
+    toolType:t.tool_type || (String(t.inline_html||"").trim() ? "html" : "source"),
+    hasInlineHtml:(t.tool_type || (String(t.inline_html||"").trim() ? "html" : "source")) === "html" && !!String(t.inline_html||"").trim(),
   }));
   const normalizedRings = rings.map(r=>({id:r.id,size:Number(r.size),duration:Number(r.duration),reverse:!!r.reverse,dashed:!!r.dashed,dotAngle:r.dot_angle,dotTone:r.dot_tone||"blue"}));
 
@@ -168,9 +179,17 @@ try {
 `export const adminCvVisible = ${cv ? "true" : "false"};\n`;
   write("data/admin-generated.ts", generated);
 
+  // _admin là thư mục generate: xóa sạch trước mỗi lần sync để Tool đã xóa trong Admin
+  // không để lại file HTML "mồ côi" trên lần deploy kế tiếp.
+  const adminToolDir = out("public/tool-modules/_admin");
+  fs.rmSync(adminToolDir, { recursive:true, force:true });
+  fs.mkdirSync(adminToolDir, { recursive:true });
+
   // Inline HTML: không ghi đè tool source Git. Nếu có code Admin, tạo module riêng _admin/<slug>.
   for (const t of tools) {
-    const html = String(t.inline_html || "").trim();
+    const type = t.tool_type || (String(t.inline_html||"").trim() ? "html" : "source");
+    if (type !== "html") continue;
+    const html = cleanInlineHtml(t.inline_html);
     if (!html) continue;
     const slug = safeSlug(t.slug);
     if (!slug) continue;
