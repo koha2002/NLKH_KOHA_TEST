@@ -19,7 +19,7 @@
     "showOrbit": true,
     "orbitRing": 1,
     "orbitAngle": 222,
-    "requiresAuth": true,
+    "requiresAuth": false,
     "allowedRoles": [],
     "hasInlineHtml": false
   },

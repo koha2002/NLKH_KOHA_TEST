@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KoHa PDF & Image Studio</title>
+  <link rel="icon" type="image/png" href="logo.png">
+  <link rel="stylesheet" href="/tool-modules/shared/module-base.css">
+  <link rel="stylesheet" href="./module.css">
+  <link rel="stylesheet" href="./offline-v2.css" />
+  <link rel="stylesheet" href="./v48.css" />
+</head>
+<body>
+  <main class="pdf-app">
+    <header class="studio-header">
+      <div>
+        <p class="eyebrow"><span></span> KOHA WORKSPACE / PDF LAB</p>
+        <h1>Xử lý tài liệu <em>nhanh và rõ ràng.</em></h1>
+        <p class="studio-intro">Chọn công cụ, thêm tệp và tải kết quả. Toàn bộ chức năng cũ được giữ nguyên trong một giao diện mới dễ sử dụng hơn.</p>
+      </div>
+      <div class="studio-metrics" aria-label="Thông tin bộ công cụ">
+        <div><strong>25</strong><span>Công cụ PDF & ảnh</span></div>
+        <div><strong>01</strong><span>Không gian thống nhất</span></div>
+      </div>
+    </header>
+
+    <section class="quick-tools" aria-label="Công cụ thường dùng">
+      <button type="button" class="quick-tool active" data-tool="compress"><span>ZIP</span><strong>Nén PDF</strong></button>
+      <button type="button" class="quick-tool" data-tool="merge"><span>＋</span><strong>Gộp PDF</strong></button>
+      <button type="button" class="quick-tool" data-tool="split"><span>↔</span><strong>Tách PDF</strong></button>
+      <button type="button" class="quick-tool" data-tool="wordpdf"><span>W</span><strong>Word → PDF</strong></button>
+      <button type="button" class="quick-tool" data-tool="pdfjpg"><span>JPG</span><strong>PDF → JPG</strong></button>
+      <button type="button" class="quick-tool" data-tool="imagepdf"><span>IMG</span><strong>Ảnh → PDF</strong></button>
+      <button type="button" class="quick-tool" data-tool="watermark"><span>©</span><strong>Đóng dấu</strong></button>
+      <button type="button" class="quick-tool" data-tool="repair"><span>✓</span><strong>Sửa PDF</strong></button>
+    </section>
+
+    <section class="studio-grid">
+      <div class="control-card">
+        <div class="section-heading">
+          <div><span>01</span><h2>Thiết lập tác vụ</h2></div>
+          <small id="selectedToolName">Nén PDF</small>
+        </div>
+
+        <label class="select-label" for="apiTool">Chọn trong toàn bộ công cụ</label>
+        <select id="apiTool" class="tool-select">
+          <optgroup label="Công cụ PDF">
+            <option value="compress">Nén PDF</option>
+            <option value="merge">Gộp PDF</option>
+            <option value="split">Tách PDF</option>
+            <option value="unlock">Mở khóa PDF</option>
+            <option value="protect">Bảo vệ PDF</option>
+            <option value="rotate">Xoay PDF</option>
+            <option value="watermark">Đóng dấu PDF</option>
+            <option value="pdfa">PDF sang PDF/A</option>
+            <option value="wordpdf">Word sang PDF</option>
+            <option value="powerpointpdf">PowerPoint sang PDF</option>
+            <option value="excelpdf">Excel sang PDF</option>
+            <option value="pdfjpg">PDF sang JPG</option>
+            <option value="imagepdf">Ảnh sang PDF</option>
+            <option value="pagenumber">Đánh số trang</option>
+            <option value="extract">Trích xuất dữ liệu</option>
+            <option value="repair">Sửa chữa PDF</option>
+          </optgroup>
+          <optgroup label="Công cụ hình ảnh">
+            <option value="compressimage">Nén ảnh</option>
+            <option value="resizeimage">Thay đổi kích thước ảnh</option>
+            <option value="cropimage">Cắt ảnh</option>
+            <option value="rotateimage">Xoay ảnh</option>
+            <option value="convertimage">Chuyển đổi định dạng ảnh</option>
+            <option value="watermarkimage">Đóng dấu ảnh</option>
+            <option value="removebackgroundimage">Xóa nền ảnh</option>
+          </optgroup>
+        </select>
+
+        <div id="uploadBox" class="upload-box">
+          <input type="file" id="fileInput" class="hidden" multiple>
+          <label for="fileInput">
+            <span class="upload-icon" aria-hidden="true">↑</span>
+            <strong>Kéo thả tệp hoặc nhấn để chọn</strong>
+            <small>Định dạng cho phép sẽ thay đổi theo công cụ</small>
+          </label>
+          <p id="fileName">Chưa có tệp nào được chọn</p>
+        </div>
+
+        <div id="toolOptions" class="tool-options hidden"></div>
+
+        <div class="action-row">
+          <button id="clearButton" type="button" class="clear-button">Xóa tất cả</button>
+          <button id="processButton" type="button" class="process-button">
+            <span id="processButtonText">Bắt đầu xử lý</span>
+            <span id="loader" class="loader hidden" aria-label="Đang xử lý"></span>
+            <i aria-hidden="true">→</i>
+          </button>
+        </div>
+      </div>
+
+      <div class="preview-card">
+        <div class="section-heading">
+          <div><span>02</span><h2>Tệp & xem trước</h2></div>
+          <small>Dữ liệu phiên hiện tại</small>
+        </div>
+
+        <div id="emptyPreview" class="empty-preview">
+          <div class="document-stack" aria-hidden="true"><span>PDF</span><i></i><i></i></div>
+          <h3>Không gian làm việc đang trống</h3>
+          <p>Chọn một hoặc nhiều tệp ở bảng bên trái. Tệp ảnh hỗ trợ sẽ được xem trước trực tiếp tại đây.</p>
+        </div>
+
+        <div id="fileListContainer" class="file-list-container hidden">
+          <div class="list-title"><h3>Các tệp đã chọn</h3><span>Kéo để sắp xếp</span></div>
+          <div id="fileList" class="file-list"></div>
+        </div>
+
+        <div id="previewArea" class="preview-area hidden">
+          <div class="preview-container">
+            <img id="previewImage" class="preview-image" alt="Xem trước hình ảnh">
+            <div id="watermarkOverlay"></div>
+            <div id="cropOverlay"></div>
+          </div>
+          <p id="previewInfo"></p>
+        </div>
+
+        <div id="statusMessage" class="status-message" role="status"></div>
+        <div id="resultContainer" class="result-container hidden">
+          <span class="success-mark">✓</span>
+          <div><h3>Xử lý thành công</h3><p>Tệp kết quả đã sẵn sàng để tải xuống.</p></div>
+          <a id="downloadLink" href="#">Tải tệp <span>↓</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="./module.js"></script>
+  <script src="./vendor/pdf-lib.min.js"></script>
+  <script src="./offline-v2.js"></script>
+  <script src="./i18n-v48.js"></script>
+</body>
+</html>

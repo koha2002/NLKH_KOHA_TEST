@@ -246,7 +246,7 @@
                 previewInfo.textContent = '';
 
                 switch(tool) {
-                    case 'watermark': case 'watermarkimage':
+                    case 'watermarkimage':
                         var mode = document.getElementById('watermarkMode').value;
                         document.getElementById('watermarkTextInputContainer').style.display = mode === 'text' ? 'block' : 'none';
                         document.getElementById('watermarkImageInputContainer').style.display = mode === 'image' ? 'block' : 'none';

@@ -1,1 +1,101 @@
-(function(){'use strict';const D=new Map(Object.entries({"Xá»­ lÃ½ tÃ i liá»‡u":"Process documents","nhanh vÃ  rÃµ rÃ ng.":"quickly and clearly.","Chá»n cÃ´ng cá»¥, thÃªm tá»‡p vÃ  táº£i káº¿t quáº£. ToÃ n bá»™ chá»©c nÄƒng cÅ© Ä‘Æ°á»£c giá»¯ nguyÃªn trong má»™t giao diá»‡n má»›i dá»… sá»­ dá»¥ng hÆ¡n.":"Choose a tool, add files, and download the result. Existing functions are kept in a cleaner workspace.","CÃ´ng cá»¥ PDF & áº£nh":"PDF & image tools","KhÃ´ng gian thá»‘ng nháº¥t":"Unified workspace","NÃ©n PDF":"Compress PDF","Gá»™p PDF":"Merge PDF","TÃ¡ch PDF":"Split PDF","áº¢nh â†’ PDF":"Image â†’ PDF","ÄÃ³ng dáº¥u":"Watermark","Sá»­a PDF":"Repair PDF","Thiáº¿t láº­p tÃ¡c vá»¥":"Task setup","Chá»n trong toÃ n bá»™ cÃ´ng cá»¥":"Choose a tool","Má»Ÿ khÃ³a PDF":"Unlock PDF","Báº£o vá»‡ PDF":"Protect PDF","Xoay PDF":"Rotate PDF","ÄÃ³ng dáº¥u PDF":"Watermark PDF","PDF sang PDF/A":"PDF to PDF/A","Word sang PDF":"Word to PDF","PowerPoint sang PDF":"PowerPoint to PDF","Excel sang PDF":"Excel to PDF","PDF sang JPG":"PDF to JPG","áº¢nh sang PDF":"Image to PDF","ÄÃ¡nh sá»‘ trang":"Page numbers","TrÃ­ch xuáº¥t dá»¯ liá»‡u":"Extract data","Sá»­a chá»¯a PDF":"Repair PDF","NÃ©n áº£nh":"Compress image","Thay Ä‘á»•i kÃ­ch thÆ°á»›c áº£nh":"Resize image","Cáº¯t áº£nh":"Crop image","Xoay áº£nh":"Rotate image","Chuyá»ƒn Ä‘á»•i Ä‘á»‹nh dáº¡ng áº£nh":"Convert image format","ÄÃ³ng dáº¥u áº£nh":"Watermark image","XÃ³a ná»n áº£nh":"Remove image background","KÃ©o tháº£ tá»‡p hoáº·c nháº¥n Ä‘á»ƒ chá»n":"Drop files here or click to choose","Äá»‹nh dáº¡ng cho phÃ©p sáº½ thay Ä‘á»•i theo cÃ´ng cá»¥":"Allowed formats depend on the selected tool","ChÆ°a cÃ³ tá»‡p nÃ o Ä‘Æ°á»£c chá»n":"No files selected","XÃ³a táº¥t cáº£":"Clear all","Báº¯t Ä‘áº§u xá»­ lÃ½":"Start processing","Tá»‡p & xem trÆ°á»›c":"Files & preview","Dá»¯ liá»‡u phiÃªn hiá»‡n táº¡i":"Current session data","KhÃ´ng gian lÃ m viá»‡c Ä‘ang trá»‘ng":"Workspace is empty","Chá»n má»™t hoáº·c nhiá»u tá»‡p á»Ÿ báº£ng bÃªn trÃ¡i. Tá»‡p áº£nh há»— trá»£ sáº½ Ä‘Æ°á»£c xem trÆ°á»›c trá»±c tiáº¿p táº¡i Ä‘Ã¢y.":"Choose one or more files on the left. Supported images can be previewed here.","CÃ¡c tá»‡p Ä‘Ã£ chá»n":"Selected files","KÃ©o Ä‘á»ƒ sáº¯p xáº¿p":"Drag to reorder","Xá»­ lÃ½ thÃ nh cÃ´ng":"Processing completed","Tá»‡p káº¿t quáº£ Ä‘Ã£ sáºµn sÃ ng Ä‘á»ƒ táº£i xuá»‘ng.":"Your result is ready to download.","Táº£i tá»‡p":"Download","Cháº¿ Ä‘á»™ xá»­ lÃ½":"Processing mode","Trang cáº§n xÃ³a":"Pages to delete","Thá»© tá»± trang má»›i":"New page order","Má»©c Ä‘á»™ nÃ©n":"Compression level","Khuyáº¿n nghá»‹":"Recommended","Máº­t kháº©u":"Password","GÃ³c xoay":"Rotation","Loáº¡i dáº¥u":"Watermark type","VÄƒn báº£n":"Text","HÃ¬nh áº£nh":"Image","Ná»™i dung":"Content","Vá»‹ trÃ­":"Position","Äá»™ trong suá»‘t":"Opacity","Cá»¡ chá»¯":"Font size","MÃ u chá»¯":"Text color"}));const original=new WeakMap(),attrs=new WeakMap();function t(s){const z=s.trim();if(D.has(z))return s.replace(z,D.get(z));return s.replace(/^ÄÃ£ chá»n tá»‡p\. Sáºµn sÃ ng Ä‘á»ƒ xá»­ lÃ½\.$/,'File selected. Ready to process.').replace(/^Äang xá»­ lÃ½ hoÃ n toÃ n trÃªn mÃ¡yâ€¦$/,'Processing entirely on this deviceâ€¦').replace(/^Xá»­ lÃ½ Offline thÃ nh cÃ´ng.*$/,'Offline processing completed â€” the file stayed on this device.')}function walk(node,en){if(node.nodeType===3){if(!original.has(node))original.set(node,node.nodeValue);const next=en?t(original.get(node)):original.get(node);if(node.nodeValue!==next)node.nodeValue=next;return}if(node.nodeType!==1)return;const el=node;if(!attrs.has(el)){const o={};['placeholder','title','aria-label'].forEach(a=>{if(el.hasAttribute(a))o[a]=el.getAttribute(a)});attrs.set(el,o)}const o=attrs.get(el);Object.entries(o).forEach(([a,v])=>{const next=en?t(v):v;if(el.getAttribute(a)!==next)el.setAttribute(a,next)});[...el.childNodes].forEach(n=>walk(n,en))}let busy=false;function apply(){if(busy)return;busy=true;walk(document.body,document.documentElement.lang==='en');busy=false}new MutationObserver(m=>{if(busy)return;if(m.some(x=>x.type==='attributes'&&x.attributeName==='lang')||m.some(x=>x.type==='childList'||x.type==='characterData'))queueMicrotask(apply)}).observe(document.documentElement,{attributes:true,attributeFilter:['lang'],childList:true,subtree:true});window.addEventListener('load',apply);apply()})();
+(function(){
+'use strict';
+
+const P={
+"Xử lý tài liệu":"Process documents",
+"nhanh và rõ ràng.":"quickly and clearly.",
+"Chọn công cụ, thêm tệp và tải kết quả. Toàn bộ chức năng cũ được giữ nguyên trong một giao diện mới dễ sử dụng hơn.":"Choose a tool, add files, and download the result. Existing functions are kept in a cleaner workspace.",
+"Công cụ PDF & ảnh":"PDF & image tools",
+"Không gian thống nhất":"Unified workspace",
+"Nén PDF":"Compress PDF","Gộp PDF":"Merge PDF","Tách PDF":"Split PDF",
+"Word → PDF":"Word → PDF","PDF → JPG":"PDF → JPG","Ảnh → PDF":"Image → PDF",
+"Đóng dấu":"Watermark","Sửa PDF":"Repair PDF","Thiết lập tác vụ":"Task setup",
+"Chọn trong toàn bộ công cụ":"Choose a tool",
+"Mở khóa PDF":"Unlock PDF","Bảo vệ PDF":"Protect PDF","Xoay PDF":"Rotate PDF",
+"Đóng dấu PDF":"Watermark PDF","PDF sang PDF/A":"PDF to PDF/A","Word sang PDF":"Word to PDF",
+"PowerPoint sang PDF":"PowerPoint to PDF","Excel sang PDF":"Excel to PDF","PDF sang JPG":"PDF to JPG",
+"Ảnh sang PDF":"Image to PDF","Đánh số trang":"Page numbers","Trích xuất dữ liệu":"Extract data",
+"Sửa chữa PDF":"Repair PDF","Nén ảnh":"Compress image","Thay đổi kích thước ảnh":"Resize image",
+"Cắt ảnh":"Crop image","Xoay ảnh":"Rotate image","Chuyển đổi định dạng ảnh":"Convert image format",
+"Đóng dấu ảnh":"Watermark image","Xóa nền ảnh":"Remove image background",
+"Kéo thả tệp hoặc nhấn để chọn":"Drop files here or click to choose",
+"Định dạng cho phép sẽ thay đổi theo công cụ":"Allowed formats depend on the selected tool",
+"Chưa có tệp nào được chọn":"No files selected","Xóa tất cả":"Clear all","Bắt đầu xử lý":"Start processing",
+"Tệp & xem trước":"Files & preview","Dữ liệu phiên hiện tại":"Current session data",
+"Không gian làm việc đang trống":"Workspace is empty",
+"Chọn một hoặc nhiều tệp ở bảng bên trái. Tệp ảnh hỗ trợ sẽ được xem trước trực tiếp tại đây.":"Choose one or more files on the left. Supported images can be previewed here.",
+"Các tệp đã chọn":"Selected files","Kéo để sắp xếp":"Drag to reorder","Xử lý thành công":"Processing completed",
+"Tệp kết quả đã sẵn sàng để tải xuống.":"Your result is ready to download.","Tải tệp":"Download",
+"Chế độ xử lý":"Processing mode","Trang cần xóa":"Pages to delete","Thứ tự trang mới":"New page order",
+"Mức độ nén":"Compression level","Nén thấp (chất lượng cao)":"Low compression (high quality)",
+"Khuyến nghị":"Recommended","Nén cao (kích thước nhỏ)":"High compression (small size)",
+"Mật khẩu":"Password","Góc xoay":"Rotation","Loại dấu":"Watermark type","Văn bản":"Text","Hình ảnh":"Image",
+"Nội dung":"Content","Tệp ảnh dấu":"Watermark image","Vị trí":"Position","Độ trong suốt":"Opacity",
+"Cỡ chữ":"Font size","Màu chữ":"Text color","Kích thước ảnh dấu (%)":"Watermark image size (%)",
+"Giữa":"Center","Trên-Trái":"Top-left","Trên-Phải":"Top-right","Dưới-Trái":"Bottom-left","Dưới-Phải":"Bottom-right",
+"Tách theo trang":"Split by pages","Nhập trang hoặc khoảng trang cần tách.":"Enter pages or page ranges to split.",
+"Chuyển sang định dạng":"Convert to format","Giữ nguyên tỷ lệ":"Keep aspect ratio",
+"Xử lý Offline thành công — tệp chỉ được xử lý trên thiết bị này.":"Offline processing completed — the file stayed on this device.",
+"Offline xử lý trực tiếp trên thiết bị và không đưa tài liệu lên Internet. Online sử dụng Internet/server cho các tác vụ cần xử lý phía máy chủ.":"Offline processes files on this device without sending documents to the Internet. Online uses the Internet/server for tasks that require server-side processing.",
+"xử lý tại máy, tài liệu không được đưa lên Internet.":"processes on this device; documents are not sent to the Internet.",
+"xử lý qua Internet/server.":"processes through the Internet/server.",
+"Đang xử lý hoàn toàn trên máy…":"Processing entirely on this device…",
+"Đã chọn tệp. Sẵn sàng để xử lý.":"File selected. Ready to process.",
+"Vui lòng chọn ít nhất một tệp.":"Please select at least one file.",
+"Xóa trang PDF (Offline)":"Delete PDF pages (Offline)",
+"Sắp xếp trang PDF (Offline)":"Reorder PDF pages (Offline)"
+};
+
+const original=new WeakMap(),attrs=new WeakMap();
+const qs=new URLSearchParams(location.search);
+if(qs.get("lang")==="en"||qs.get("lang")==="vi")document.documentElement.lang=qs.get("lang");
+
+function en(){return document.documentElement.lang==="en"}
+function tr(s){
+  if(typeof s!=="string")return s;
+  const z=s.trim();
+  if(P[z])return s.replace(z,P[z]);
+  return s
+    .replace(/^(\d+) tệp đã được chọn$/,"$1 files selected")
+    .replace(/^Tải: /,"Download: ")
+    .replace(/^Lỗi: /,"Error: ")
+    .replace(/^Đang tải lên tệp (\d+)\/(\d+)/,"Uploading file $1/$2")
+    .replace(/^Đã tải kết quả Offline\.$/,"Offline result downloaded.");
+}
+function walk(n,useEn){
+  if(n.nodeType===3){
+    if(!original.has(n))original.set(n,n.nodeValue);
+    const base=original.get(n);
+    const next=useEn?tr(base):base;
+    if(n.nodeValue!==next)n.nodeValue=next;
+    return;
+  }
+  if(n.nodeType!==1)return;
+  const el=n;
+  if(!attrs.has(el)){
+    const o={};
+    ["placeholder","title","aria-label"].forEach(a=>{if(el.hasAttribute(a))o[a]=el.getAttribute(a)});
+    attrs.set(el,o);
+  }
+  Object.entries(attrs.get(el)).forEach(([a,v])=>{
+    const next=useEn?tr(v):v;
+    if(el.getAttribute(a)!==next)el.setAttribute(a,next);
+  });
+  [...el.childNodes].forEach(x=>walk(x,useEn));
+}
+let queued=false;
+function apply(){
+  if(queued)return;
+  queued=true;
+  queueMicrotask(()=>{
+    queued=false;
+    if(document.body)walk(document.body,en());
+  });
+}
+new MutationObserver(m=>{
+  if(m.some(x=>x.type==="attributes"&&x.attributeName==="lang")||m.some(x=>x.type==="childList"))apply();
+}).observe(document.documentElement,{attributes:true,attributeFilter:["lang"],childList:true,subtree:true});
+
+window.addEventListener("load",apply);
+apply();
+})();

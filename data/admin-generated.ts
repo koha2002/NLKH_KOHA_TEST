@@ -17,11 +17,11 @@ export const adminSite = {
   "registration_enabled": true,
   "maintenance_mode": false,
   "extra": {},
-  "updated_at": "2026-08-10T09:39:49.247207+00:00",
+  "updated_at": "2026-08-11T03:34:51.948128+00:00",
   "og_media_id": null,
   "favicon_url": "/favicon.png",
   "favicon_media_id": null,
-  "favicon_size": 32
+  "favicon_size": 38
 };
 export const adminNavigation = [
   {
@@ -210,7 +210,7 @@ export const adminTools = [
     "showOrbit": true,
     "orbitRing": 1,
     "orbitAngle": 222,
-    "requiresAuth": true,
+    "requiresAuth": false,
     "allowedRoles": [],
     "hasInlineHtml": false
   },
