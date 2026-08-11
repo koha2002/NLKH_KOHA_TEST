@@ -137,7 +137,7 @@ function prepareHtmlToolPreview(raw=""){
   let html=String(raw||"");
   html=html.replace(/<script\b[^>]*\bsrc=["'](?:https?:)?\/\/local\.adguard\.org[^>]*>[\s\S]*?<\/script>/gi,"");
 
-  const bootstrap = `
+  const bootstrap = \`
 <style id="nlkh-preview-loading-style">
 #nlkh-preview-loading{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:#f7f9fc;color:#101828;font-family:Arial,sans-serif}
 #nlkh-preview-loading .box{width:min(520px,82vw);text-align:center}
@@ -206,7 +206,7 @@ function prepareHtmlToolPreview(raw=""){
   },7000);
   setTimeout(done,16000);
 })();
-<\/script>`;
+<\/script>\`;
 
   const base='<base target="_blank">';
   if(/<head(?:\s[^>]*)?>/i.test(html)){
