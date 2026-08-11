@@ -133,7 +133,7 @@ function Input({f,value,onChange,onMirror,form={}}){
 
 export default function TableManager({
   title,description="",table,fields,idField="id",orderBy="updated_at",ascending=false,
-  allowDelete=true,allowAdd=true,defaults={},singleRow=false,openId=null,onChanged
+  allowDelete=true,allowAdd=true,defaults={},singleRow=false,openId=null,onChanged,deleteHandler=null,canDelete=null
 }){
   const[rows,setRows]=useState([]),[edit,setEdit]=useState(null),[form,setForm]=useState({}),[msg,setMsg]=useState(""),
     [fieldErrors,setFieldErrors]=useState({}),[htmlPreview,setHtmlPreview]=useState("");
@@ -229,15 +229,22 @@ export default function TableManager({
 
   async function del(row){
     if(!confirm(`Xóa mục “${display(row[visible[0]?.name]||row[idField])}”?`))return;
-    const{error}=await supabase.from(table).delete().eq(idField,row[idField]);
-    if(error){const info=extractServerError(error,fields);setMsg(info.message);return}
+    let error=null;
+    try{
+      if(deleteHandler)await deleteHandler(row);
+      else{const result=await supabase.from(table).delete().eq(idField,row[idField]);error=result.error}
+    }catch(err){
+      const message=err instanceof Error?err.message:String(err);
+      setMsg(message);notify(message,"error",6500);return;
+    }
+    if(error){const info=extractServerError(error,fields);setMsg(info.message);notify(info.message,"error",6500);return}
     await normalizeSortRows();setMsg("Đã xóa.");notify("Đã xóa mục.","success");await load();if(table==="tools")window.dispatchEvent(new Event("nlkh:tools-changed"));onChanged?.();
   }
 
   return <section className="adminSection">
     <div className="sectionTitle"><div><h1>{title}</h1>{description&&<p className="sectionDescription">{description}</p>}<small>{table}</small></div>{allowAdd&&!singleRow&&<button className="primary" onClick={()=>start()}>+ Thêm mới</button>}</div>
     {msg&&<div className={`notice ${Object.keys(fieldErrors).length?"noticeError":""}`}>{msg}</div>}
-    {!singleRow&&<div className="tableWrap"><table><thead><tr>{visible.slice(0,5).map(f=><th key={f.name}>{f.label}</th>)}<th/></tr></thead><tbody>{rows.map((r,i)=><tr key={r[idField]??i}>{visible.slice(0,5).map(f=><td key={f.name}>{f.type==="checkbox"?(r[f.name]?"Có":"Không"):f.type==="media"?(r[f.name]?"Đã chọn R2":"—"):display(r[f.name]).slice(0,110)}</td>)}<td className="rowActions"><button onClick={()=>start(r)}>Sửa</button>{allowDelete&&<button onClick={()=>del(r)}>Xóa</button>}</td></tr>)}</tbody></table></div>}
+    {!singleRow&&<div className="tableWrap"><table><thead><tr>{visible.slice(0,5).map(f=><th key={f.name}>{f.label}</th>)}<th/></tr></thead><tbody>{rows.map((r,i)=><tr key={r[idField]??i}>{visible.slice(0,5).map(f=><td key={f.name}>{f.type==="checkbox"?(r[f.name]?"Có":"Không"):f.type==="media"?(r[f.name]?"Đã chọn R2":"—"):display(r[f.name]).slice(0,110)}</td>)}<td className="rowActions"><button onClick={()=>start(r)}>Sửa</button>{allowDelete&&(!canDelete||canDelete(r))&&<button onClick={()=>del(r)}>Xóa</button>}</td></tr>)}</tbody></table></div>}
 
     {edit&&<div className={singleRow?"inlineEditor":"modal"}><form className={singleRow?"editor inline":"editor"} onSubmit={save} noValidate>
       {!singleRow&&<div className="editorHead"><div><h2>{edit==="__new__"?"Thêm":"Chỉnh sửa"} · {title}</h2><small>Dấu <b className="requiredMark">*</b> là bắt buộc. Trường không có dấu * có thể để trống.</small></div><button type="button" onClick={()=>setEdit(null)}>✕</button></div>}

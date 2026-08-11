@@ -34,6 +34,17 @@ async function rpc(name, body={}) {
   if (!r.ok) throw new Error(`rpc/${name}: HTTP ${r.status} ${await r.text()}`);
   return r.json();
 }
+async function edge(name, body={}) {
+  const r = await fetch(`${URL}/functions/v1/${name}`, {
+    method: "POST",
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await r.text();
+  let data={}; try{data=text?JSON.parse(text):{}}catch{data={message:text}}
+  if (!r.ok) throw new Error(`functions/${name}: HTTP ${r.status} ${data.error||data.message||text}`);
+  return data;
+}
 function safeSlug(s="") { return String(s).toLowerCase().trim().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,""); }
 function phoneHref(s=""){ return String(s||"").replace(/(?!^\+)\D/g, ""); }
 
@@ -58,6 +69,30 @@ try {
     rest("redirects", "select=*&active=eq.true&order=source_path.asc"),
   ]);
   const site = settingsRows[0] || {};
+  // Favicon R2 được lấy thành file static khi Publish/build. Không cần public cả bucket.
+  if (site.favicon_media_id) {
+    try {
+      const assets = await rest("media_assets", `select=id,object_key,original_name,mime_type,visibility&id=eq.${encodeURIComponent(site.favicon_media_id)}&limit=1`);
+      const asset = assets[0];
+      if (asset) {
+        const signed = await edge("r2-file", { action:"presign-download", media_id:asset.id, object_key:asset.object_key });
+        if (signed?.url) {
+          const fr = await fetch(signed.url);
+          if (!fr.ok) throw new Error(`R2 favicon HTTP ${fr.status}`);
+          const target = out("public/favicon.png");
+          fs.mkdirSync(path.dirname(target), { recursive:true });
+          fs.writeFileSync(target, Buffer.from(await fr.arrayBuffer()));
+          site.favicon_url = "/favicon.png";
+          console.log(`[CMS] Favicon R2 -> public/favicon.png (${asset.original_name||asset.id})`);
+        }
+      }
+    } catch (err) {
+      console.warn("[CMS] Không lấy được favicon R2; giữ /favicon.png hiện tại:", err?.message||err);
+      site.favicon_url = site.favicon_url || "/favicon.png";
+    }
+  } else {
+    site.favicon_url = site.favicon_url || "/favicon.png";
+  }
   const cv = cvProfiles[0] || null;
   const sections = cv ? cvSections.filter(x=>x.profile_id===cv.id) : [];
 

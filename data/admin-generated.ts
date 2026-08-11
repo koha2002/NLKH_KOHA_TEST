@@ -19,8 +19,9 @@ export const adminSite = {
   "extra": {},
   "updated_at": "2026-08-10T09:39:49.247207+00:00",
   "og_media_id": null,
-  "favicon_url": "",
-  "favicon_media_id": null
+  "favicon_url": "/favicon.png",
+  "favicon_media_id": null,
+  "favicon_size": 32
 };
 export const adminNavigation = [
   {
@@ -209,7 +210,7 @@ export const adminTools = [
     "showOrbit": true,
     "orbitRing": 1,
     "orbitAngle": 222,
-    "requiresAuth": false,
+    "requiresAuth": true,
     "allowedRoles": [],
     "hasInlineHtml": false
   },

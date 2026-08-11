@@ -85,6 +85,7 @@ export function buildMetadata(
   ) as any;
 
   const favicon = String(site.favicon_url || "/favicon.png").trim();
+  const faviconSize = Math.min(128, Math.max(16, Number(site.favicon_size || 32)));
 
   return {
     metadataBase: new URL(absoluteSiteUrl("/")),
@@ -104,8 +105,8 @@ export function buildMetadata(
     ...(favicon
       ? {
           icons: {
-            icon: [{ url: favicon }],
-            shortcut: [{ url: favicon }],
+            icon: [{ url: favicon, sizes: `${faviconSize}x${faviconSize}` }],
+            shortcut: [{ url: favicon, sizes: `${faviconSize}x${faviconSize}` }],
           },
         }
       : {}),

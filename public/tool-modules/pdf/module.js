@@ -109,7 +109,7 @@
                     return `
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div><label class="block text-sm font-medium">Loại dấu</label><select id="watermarkMode" class="${commonClasses}"><option value="text">Văn bản</option><option value="image">Hình ảnh</option></select></div>
-                            <div id="watermarkTextInputContainer"><label class="block text-sm font-medium">Nội dung</label><input type="text" id="watermarkText" value="iLovePDF" class="${commonClasses}" /></div>
+                            <div id="watermarkTextInputContainer"><label class="block text-sm font-medium">Nội dung</label><input type="text" id="watermarkText" value="KOHA" class="${commonClasses}" /></div>
                             <div id="watermarkImageInputContainer" class="hidden"><label class="block text-sm font-medium">Tệp ảnh dấu</label><input type="file" id="watermarkImageInput" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" accept="image/*" /></div>
                         </div>
                         <div class="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">

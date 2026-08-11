@@ -1,87 +1,16 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "./LanguageProvider";
+import { getMyAccess, invokeEdge, supabase } from "../lib/supabase-browser";
 import styles from "./QuizDataPicker.module.css";
-
-type DataItem = {
-  id: string;
-  title_vi: string;
-  title_en: string;
-  description_vi?: string;
-  description_en?: string;
-  access_url: string;
-};
-
-export function QuizDataPicker() {
-  const { language } = useLanguage();
-  const vi = language === "vi";
-  const [items, setItems] = useState<DataItem[]>([]);
-  const [authenticated, setAuthenticated] = useState(false);
-  const [selectedId, setSelectedId] = useState("");
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/public/data?type=quiz_json", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((payload) => {
-        if (!active) return;
-        setItems(payload.items ?? []);
-        setAuthenticated(Boolean(payload.authenticated));
-      })
-      .catch(() => setStatus(vi ? "Không thể tải danh sách dữ liệu." : "Could not load assigned data."))
-      .finally(() => active && setLoading(false));
-    return () => { active = false; };
-  }, [vi]);
-
-  const selected = useMemo(() => items.find((item) => item.id === selectedId), [items, selectedId]);
-
-  const importSelected = async () => {
-    if (!selected) return;
-    setImporting(true);
-    setStatus(vi ? "Đang tải file vào trình duyệt…" : "Loading into this browser…");
-    try {
-      const response = await fetch(selected.access_url, { cache: "no-store", credentials: "same-origin" });
-      if (!response.ok) throw new Error();
-      const data = await response.json();
-      window.dispatchEvent(new CustomEvent("nlkh-tool-import", {
-        detail: { target: "quiz", data, sourceName: vi ? selected.title_vi : selected.title_en },
-      }));
-      setStatus(vi ? "Đã chuyển file vào Quiz. Dữ liệu được lưu cục bộ trên thiết bị này." : "Imported into Quiz and stored locally on this device.");
-    } catch {
-      setStatus(vi ? "Không thể đọc file. Hãy kiểm tra quyền tài khoản hoặc định dạng JSON." : "Could not read the file. Check your access or JSON format.");
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  if (loading) return <section className={styles.picker}><p>{vi ? "Đang kiểm tra dữ liệu được cấp…" : "Checking assigned data…"}</p></section>;
-
-  return (
-    <section className={styles.picker} aria-labelledby="assigned-quiz-title">
-      <div>
-        <span>ACCOUNT DATA / QUIZ JSON</span>
-        <h1 id="assigned-quiz-title">{vi ? "Chọn file từ dữ liệu được cấp" : "Choose from assigned data"}</h1>
-        <p>{vi ? "File chỉ được tải tạm vào trình duyệt và Quiz tiếp tục chạy cục bộ." : "The file is loaded into this browser and Quiz continues locally."}</p>
-      </div>
-      {authenticated ? (
-        items.length ? <div className={styles.controls}>
-          <label>
-            <span className="sr-only">{vi ? "File Quiz" : "Quiz file"}</span>
-            <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
-              <option value="">{vi ? "Chọn một file JSON…" : "Choose a JSON file…"}</option>
-              {items.map((item) => <option key={item.id} value={item.id}>{vi ? item.title_vi : item.title_en}</option>)}
-            </select>
-          </label>
-          <button type="button" onClick={importSelected} disabled={!selected || importing}>
-            {importing ? (vi ? "Đang nhập…" : "Importing…") : (vi ? "Đưa vào Quiz" : "Import into Quiz")}
-          </button>
-        </div> : <p className={styles.notice}>{vi ? "Tài khoản chưa được cấp file Quiz JSON nào." : "No Quiz JSON file has been assigned to this account."}</p>
-      ) : <a className={styles.login} href="/login?next=/tools/quiz">{vi ? "Đăng nhập để xem file được cấp" : "Sign in to view assigned files"} →</a>}
-      {status ? <p className={styles.status} role="status">{status}</p> : null}
-    </section>
-  );
+type Media={id:string;object_key:string;original_name?:string|null;mime_type?:string|null;public_url?:string|null;visibility?:string|null};
+type DataItem={id:string;title_vi:string;title_en?:string;description_vi?:string;description_en?:string;storage_mode:"link"|"r2";external_url?:string|null;item_type?:string|null;media_id?:string|null;media_assets?:Media|null};
+function looksQuiz(x:DataItem){const n=(x.media_assets?.original_name||x.external_url||"").toLowerCase();return x.item_type==="quiz_json"||n.endsWith(".json")||(x.media_assets?.mime_type||"").includes("json")}
+export function QuizDataPicker(){
+ const{language}=useLanguage(),vi=language==="vi";const[items,setItems]=useState<DataItem[]>([]),[authenticated,setAuthenticated]=useState(false),[selectedId,setSelectedId]=useState(""),[status,setStatus]=useState(""),[loading,setLoading]=useState(true),[importing,setImporting]=useState(false);
+ useEffect(()=>{let alive=true;(async()=>{const a=await getMyAccess();if(!alive)return;setAuthenticated(a.authenticated);if(!a.authenticated){setLoading(false);return}const{data,error}=await supabase.from("data_items").select("id,title_vi,title_en,description_vi,description_en,storage_mode,external_url,item_type,media_id,media_assets(id,object_key,original_name,mime_type,public_url,visibility)").eq("visible",true).order("sort_order");if(error)setStatus(error.message);else setItems(((data||[]) as unknown as DataItem[]).filter(looksQuiz));setLoading(false)})().catch(e=>{setStatus(e instanceof Error?e.message:String(e));setLoading(false)});return()=>{alive=false}},[]);
+ const selected=useMemo(()=>items.find(x=>x.id===selectedId),[items,selectedId]);
+ async function importSelected(){if(!selected)return;setImporting(true);setStatus(vi?"Đang lấy JSON từ dữ liệu được cấp…":"Loading assigned JSON…");try{let url=selected.external_url||"";if(selected.storage_mode==="r2"){const m=selected.media_assets;if(!m)throw new Error(vi?"Mục này chưa có file R2.":"This item has no R2 file.");const out:any=await invokeEdge("r2-file",{action:"presign-download",item_id:selected.id,media_id:m.id,object_key:m.object_key});url=out.url}if(!url)throw new Error(vi?"Không tìm thấy nguồn JSON.":"JSON source not found.");const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(`HTTP ${r.status}`);const data=await r.json();window.dispatchEvent(new CustomEvent("nlkh-tool-import",{detail:{target:"quiz",data,sourceName:vi?selected.title_vi:(selected.title_en||selected.title_vi)}}));setStatus(vi?"Đã đưa dữ liệu R2/Link vào Quiz. Bạn vẫn có thể dùng nút Nhập file trong Quiz để chọn file từ máy.":"Assigned R2/Link data was imported into Quiz. You can still use Quiz's local file import button." )}catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{setImporting(false)}}
+ if(loading)return <section className={styles.picker}><p>{vi?"Đang kiểm tra dữ liệu Quiz được cấp…":"Checking assigned Quiz data…"}</p></section>;
+ return <section className={styles.picker}><div><span>QUIZ / R2 DATA</span><h1>{vi?"Nhập Quiz từ R2 hoặc dữ liệu được cấp":"Import Quiz from R2 or assigned data"}</h1><p>{vi?"Tùy chọn này chạy song song với nút Nhập Quiz từ file trên máy ở bên dưới.":"This option works alongside the local file import button inside Quiz below."}</p></div>{authenticated?(items.length?<div className={styles.controls}><select value={selectedId} onChange={e=>setSelectedId(e.target.value)}><option value="">{vi?"Chọn file JSON…":"Choose a JSON file…"}</option>{items.map(x=><option key={x.id} value={x.id}>{vi?x.title_vi:(x.title_en||x.title_vi)}</option>)}</select><button type="button" disabled={!selected||importing} onClick={importSelected}>{importing?(vi?"Đang nhập…":"Importing…"):(vi?"Đưa vào Quiz":"Import into Quiz")}</button></div>:<p className={styles.notice}>{vi?"Chưa có file JSON nào trong các thư mục dữ liệu bạn được xem.":"No JSON files are available in your accessible data folders."}</p>):<a className={styles.login} href="/login?next=/tools/quiz">{vi?"Đăng nhập để xem dữ liệu R2 được cấp":"Sign in to view assigned R2 data"} →</a>}{status?<p className={styles.status}>{status}</p>:null}</section>
 }
