@@ -71,7 +71,8 @@ function ensureImportButtons(){
   if(!local)return;
 
   local.dataset.nlkhManaged="1";
-  local.innerHTML='<i class="fas fa-upload mr-2"></i><span>'+(isEn()?"Import Quiz from computer":"Nhập Quiz từ máy")+'</span>';
+  const localHtml='<i class="fas fa-upload mr-2"></i><span>'+(isEn()?"Import Quiz from computer":"Nhập Quiz từ máy")+'</span>';
+  if(local.innerHTML!==localHtml)local.innerHTML=localHtml;
 
   let data=document.getElementById("nlkh-import-data-btn");
   if(!data){
@@ -85,7 +86,8 @@ function ensureImportButtons(){
     });
     local.parentNode.insertBefore(data,local);
   }
-  data.innerHTML='<i class="fas fa-database mr-2"></i><span>'+(isEn()?"Import Quiz from data":"Nhập Quiz từ dữ liệu")+'</span>';
+  const dataHtml='<i class="fas fa-database mr-2"></i><span>'+(isEn()?"Import Quiz from data":"Nhập Quiz từ dữ liệu")+'</span>';
+  if(data.innerHTML!==dataHtml)data.innerHTML=dataHtml;
 }
 
 function walk(n,useEn){
@@ -111,14 +113,25 @@ function walk(n,useEn){
   [...e.childNodes].forEach(x=>walk(x,useEn));
 }
 
-let queued=false;
+function isManagedNode(n){
+  if(!n)return false;
+  const el=n.nodeType===1?n:n.parentElement;
+  return el?.dataset?.nlkhManaged==="1"||!!el?.closest?.("[data-nlkh-managed]");
+}
+
+let queued=false,applying=false;
 function apply(){
-  if(queued)return;
+  if(queued||applying)return;
   queued=true;
   queueMicrotask(()=>{
     queued=false;
-    ensureImportButtons();
-    if(document.body)walk(document.body,isEn());
+    applying=true;
+    try{
+      ensureImportButtons();
+      if(document.body)walk(document.body,isEn());
+    }finally{
+      applying=false;
+    }
   });
 }
 
@@ -128,7 +141,10 @@ const oldConfirm=window.confirm;
 window.confirm=function(m){return oldConfirm(isEn()?tr(String(m)):m)};
 
 new MutationObserver(m=>{
-  if(m.some(x=>x.type==="attributes"&&x.attributeName==="lang")||m.some(x=>x.type==="childList"))apply();
+  if(applying)return;
+  const langChanged=m.some(x=>x.type==="attributes"&&x.attributeName==="lang");
+  const domChanged=m.some(x=>x.type==="childList"&&!isManagedNode(x.target));
+  if(langChanged||domChanged)apply();
 }).observe(document.documentElement,{attributes:true,attributeFilter:["lang"],childList:true,subtree:true});
 
 window.addEventListener("load",apply);
