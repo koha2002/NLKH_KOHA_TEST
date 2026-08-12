@@ -1,10 +1,21 @@
-import React from"react";import TableManager from"../components/TableManager";import CommentsModeration from"../components/CommentsModeration";import{AdminPage}from"./_shared";import{f}from"../schema";
-const catRel={table:"news_categories",select:"id,name_vi,slug,sort_order",valueKey:"id",label:o=>`${o.name_vi} (${o.slug})`,orderBy:"sort_order"};
+import React from"react";import TableManager from"../components/TableManager";import CommentsModeration from"../components/CommentsModeration";import{AdminPage}from"./_shared";import{f}from"../schema";import{supabase,invoke}from"../lib/supabase";
+async function deleteNewsArticleAndPublish(row){
+ const id=row?.id;
+ if(!id)throw new Error("Thiếu ID bài viết.");
+ const{error}=await supabase.from("news_articles").delete().eq("id",id);
+ if(error)throw error;
+ try{
+  const r=await invoke("render-deploy",{target:"frontend"});
+  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{type:"success",duration:6500,message:r?.message?"Đã xóa bài. "+r.message:"Đã xóa bài và yêu cầu Render cập nhật frontend."}}));
+ }catch(e){
+  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{type:"error",duration:10000,message:"Bài đã được xóa khỏi Admin nhưng chưa thể yêu cầu Render cập nhật frontend: "+(e?.message||String(e))}}));
+ }
+}const catRel={table:"news_categories",select:"id,name_vi,slug,sort_order",valueKey:"id",label:o=>`${o.name_vi} (${o.slug})`,orderBy:"sort_order"};
 export default function News({access}){return <AdminPage access={access}>
 <TableManager title="Danh mục tin" description="Nhóm bài viết để người đọc dễ lọc. Không bắt buộc phải có nhiều nhóm; một bài có thể để trống danh mục." table="news_categories" orderBy="sort_order" ascending defaults={{visible:true,color:"#3157f6"}} fields={[
  f.text("slug","Slug danh mục",{required:true,placeholder:"ky-thuat",help:"Mã URL/kỹ thuật, chữ thường và dấu gạch ngang.",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug danh mục chỉ dùng a-z, 0-9 và dấu gạch ngang.":null}),f.text("name_vi","Tên danh mục (VI)",{required:true,placeholder:"Kỹ thuật"}),f.text("name_en","Tên (EN)",{placeholder:"Engineering"}),f.area("description_vi","Mô tả",{placeholder:"Danh mục gồm những bài gì…"}),f.area("description_en","Mô tả EN",{placeholder:"Optional…"}),f.color("color","Màu nhãn",{required:true,help:"Chọn trực tiếp màu nhãn danh mục."}),f.sort("sort_order","Thứ tự",{required:true}),f.bool("visible","Hiển thị",{trueLabel:"Hiển thị danh mục"})
 ]}/>
-<TableManager title="Bài viết" description="Tạo/sửa tin tức. Ảnh bìa tải trực tiếp vào R2; Tags nhập cách nhau bằng dấu phẩy. Bình luận phải được duyệt ở phần bên dưới mới hiển thị." table="news_articles" defaults={{status:"draft",featured:false,allow_comments:false,tags:[]}} fields={[
+<TableManager title="Bài viết" description="Tạo/sửa tin tức. Ảnh bìa tải trực tiếp vào R2; Tags nhập cách nhau bằng dấu phẩy. Bình luận phải được duyệt ở phần bên dưới mới hiển thị." table="news_articles" deleteHandler={deleteNewsArticleAndPublish} defaults={{status:"draft",featured:false,allow_comments:false,tags:[]}} fields={[
  f.text("slug","Slug bài viết",{required:true,placeholder:"ten-bai-viet",help:"Phần URL /news/ten-bai-viet. Không dùng khoảng trắng/dấu tiếng Việt.",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug chỉ dùng a-z, 0-9 và dấu gạch ngang.":null}),
  f.relation("category_id","Danh mục",catRel,{nullable:true,placeholder:"— Không phân nhóm —",help:"Chọn nhóm bài viết; không cần nhập ID."}),
  f.text("title_vi","Tiêu đề (VI)",{required:true,placeholder:"Tiêu đề bài viết"}),f.text("title_en","Tiêu đề (EN)",{placeholder:"Optional…"}),f.area("subtitle_vi","Tiêu đề phụ",{placeholder:"Một dòng bổ sung dưới tiêu đề…"}),f.area("subtitle_en","Tiêu đề phụ EN",{placeholder:"Optional…"}),f.area("excerpt_vi","Tóm tắt",{placeholder:"1–2 câu hiện ở thẻ tin và SEO…"}),f.area("excerpt_en","Tóm tắt EN",{placeholder:"Optional…"}),

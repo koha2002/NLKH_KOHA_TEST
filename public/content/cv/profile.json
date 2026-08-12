@@ -24,7 +24,7 @@
   "photo": "",
   "photoMediaId": "d37a3228-a5d5-48e8-9d9d-ff7d5f2b5fe8",
   "pdf": "",
-  "pdfAccess": "public",
+  "pdfAccess": "authenticated",
   "pdfMediaId": "c4c89dc7-34cf-4365-b3d4-8b3176524a97",
   "theme": {
     "accent": "blue",

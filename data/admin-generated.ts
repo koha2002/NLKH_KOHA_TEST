@@ -103,22 +103,6 @@ export const adminNavigation = [
     "updated_at": "2026-08-10T07:24:40.709414+00:00",
     "icon_media_id": null,
     "icon_url": null
-  },
-  {
-    "id": "49bf6f74-e94e-4a96-99cd-0774877f74b3",
-    "label_vi": "Tin tức",
-    "label_en": "News",
-    "href": "/news",
-    "location": "both",
-    "parent_id": null,
-    "sort_order": 6,
-    "visible": true,
-    "requires_auth": false,
-    "allowed_roles": [],
-    "open_new_tab": false,
-    "updated_at": "2026-08-10T07:24:40.709414+00:00",
-    "icon_media_id": null,
-    "icon_url": null
   }
 ];
 export const adminSocial = [
@@ -212,6 +196,7 @@ export const adminTools = [
     "orbitAngle": 222,
     "requiresAuth": false,
     "allowedRoles": [],
+    "toolType": "source",
     "hasInlineHtml": false
   },
   {
@@ -236,6 +221,7 @@ export const adminTools = [
     "orbitAngle": 326,
     "requiresAuth": false,
     "allowedRoles": [],
+    "toolType": "source",
     "hasInlineHtml": false
   },
   {
@@ -260,6 +246,7 @@ export const adminTools = [
     "orbitAngle": 198,
     "requiresAuth": false,
     "allowedRoles": [],
+    "toolType": "source",
     "hasInlineHtml": false
   }
 ];
@@ -471,12 +458,12 @@ export const adminRedirects = [
     "preserve_query": true,
     "note": "",
     "hit_count": 0,
-    "updated_at": "2026-08-10T11:15:21.560673+00:00",
+    "updated_at": "2026-08-12T02:32:04.171268+00:00",
     "source_host": "koha.io.vn",
     "include_subdomains": true,
     "subpath_matching": true,
     "preserve_path_suffix": true,
-    "cloudflare_synced_at": "2026-08-10T11:15:21.444+00:00",
+    "cloudflare_synced_at": "2026-08-12T02:32:03.778+00:00",
     "cloudflare_error": null
   },
   {
@@ -488,12 +475,114 @@ export const adminRedirects = [
     "preserve_query": true,
     "note": "",
     "hit_count": 0,
-    "updated_at": "2026-08-10T11:32:04.641334+00:00",
+    "updated_at": "2026-08-12T02:32:04.171268+00:00",
     "source_host": "nguyenlekhanhhoa.name.vn",
     "include_subdomains": true,
     "subpath_matching": false,
     "preserve_path_suffix": false,
-    "cloudflare_synced_at": null,
+    "cloudflare_synced_at": "2026-08-12T02:32:03.778+00:00",
+    "cloudflare_error": null
+  },
+  {
+    "id": "41d3361f-5226-4d15-80a1-ff73f554eb8f",
+    "source_path": "/cv/",
+    "target_url": "https://nguyenlekhanhhoa.com/cv",
+    "status_code": 301,
+    "active": true,
+    "preserve_query": true,
+    "note": "",
+    "hit_count": 0,
+    "updated_at": "2026-08-12T02:32:04.171268+00:00",
+    "source_host": "nguyenlekhanhhoa.com",
+    "include_subdomains": true,
+    "subpath_matching": false,
+    "preserve_path_suffix": false,
+    "cloudflare_synced_at": "2026-08-12T02:32:03.778+00:00",
+    "cloudflare_error": null
+  },
+  {
+    "id": "96628195-6f9f-41c4-9efd-7b1a7afd8e3f",
+    "source_path": "/software/",
+    "target_url": "https://nguyenlekhanhhoa.com/software",
+    "status_code": 301,
+    "active": true,
+    "preserve_query": true,
+    "note": "",
+    "hit_count": 0,
+    "updated_at": "2026-08-12T02:32:04.171268+00:00",
+    "source_host": "nguyenlekhanhhoa.com",
+    "include_subdomains": true,
+    "subpath_matching": false,
+    "preserve_path_suffix": false,
+    "cloudflare_synced_at": "2026-08-12T02:32:03.778+00:00",
+    "cloudflare_error": null
+  },
+  {
+    "id": "a6c02d86-15c8-4432-b29d-f918976e4d94",
+    "source_path": "/tools/",
+    "target_url": "https://nguyenlekhanhhoa.com/tools",
+    "status_code": 301,
+    "active": true,
+    "preserve_query": true,
+    "note": "",
+    "hit_count": 0,
+    "updated_at": "2026-08-12T02:32:04.171268+00:00",
+    "source_host": "nguyenlekhanhhoa.com",
+    "include_subdomains": true,
+    "subpath_matching": false,
+    "preserve_path_suffix": false,
+    "cloudflare_synced_at": "2026-08-12T02:32:03.778+00:00",
+    "cloudflare_error": null
+  },
+  {
+    "id": "0d506f05-7cf1-46e3-978a-ac7f46b46a57",
+    "source_path": "/tools/comtrade/",
+    "target_url": "https://nguyenlekhanhhoa.com/tools/comtrade",
+    "status_code": 301,
+    "active": true,
+    "preserve_query": true,
+    "note": "",
+    "hit_count": 0,
+    "updated_at": "2026-08-12T02:32:04.171268+00:00",
+    "source_host": "nguyenlekhanhhoa.com",
+    "include_subdomains": true,
+    "subpath_matching": false,
+    "preserve_path_suffix": false,
+    "cloudflare_synced_at": "2026-08-12T02:32:03.778+00:00",
+    "cloudflare_error": null
+  },
+  {
+    "id": "c17a457e-40ec-4d4a-bee1-5999a3e7a179",
+    "source_path": "/tools/pdf/",
+    "target_url": "https://nguyenlekhanhhoa.com/tools/pdf",
+    "status_code": 301,
+    "active": true,
+    "preserve_query": true,
+    "note": "",
+    "hit_count": 0,
+    "updated_at": "2026-08-12T02:32:04.171268+00:00",
+    "source_host": "nguyenlekhanhhoa.com",
+    "include_subdomains": true,
+    "subpath_matching": false,
+    "preserve_path_suffix": false,
+    "cloudflare_synced_at": "2026-08-12T02:32:03.778+00:00",
+    "cloudflare_error": null
+  },
+  {
+    "id": "e997212a-cb6a-46cb-b852-36cb657cbf38",
+    "source_path": "/tools/quiz/",
+    "target_url": "https://nguyenlekhanhhoa.com/tools/quiz",
+    "status_code": 301,
+    "active": true,
+    "preserve_query": true,
+    "note": "",
+    "hit_count": 0,
+    "updated_at": "2026-08-12T02:32:04.171268+00:00",
+    "source_host": "nguyenlekhanhhoa.com",
+    "include_subdomains": true,
+    "subpath_matching": false,
+    "preserve_path_suffix": false,
+    "cloudflare_synced_at": "2026-08-12T02:32:03.778+00:00",
     "cloudflare_error": null
   }
 ];
