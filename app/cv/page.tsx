@@ -6,14 +6,19 @@ import { invokeEdge, supabase } from "../../lib/supabase-browser";
 import styles from "./cv.module.css";
 
 type Localized = { vi: string; en: string };
-type Job = { time: string; company: string; role: string; description: string };
+type Job = { id?:string; time:string; company:string; role:string; subtitle?:string; description:string; url?:string };
 type Extra = { id:string; type:string; period:string; url?:string; title:Localized; subtitle:Localized; organization:Localized; description:Localized; data?:Record<string,unknown> };
+type Education = { id?:string; period:string; school:Localized; major:Localized; subtitle?:Localized; description?:Localized; url?:string };
+type CompactItem = { id?:string; period?:string; title:Localized; subtitle?:Localized; organization?:Localized; description?:Localized; url?:string };
 type Profile = {
   visible?: boolean;
   name: string; role: Localized; headline: Localized; summary: Localized; born: string; address: Localized;
   phone: string; phoneHref: string; email: string; photo: string; photoMediaId?:string; pdf: string; pdfAccess?:"public"|"authenticated"|"hidden"; pdfMediaId?:string;
   theme?: {layout?:string;accent?:string;show_photo?:boolean;show_contact?:boolean;show_download_pdf?:boolean};
-  education: { period: string; school: Localized; major: Localized };
+  education: { period:string; school:Localized; major:Localized; subtitle?:Localized };
+  educations?: Education[];
+  certificateItems?: CompactItem[];
+  skillItems?: CompactItem[];
   certificates: { vi: string[]; en: string[] }; skills: { vi: string[]; en: string[] }; jobs: { vi: Job[]; en: Job[] };
   extraSections?: Extra[];
 };
@@ -119,21 +124,45 @@ export default function CvPage() {
             </dl>
           </section> : null}
 
-          {profile.education?.school?.[language] || profile.education?.major?.[language] ? <section>
+          {((profile.educations?.length ? profile.educations : [profile.education]).filter(Boolean) as Education[]).some(x=>x?.school?.[language] || x?.major?.[language]) ? <section>
             <h2>{cv.education}</h2>
-            {profile.education.period ? <p className={styles.year}>{profile.education.period}</p> : null}
-            <h3>{profile.education.school?.[language]}</h3>
-            <p>{profile.education.major?.[language]}</p>
+            {(profile.educations?.length ? profile.educations : [profile.education]).filter(Boolean).map((edu:Education,index:number)=>
+              (edu.school?.[language] || edu.major?.[language]) ? <div key={edu.id || `${edu.period}-${index}`} style={{marginBottom:index===((profile.educations?.length||1)-1)?"0":"22px"}}>
+                {edu.period ? <p className={styles.year}>{edu.period}</p> : null}
+                {edu.school?.[language] ? <h3>{edu.school[language]}</h3> : null}
+                {edu.major?.[language] ? <p>{edu.major[language]}</p> : null}
+                {edu.subtitle?.[language] ? <p>{edu.subtitle[language]}</p> : null}
+                {edu.description?.[language] ? <p>{edu.description[language]}</p> : null}
+                {edu.url ? <a href={edu.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
+              </div> : null
+            )}
           </section> : null}
 
-          {profile.certificates?.[language]?.length ? <section>
+          {(profile.certificateItems?.length || profile.certificates?.[language]?.length) ? <section>
             <h2>{cv.certificates}</h2>
-            <ul>{profile.certificates[language].map((cert) => <li key={cert}>{cert}</li>)}</ul>
+            {profile.certificateItems?.length
+              ? <div>{profile.certificateItems.map((item,index)=><div key={item.id||index} style={{marginBottom:"12px"}}>
+                  {item.period ? <p className={styles.year}>{item.period}</p> : null}
+                  {item.title?.[language] ? <strong>{item.title[language]}</strong> : null}
+                  {item.organization?.[language] ? <p>{item.organization[language]}</p> : null}
+                  {item.subtitle?.[language] ? <p>{item.subtitle[language]}</p> : null}
+                  {item.description?.[language] ? <p>{item.description[language]}</p> : null}
+                  {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
+                </div>)}</div>
+              : <ul>{profile.certificates[language].map((cert) => <li key={cert}>{cert}</li>)}</ul>}
           </section> : null}
 
-          {profile.skills?.[language]?.length ? <section>
+          {(profile.skillItems?.length || profile.skills?.[language]?.length) ? <section>
             <h2>{cv.skills}</h2>
-            <div className={styles.skills}>{profile.skills[language].map((skill) => <span key={skill}>{skill}</span>)}</div>
+            {profile.skillItems?.length
+              ? <div>{profile.skillItems.map((item,index)=><div key={item.id||index} style={{marginBottom:"10px"}}>
+                  {item.title?.[language] ? <strong>{item.title[language]}</strong> : null}
+                  {item.subtitle?.[language] ? <p>{item.subtitle[language]}</p> : null}
+                  {item.organization?.[language] ? <p>{item.organization[language]}</p> : null}
+                  {item.description?.[language] ? <p>{item.description[language]}</p> : null}
+                  {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
+                </div>)}</div>
+              : <div className={styles.skills}>{profile.skills[language].map((skill) => <span key={skill}>{skill}</span>)}</div>}
           </section> : null}
         </aside>
 
@@ -145,9 +174,11 @@ export default function CvPage() {
                 <article key={`${job.time}-${job.company}-${job.role}`}>
                   <span className={styles.dot} />
                   <p className={styles.jobTime}>{job.time}</p>
-                  <h3>{job.company}</h3>
-                  <h4>{job.role}</h4>
-                  <p>{job.description}</p>
+                  {job.company ? <h3>{job.company}</h3> : null}
+                  {job.role ? <h4>{job.role}</h4> : null}
+                  {job.subtitle ? <p>{job.subtitle}</p> : null}
+                  {job.description ? <p>{job.description}</p> : null}
+                  {job.url ? <a href={job.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
                 </article>
               ))}
             </div>

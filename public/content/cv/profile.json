@@ -40,10 +40,58 @@
       "en": "Electric Power University"
     },
     "major": {
-      "vi": "Tự động hóa Hệ thống điện · Hệ kỹ sư · Tốt nghiệp loại Giỏi",
-      "en": "Power System Automation · Engineering degree · Graduated with distinction"
+      "vi": "Tự động hóa Hệ thống điện",
+      "en": "Power System Automation"
+    },
+    "subtitle": {
+      "vi": "Hệ kỹ sư · Tốt nghiệp loại Giỏi",
+      "en": "Engineer's Degree · Graduated with Distinction"
     }
   },
+  "educations": [
+    {
+      "id": "357a8d2d-9aca-411b-8ba2-02f56f711e67",
+      "period": "2020—2025",
+      "school": {
+        "vi": "Trường Đại học Điện lực",
+        "en": "Electric Power University"
+      },
+      "major": {
+        "vi": "Tự động hóa Hệ thống điện",
+        "en": "Power System Automation"
+      },
+      "subtitle": {
+        "vi": "Hệ kỹ sư · Tốt nghiệp loại Giỏi",
+        "en": "Engineer's Degree · Graduated with Distinction"
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "1453bb8b-ef9c-4a1b-a419-efa886365702",
+      "period": "2025-2028",
+      "school": {
+        "vi": "Đại học Thương Mại",
+        "en": "Thuongmai University"
+      },
+      "major": {
+        "vi": "Quản trị kinh doanh",
+        "en": "Business Administration"
+      },
+      "subtitle": {
+        "vi": "Hệ cử nhân - GPA 3.86",
+        "en": "Bachelor's Degree - GPA 3.86"
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    }
+  ],
   "certificates": {
     "vi": [
       "Tiếng Anh B1 - Đại học Điện lực (2023)",
@@ -56,6 +104,71 @@
       "B2 driving license"
     ]
   },
+  "certificateItems": [
+    {
+      "id": "dc9635a2-39c4-46d1-9790-8d3f7289953f",
+      "period": "",
+      "title": {
+        "vi": "Tiếng Anh B1 - Đại học Điện lực (2023)",
+        "en": "B1 English - Electric Power University (2023)"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "970e1271-ab6b-4e7e-a8c4-4284851bb170",
+      "period": "",
+      "title": {
+        "vi": "ICDL 5 kỹ năng (2025)",
+        "en": "ICDL 5 modules (2025)"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "e640ee1a-7e01-4e80-ae01-f363634a4d27",
+      "period": "",
+      "title": {
+        "vi": "Giấy phép lái xe hạng B2",
+        "en": "B2 driving license"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    }
+  ],
   "skills": {
     "vi": [
       "AutoCAD",
@@ -74,57 +187,209 @@
       "B1 English"
     ]
   },
+  "skillItems": [
+    {
+      "id": "c169c820-21af-4cdc-b8d0-52ccb8844478",
+      "period": "",
+      "title": {
+        "vi": "AutoCAD",
+        "en": "AutoCAD"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "33176fd9-87eb-4df7-990c-768bb558d5bd",
+      "period": "",
+      "title": {
+        "vi": "EPLAN",
+        "en": "EPLAN"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "a7346a10-620f-4926-a5bb-5a0532479f95",
+      "period": "",
+      "title": {
+        "vi": "Microsoft Excel",
+        "en": "Microsoft Excel"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "830fb9b6-d00e-4540-950b-eac4ebb12aeb",
+      "period": "",
+      "title": {
+        "vi": "Microsoft Word",
+        "en": "Microsoft Word"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "9d23cfcf-e271-4841-93fd-284a0a359451",
+      "period": "",
+      "title": {
+        "vi": "Đọc tài liệu kỹ thuật",
+        "en": "Technical documentation"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "b3b2632e-f89f-4078-b307-8d824a4870dc",
+      "period": "",
+      "title": {
+        "vi": "Tiếng Anh B1",
+        "en": "B1 English"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    }
+  ],
   "jobs": {
     "vi": [
       {
+        "id": "f12bda47-d6bf-45d0-95fa-ba74fe93d250",
         "time": "11/2025 - nay",
         "company": "Công ty TNHH Công nghệ Việt",
         "role": "Kỹ sư điện - Phòng chuẩn bị dự án",
-        "description": "Kiểm tra thông số thiết bị, hỗ trợ mua sắm và rà soát bảng đáp ứng yêu cầu kỹ thuật."
+        "subtitle": "",
+        "description": "Kiểm tra thông số thiết bị, hỗ trợ mua sắm và rà soát bảng đáp ứng yêu cầu kỹ thuật.",
+        "url": ""
       },
       {
+        "id": "bca24cb6-c66b-4dbf-9dc3-a5d4d36d97e6",
         "time": "06/2025 - 11/2025",
         "company": "Công ty CP Entec Kỹ thuật Năng lượng",
         "role": "Kỹ sư thiết kế",
-        "description": "Thiết kế tủ điều khiển - bảo vệ cho trạm biến áp từ 110 kV và kiểm thử tủ sau sản xuất."
+        "subtitle": "",
+        "description": "Thiết kế tủ điều khiển - bảo vệ cho trạm biến áp từ 110 kV và kiểm thử tủ sau sản xuất.",
+        "url": ""
       },
       {
+        "id": "b2af8ed4-3583-445c-8438-7ba3528bd2d4",
         "time": "05/2024 - 06/2025",
         "company": "Công ty TNHH MTV Đo lường Thí nghiệm điện miền Bắc",
         "role": "Kỹ sư thí nghiệm điện",
-        "description": "Kiểm định thiết bị trạm biến áp, thí nghiệm định kỳ và hoàn thiện hồ sơ công trình."
+        "subtitle": "",
+        "description": "Kiểm định thiết bị trạm biến áp, thí nghiệm định kỳ và hoàn thiện hồ sơ công trình.",
+        "url": ""
       },
       {
+        "id": "ddca1d17-b183-4331-a9c9-02ba5b98b639",
         "time": "06/2023 - 10/2025",
         "company": "Hoàng Mai Mobile",
         "role": "Kỹ thuật viên · Quản lý từ xa",
-        "description": "Hỗ trợ kỹ thuật và quản lý hoạt động vận hành từ xa."
+        "subtitle": "",
+        "description": "Hỗ trợ kỹ thuật và quản lý hoạt động vận hành từ xa.",
+        "url": ""
       }
     ],
     "en": [
       {
+        "id": "f12bda47-d6bf-45d0-95fa-ba74fe93d250",
         "time": "11/2025 - nay",
         "company": "Viet Technology Co., Ltd.",
         "role": "Electrical Engineer - Project Preparation",
-        "description": "Equipment specification reviews, procurement support and technical compliance checks."
+        "subtitle": "",
+        "description": "Equipment specification reviews, procurement support and technical compliance checks.",
+        "url": ""
       },
       {
+        "id": "bca24cb6-c66b-4dbf-9dc3-a5d4d36d97e6",
         "time": "06/2025 - 11/2025",
         "company": "Entec Energy Engineering JSC",
         "role": "Design Engineer",
-        "description": "Protection and control panel design for 110 kV substations and factory acceptance testing."
+        "subtitle": "",
+        "description": "Protection and control panel design for 110 kV substations and factory acceptance testing.",
+        "url": ""
       },
       {
+        "id": "b2af8ed4-3583-445c-8438-7ba3528bd2d4",
         "time": "05/2024 - 06/2025",
         "company": "Northern Electrical Testing Co., Ltd.",
         "role": "Electrical Testing Engineer",
-        "description": "Substation equipment testing, periodic inspections and project documentation."
+        "subtitle": "",
+        "description": "Substation equipment testing, periodic inspections and project documentation.",
+        "url": ""
       },
       {
+        "id": "ddca1d17-b183-4331-a9c9-02ba5b98b639",
         "time": "06/2023 - 10/2025",
         "company": "Hoang Mai Mobile",
         "role": "Technician · Remote Manager",
-        "description": "Technical support and remote operations management."
+        "subtitle": "",
+        "description": "Technical support and remote operations management.",
+        "url": ""
       }
     ]
   },

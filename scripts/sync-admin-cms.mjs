@@ -107,7 +107,8 @@ try {
 
   // Giữ đúng cấu trúc CV source gốc, đồng thời thêm visible/extraSections để Admin có thể ẩn hồ sơ và thêm mục mới.
   if (cv) {
-    const education = sections.find(x=>x.section_type==="education") || {};
+    const educations = sections.filter(x=>x.section_type==="education");
+    const education = educations[0] || {};
     const certs = sections.filter(x=>x.section_type==="certificate");
     const skills = sections.filter(x=>x.section_type==="skill");
     const jobs = sections.filter(x=>x.section_type==="experience");
@@ -127,14 +128,42 @@ try {
       theme: cv.theme || {layout:"source-default",accent:"blue",show_photo:true,show_contact:true,show_download_pdf:true},
       education: {
         period: education.period || "",
-        school: { vi: education.organization || education.subtitle_vi || "", en: education.organization_en || education.organization || education.subtitle_en || education.subtitle_vi || "" },
+        school: { vi: education.organization || "", en: education.organization_en || education.organization || "" },
         major: { vi: education.title_vi || "", en: education.title_en || education.title_vi || "" },
+        subtitle: { vi: education.subtitle_vi || "", en: education.subtitle_en || education.subtitle_vi || "" },
       },
+      educations: educations.map(x=>({
+        id:x.id,
+        period:x.period||"",
+        school:{vi:x.organization||"",en:x.organization_en||x.organization||""},
+        major:{vi:x.title_vi||"",en:x.title_en||x.title_vi||""},
+        subtitle:{vi:x.subtitle_vi||"",en:x.subtitle_en||x.subtitle_vi||""},
+        description:{vi:x.description_vi||"",en:x.description_en||x.description_vi||""},
+        url:x.url||""
+      })),
       certificates: { vi: certs.map(x=>x.title_vi), en: certs.map(x=>x.title_en || x.title_vi) },
+      certificateItems: certs.map(x=>({
+        id:x.id,
+        period:x.period||"",
+        title:{vi:x.title_vi||"",en:x.title_en||x.title_vi||""},
+        subtitle:{vi:x.subtitle_vi||"",en:x.subtitle_en||x.subtitle_vi||""},
+        organization:{vi:x.organization||"",en:x.organization_en||x.organization||""},
+        description:{vi:x.description_vi||"",en:x.description_en||x.description_vi||""},
+        url:x.url||""
+      })),
       skills: { vi: skills.map(x=>x.title_vi), en: skills.map(x=>x.title_en || x.title_vi) },
+      skillItems: skills.map(x=>({
+        id:x.id,
+        period:x.period||"",
+        title:{vi:x.title_vi||"",en:x.title_en||x.title_vi||""},
+        subtitle:{vi:x.subtitle_vi||"",en:x.subtitle_en||x.subtitle_vi||""},
+        organization:{vi:x.organization||"",en:x.organization_en||x.organization||""},
+        description:{vi:x.description_vi||"",en:x.description_en||x.description_vi||""},
+        url:x.url||""
+      })),
       jobs: {
-        vi: jobs.map(x=>({time:x.period||"",company:x.organization||"",role:x.title_vi||"",description:x.description_vi||""})),
-        en: jobs.map(x=>({time:x.period||"",company:x.organization_en||x.organization||"",role:x.title_en||x.title_vi||"",description:x.description_en||x.description_vi||""})),
+        vi: jobs.map(x=>({id:x.id,time:x.period||"",company:x.organization||"",role:x.title_vi||"",subtitle:x.subtitle_vi||"",description:x.description_vi||"",url:x.url||""})),
+        en: jobs.map(x=>({id:x.id,time:x.period||"",company:x.organization_en||x.organization||"",role:x.title_en||x.title_vi||"",subtitle:x.subtitle_en||x.subtitle_vi||"",description:x.description_en||x.description_vi||"",url:x.url||""})),
       },
       extraSections: extras.map(x=>({
         id:x.id,type:x.section_type,period:x.period||"",url:x.url||"",
