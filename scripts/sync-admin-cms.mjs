@@ -63,7 +63,7 @@ if (!URL || !KEY) {
 }
 
 try {
-  const [settingsRows, nav, social, tools, rings, cvProfiles, cvSections, news, pages, contentRoutes, seo, redirects] = await Promise.all([
+  const [settingsRows, nav, social, tools, rings, cvProfiles, cvSections, software, news, pages, contentRoutes, seo, redirects] = await Promise.all([
     rest("site_settings", "select=*&limit=1"),
     rest("navigation_items", "select=*&visible=eq.true&order=sort_order.asc"),
     rest("social_links", "select=*&visible=eq.true&order=sort_order.asc"),
@@ -71,6 +71,7 @@ try {
     rest("orbit_rings", "select=*&visible=eq.true&order=sort_order.asc"),
     rest("cv_profiles", "select=*&published=eq.true&order=updated_at.desc&limit=1"),
     rest("cv_sections", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("software_items", "select=*&visible=eq.true&order=sort_order.asc"),
     rest("news_articles", "select=*&status=eq.published&order=featured.desc,published_at.desc"),
     rest("content_pages", "select=*&status=eq.published&order=published_at.desc"),
     rpc("list_content_page_routes"),
@@ -200,6 +201,7 @@ try {
 `export const adminSocial = ${ts(social)};\n`+
 `export const adminTools = ${ts(normalizedTools)};\n`+
 `export const adminOrbitRings = ${ts(normalizedRings)};\n`+
+`export const adminSoftwareItems = ${ts(software)};\n`+
 `export const adminNewsArticles = ${ts(news)};\n`+
 `export const adminContentPages = ${ts(pages)};\n`+
 `export const adminContentRoutes = ${ts(contentRoutes)};\n`+
