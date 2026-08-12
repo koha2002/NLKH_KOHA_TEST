@@ -31,17 +31,86 @@ export default function AccountPage() {
 
   async function avatar(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file || !access?.id) return;
-    if (!file.type.startsWith("image/")) { setMessage(vi ? "Ảnh đại diện phải là file ảnh." : "The profile picture must be an image file."); return; }
+    if (!file.type.startsWith("image/")) {
+      setMessage(vi ? "\u1EA2nh \u0111\u1EA1i di\u1EC7n ph\u1EA3i l\u00E0 file \u1EA3nh." : "The profile picture must be an image file.");
+      return;
+    }
+
     setBusy(true); setMessage("");
     try {
-      const asset: any = await uploadR2(file, { usageType: "avatar", folder: "avatars", visibility: "public", usageNote: "User avatar" });
-      const { error } = await supabase.from("profiles").update({ avatar_media_id: asset.id, avatar_url: asset.public_url }).eq("id", access.id);
+      const asset: any = await uploadR2(file, {
+        usageType: "avatar",
+        folder: "avatars",
+        visibility: "public",
+        usageNote: "User avatar",
+      });
+
+      if (!asset?.id || !asset?.public_url) {
+        throw new Error(vi
+          ? "Upload xong nh\u01B0ng kh\u00F4ng nh\u1EADn \u0111\u01B0\u1EE3c URL \u1EA3nh c\u00F4ng khai."
+          : "Upload completed but no public image URL was returned.");
+      }
+
+      const { data: saved, error } = await supabase
+        .from("profiles")
+        .update({ avatar_media_id: asset.id, avatar_url: asset.public_url })
+        .eq("id", access.id)
+        .select("avatar_media_id,avatar_url")
+        .single();
+
       if (error) throw error;
+      if (!saved?.avatar_url) {
+        throw new Error(vi
+          ? "\u1EA2nh \u0111\u00E3 t\u1EA3i l\u00EAn nh\u01B0ng h\u1ED3 s\u01A1 ch\u01B0a l\u01B0u \u0111\u01B0\u1EE3c avatar."
+          : "The image uploaded, but the profile avatar was not saved.");
+      }
+
+      setAccess((current) => current ? { ...current, avatar_url: saved.avatar_url } : current);
+
       const id = `R2-${String(asset.asset_no || "").padStart(6, "0")}`;
-      setMessage(vi ? `Đã đổi ảnh đại diện. ID R2: ${id}` : `Profile picture updated. R2 ID: ${id}`);
+      setMessage(vi
+        ? `\u0110\u00E3 \u0111\u1ED5i \u1EA3nh \u0111\u1EA1i di\u1EC7n. ID R2: ${id}`
+        : `Profile picture updated. R2 ID: ${id}`);
+
       await load();
-    } catch (e) { setMessage(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); e.target.value = ""; }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      e.target.value = "";
+    }
+  }
+
+  async function removeAvatar() {
+    if (!access?.id || !access.avatar_url || busy) return;
+
+    const ok = window.confirm(vi
+      ? "X\u00F3a \u1EA3nh \u0111\u1EA1i di\u1EC7n hi\u1EC7n t\u1EA1i? T\u00E0i kho\u1EA3n s\u1EBD quay v\u1EC1 ch\u1EEF vi\u1EBFt t\u1EAFt."
+      : "Remove the current profile picture? The account will fall back to initials.");
+    if (!ok) return;
+
+    setBusy(true); setMessage("");
+    try {
+      const { data: saved, error } = await supabase
+        .from("profiles")
+        .update({ avatar_media_id: null, avatar_url: null })
+        .eq("id", access.id)
+        .select("avatar_url")
+        .single();
+
+      if (error) throw error;
+
+      setAccess((current) => current
+        ? { ...current, avatar_url: saved?.avatar_url || undefined }
+        : current);
+
+      setMessage(vi ? "\u0110\u00E3 x\u00F3a \u1EA3nh \u0111\u1EA1i di\u1EC7n." : "Profile picture removed.");
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function changePassword(e: FormEvent) {
@@ -77,7 +146,19 @@ export default function AccountPage() {
       <div className={styles.profileCard}>
         <div className={styles.avatar}>{access.avatar_url ? <img src={access.avatar_url} alt={vi ? "Ảnh đại diện" : "Profile picture"} /> : <span>{initials(access.display_name, access.email)}</span>}</div>
         <div className={styles.info}><strong>{access.display_name || access.email}</strong><span>{access.email}</span><small>{access.role_id} · {statusLabel}</small></div>
-        <label className={styles.upload}>{busy ? (vi ? "Đang tải…" : "Uploading…") : (vi ? "Đổi ảnh đại diện" : "Change profile picture")}<input type="file" accept="image/*" onChange={avatar} disabled={busy} /></label>
+        <div className={styles.actions}>
+          <label className={styles.upload}>
+            {busy
+              ? (vi ? "\u0110ang t\u1EA3i\u2026" : "Uploading\u2026")
+              : access.avatar_url
+                ? (vi ? "Thay \u1EA3nh" : "Replace picture")
+                : (vi ? "\u0110\u1ED5i \u1EA3nh \u0111\u1EA1i di\u1EC7n" : "Change profile picture")}
+            <input type="file" accept="image/*" onChange={avatar} disabled={busy} />
+          </label>
+          {access.avatar_url
+            ? <button type="button" onClick={removeAvatar} disabled={busy}>{vi ? "X\u00F3a \u1EA3nh" : "Remove picture"}</button>
+            : null}
+        </div>
       </div>
 
       <div className={styles.panel}>
