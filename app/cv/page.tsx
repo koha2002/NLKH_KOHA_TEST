@@ -141,27 +141,27 @@ export default function CvPage() {
           {(profile.certificateItems?.length || profile.certificates?.[language]?.length) ? <section>
             <h2>{cv.certificates}</h2>
             {profile.certificateItems?.length
-              ? <div>{profile.certificateItems.map((item,index)=><div key={item.id||index} style={{marginBottom:"12px"}}>
-                  {item.period ? <p className={styles.year}>{item.period}</p> : null}
-                  {item.title?.[language] ? <strong>{item.title[language]}</strong> : null}
-                  {item.organization?.[language] ? <p>{item.organization[language]}</p> : null}
-                  {item.subtitle?.[language] ? <p>{item.subtitle[language]}</p> : null}
-                  {item.description?.[language] ? <p>{item.description[language]}</p> : null}
-                  {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
-                </div>)}</div>
+              ? <ul>{profile.certificateItems.map((item,index)=><li key={item.id||index}>
+                  {item.title?.[language] || ""}
+                  {item.period ? <span> · {item.period}</span> : null}
+                  {item.organization?.[language] ? <span> · {item.organization[language]}</span> : null}
+                  {item.subtitle?.[language] ? <span> · {item.subtitle[language]}</span> : null}
+                  {item.description?.[language] ? <span> · {item.description[language]}</span> : null}
+                  {item.url ? <> · <a href={item.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a></> : null}
+                </li>)}</ul>
               : <ul>{profile.certificates[language].map((cert) => <li key={cert}>{cert}</li>)}</ul>}
           </section> : null}
 
           {(profile.skillItems?.length || profile.skills?.[language]?.length) ? <section>
             <h2>{cv.skills}</h2>
             {profile.skillItems?.length
-              ? <div>{profile.skillItems.map((item,index)=><div key={item.id||index} style={{marginBottom:"10px"}}>
-                  {item.title?.[language] ? <strong>{item.title[language]}</strong> : null}
-                  {item.subtitle?.[language] ? <p>{item.subtitle[language]}</p> : null}
-                  {item.organization?.[language] ? <p>{item.organization[language]}</p> : null}
-                  {item.description?.[language] ? <p>{item.description[language]}</p> : null}
-                  {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
-                </div>)}</div>
+              ? <div className={styles.skills}>{profile.skillItems.map((item,index)=><span key={item.id||index} title={[
+                  item.subtitle?.[language],
+                  item.organization?.[language],
+                  item.description?.[language]
+                ].filter(Boolean).join(" · ") || undefined}>
+                  {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title?.[language] || ""}</a> : (item.title?.[language] || "")}
+                </span>)}</div>
               : <div className={styles.skills}>{profile.skills[language].map((skill) => <span key={skill}>{skill}</span>)}</div>}
           </section> : null}
         </aside>
