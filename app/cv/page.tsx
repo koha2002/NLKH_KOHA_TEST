@@ -129,11 +129,10 @@ export default function CvPage() {
             {(profile.educations?.length ? profile.educations : [profile.education]).filter(Boolean).map((edu:Education,index:number)=>
               (edu.school?.[language] || edu.major?.[language]) ? <div key={edu.id || `${edu.period}-${index}`} style={{marginBottom:index===((profile.educations?.length||1)-1)?"0":"22px"}}>
                 {edu.period ? <p className={styles.year}>{edu.period}</p> : null}
-                {edu.school?.[language] ? <h3>{edu.school[language]}</h3> : null}
+                {edu.school?.[language] ? <h3>{edu.url ? <a href={edu.url} target="_blank" rel="noreferrer">{edu.school[language]}</a> : edu.school[language]}</h3> : null}
                 {edu.major?.[language] ? <p>{edu.major[language]}</p> : null}
                 {edu.subtitle?.[language] ? <p>{edu.subtitle[language]}</p> : null}
                 {edu.description?.[language] ? <p>{edu.description[language]}</p> : null}
-                {edu.url ? <a href={edu.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
               </div> : null
             )}
           </section> : null}
@@ -142,12 +141,11 @@ export default function CvPage() {
             <h2>{cv.certificates}</h2>
             {profile.certificateItems?.length
               ? <ul>{profile.certificateItems.map((item,index)=><li key={item.id||index}>
-                  {item.title?.[language] || ""}
+                  {item.title?.[language] ? (item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title[language]}</a> : item.title[language]) : ""}
                   {item.period ? <span> · {item.period}</span> : null}
                   {item.organization?.[language] ? <span> · {item.organization[language]}</span> : null}
                   {item.subtitle?.[language] ? <span> · {item.subtitle[language]}</span> : null}
                   {item.description?.[language] ? <span> · {item.description[language]}</span> : null}
-                  {item.url ? <> · <a href={item.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a></> : null}
                 </li>)}</ul>
               : <ul>{profile.certificates[language].map((cert) => <li key={cert}>{cert}</li>)}</ul>}
           </section> : null}
@@ -174,11 +172,10 @@ export default function CvPage() {
                 <article key={`${job.time}-${job.company}-${job.role}`}>
                   <span className={styles.dot} />
                   <p className={styles.jobTime}>{job.time}</p>
-                  {job.company ? <h3>{job.company}</h3> : null}
+                  {job.company ? <h3>{job.url ? <a href={job.url} target="_blank" rel="noreferrer">{job.company}</a> : job.company}</h3> : null}
                   {job.role ? <h4>{job.role}</h4> : null}
                   {job.subtitle ? <p>{job.subtitle}</p> : null}
                   {job.description ? <p>{job.description}</p> : null}
-                  {job.url ? <a href={job.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
                 </article>
               ))}
             </div>
@@ -189,11 +186,10 @@ export default function CvPage() {
             <div className={styles.timeline}>{rows.map(x=><article key={x.id}>
               <span className={styles.dot}/>
               {x.period ? <p className={styles.jobTime}>{x.period}</p> : null}
-              <h3>{x.organization?.[language] || x.title?.[language]}</h3>
+              <h3>{x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.organization?.[language] || x.title?.[language]}</a> : (x.organization?.[language] || x.title?.[language])}</h3>
               {x.organization?.[language] ? <h4>{x.title?.[language]}</h4> : null}
               {x.subtitle?.[language] ? <p>{x.subtitle[language]}</p> : null}
               {x.description?.[language] ? <p>{x.description[language]}</p> : null}
-              {x.url ? <a href={x.url} target="_blank" rel="noreferrer">{language==="vi"?"Xem liên kết ↗":"Open link ↗"}</a> : null}
             </article>)}</div>
           </section>)}
         </div>
