@@ -292,6 +292,9 @@ function parseHtmlListing(
     "/tags/",
     "/category/",
     "/categories/",
+    "/topic/",
+    "/topics/",
+    "/type/",
     "/author/",
     "/authors/",
     "/contact",
@@ -3024,6 +3027,9 @@ async function scrapeLinksWithBrowserRun(
     "/tags/",
     "/category/",
     "/categories/",
+    "/topic/",
+    "/topics/",
+    "/type/",
     "/author/",
     "/authors/",
     "/contact",
@@ -3192,6 +3198,36 @@ async function fetchSourceItems(
   env: Env,
 ): Promise<FeedItem[]> {
   if (source.type === "html") {
+    try {
+      const response = await fetch(source.feed, {
+        headers: {
+          "User-Agent":
+            "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
+          Accept:
+            "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+          "Accept-Language":
+            "en-US,en;q=0.9",
+        },
+        redirect: "follow",
+      });
+
+      if (response.ok) {
+        const html = await response.text();
+
+        const parsed =
+          parseHtmlListing(
+            html,
+            source,
+          );
+
+        if (parsed.length) {
+          return parsed;
+        }
+      }
+    } catch {
+      // Browser Run fallback below.
+    }
+
     return await scrapeLinksWithBrowserRun(
       env,
       source,
@@ -3638,8 +3674,12 @@ async function selectSourcesForRunV572(
   return selected;
 }
 async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
-  const existingDraftRepair =
-    await repairExistingDraftsV55(env, 20);
+  const existingDraftRepair = {
+    attempted: 0,
+    repaired: [],
+    failed: [],
+    remaining: 0,
+  };
   const candidates: Array<{ item: FeedItem; score: number }> = [];
   const sourceErrors: Array<{ source: string; error: string }> = [];
 
