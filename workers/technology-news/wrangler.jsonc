@@ -8,6 +8,9 @@
   "ai": {
     "binding": "AI"
   },
+  "browser": {
+    "binding": "BROWSER"
+  },
   "kv_namespaces": [
     {
       "binding": "CONFIG",

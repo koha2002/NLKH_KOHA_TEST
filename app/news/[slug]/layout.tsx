@@ -14,7 +14,7 @@ type ArticleRow = {
   source_name?:string;
   source_url?:string;
   tags?:string[];
-  published_at?:string;
+  published_at?:string | null;
   updated_at?:string;
 };
 
