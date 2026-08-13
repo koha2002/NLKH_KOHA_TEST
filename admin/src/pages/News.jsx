@@ -2,13 +2,24 @@ import React from"react";import TableManager from"../components/TableManager";im
 async function deleteNewsArticleAndPublish(row){
  const id=row?.id;
  if(!id)throw new Error("Thiếu ID bài viết.");
- const{error}=await supabase.from("news_articles").delete().eq("id",id);
- if(error)throw error;
+
+ const cleanup=await invoke("news-article-delete",{article_id:id});
+ const failed=Array.isArray(cleanup?.cleanup_failed)?cleanup.cleanup_failed:[];
+
  try{
   const r=await invoke("render-deploy",{target:"frontend"});
-  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{type:"success",duration:6500,message:r?.message?"Đã xóa bài. "+r.message:"Đã xóa bài và yêu cầu Render cập nhật frontend."}}));
+  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{
+   type:failed.length?"error":"success",
+   duration:failed.length?12000:7500,
+   message:failed.length
+    ? "Đã xóa bài nhưng có media R2 cleanup lỗi: "+failed.join(" | ")
+    : (r?.message?"Đã xóa bài + media R2. "+r.message:"Đã xóa bài + media R2 và yêu cầu cập nhật frontend.")
+  }}));
  }catch(e){
-  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{type:"error",duration:10000,message:"Bài đã được xóa khỏi Admin nhưng chưa thể yêu cầu Render cập nhật frontend: "+(e?.message||String(e))}}));
+  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{
+   type:"error",duration:10000,
+   message:"Đã xóa bài + media nhưng chưa thể yêu cầu frontend cập nhật: "+(e?.message||String(e))
+  }}));
  }
 }const catRel={table:"news_categories",select:"id,name_vi,slug,sort_order",valueKey:"id",label:o=>`${o.name_vi} (${o.slug})`,orderBy:"sort_order"};
 export default function News({access}){return <AdminPage access={access}>

@@ -1501,7 +1501,7 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     clip(ai.title_vi, 100);
 
   const titleEn =
-    clip(ai.title_en || item.title, 100);
+    clip(ai.title_en, 100);
 
   const excerptVi =
     clip(
@@ -1575,7 +1575,22 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     );
   }
 
-  const slug = `${slugify(titleEn || titleVi)}-${shortHash(item.link)}`;
+  if (!titleEn) throw new Error("Không tạo được Draft: thiếu title_en");
+  if (!excerptEn) throw new Error("Không tạo được Draft: thiếu excerpt_en");
+  if (!contentEn.trim()) throw new Error("Không tạo được Draft: thiếu nội dung tiếng Anh");
+  let slugBase = slugify(ai.seo_slug || titleEn || titleVi).replace(/-+$/g, "").slice(0, 68).replace(/-+$/g, "");
+  if (!slugBase) slugBase = slugify(titleVi);
+
+  let slug = slugBase;
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    const candidateSlug = attempt === 1 ? slugBase : `${slugBase}-${attempt}`;
+    const existing = await sb(env, `news_articles?select=id&slug=eq.${encodeURIComponent(candidateSlug)}&limit=1`);
+    if (!Array.isArray(existing) || existing.length === 0) {
+      slug = candidateSlug;
+      break;
+    }
+    if (attempt === 20) throw new Error(`Không tìm được slug duy nhất cho ${slugBase}`);
+  }
   const tags = normalizeTags(ai.tags);
 
   const article = {
@@ -1607,6 +1622,152 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
 
   const articleId = Array.isArray(created) ? created[0]?.id : null;
 return { articleId, slug, titleVi };
+}
+
+
+type SourceImageCandidate = {
+  url: string;
+};
+
+async function findSourceImageUrls(
+  item: FeedItem,
+): Promise<string[]> {
+  try {
+    const response = await fetch(item.link, {
+      headers: {
+        "User-Agent": "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
+        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+      },
+      redirect: "follow",
+    });
+    if (!response.ok) return [];
+
+    const html = await response.text();
+    const found: string[] = [];
+
+    const push = (raw: string | undefined) => {
+      if (!raw) return;
+      try {
+        const decoded = raw.replace(/&amp;/g, "&").trim();
+        const url = new URL(decoded, response.url || item.link);
+        if (!["http:", "https:"].includes(url.protocol)) return;
+
+        const text = url.toString();
+        if (/logo|icon|avatar|badge|sprite|emoji|tracking|pixel/i.test(text)) return;
+        if (!found.includes(text)) found.push(text);
+      } catch {}
+    };
+
+    const metaPatterns = [
+      /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/ig,
+      /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
+      /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/ig,
+    ];
+
+    for (const pattern of metaPatterns) {
+      for (const match of html.matchAll(pattern)) push(match[1]);
+    }
+
+    const articleHtml =
+      html.match(/<article\b[\s\S]*?<\/article>/i)?.[0] ||
+      html.match(/<main\b[\s\S]*?<\/main>/i)?.[0] ||
+      html;
+
+    for (const match of articleHtml.matchAll(
+      /<img\b[^>]+(?:src|data-src|data-lazy-src)=["']([^"']+)["'][^>]*>/ig
+    )) {
+      push(match[1]);
+      if (found.length >= 8) break;
+    }
+
+    return found.slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+async function ingestNewsMedia(
+  env: Env,
+  articleId: string,
+  sourceImageUrl: string,
+  role: "cover" | "inline",
+  sortOrder: number,
+): Promise<any> {
+  const endpoint =
+    `${env.SUPABASE_URL.replace(/\/$/,"")}/functions/v1/news-media-ingest`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      article_id: articleId,
+      source_image_url: sourceImageUrl,
+      role,
+      sort_order: sortOrder,
+    }),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `news-media-ingest HTTP ${response.status}: ${text.slice(0, 800)}`,
+    );
+  }
+  return JSON.parse(text);
+}
+
+function insertInlineImages(
+  markdown: string,
+  imageUrls: string[],
+  altBase: string,
+): string {
+  if (!imageUrls.length) return markdown;
+
+  const lines = String(markdown || "").replace(/\r/g, "").split("\n");
+  const headingIndexes: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i].trim())) headingIndexes.push(i);
+  }
+
+  if (!headingIndexes.length) {
+    const chunks = String(markdown || "").split(/\n{2,}/);
+    const step = Math.max(2, Math.floor(chunks.length / (imageUrls.length + 1)));
+    let offset = 0;
+    imageUrls.forEach((url, index) => {
+      const at = Math.min(chunks.length, step * (index + 1) + offset);
+      chunks.splice(at, 0, `![${altBase} — ${index + 1}](${url})`);
+      offset++;
+    });
+    return chunks.join("\n\n");
+  }
+
+  let added = 0;
+  imageUrls.forEach((url, index) => {
+    const targetHeading =
+      headingIndexes[
+        Math.min(
+          headingIndexes.length - 1,
+          Math.floor((index + 1) * headingIndexes.length / (imageUrls.length + 1)),
+        )
+      ];
+
+    const at = targetHeading + 1 + added;
+    lines.splice(
+      at,
+      0,
+      "",
+      `![${altBase} — ${index + 1}](${url})`,
+      "",
+    );
+    added += 3;
+  });
+
+  return lines.join("\n");
 }
 
 function htmlToArticleText(html: string): string {
@@ -1730,15 +1891,432 @@ async function fetchArticleText(
     articleText =
       String(item.summary || "").trim();
   }
-
-  // Giới hạn để prompt không quá lớn.
-  if (articleText.length > 18000) {
-    articleText =
-      articleText.slice(0, 18000);
-  }
-
   return articleText;
 }
+const AI_DAILY_FREE_NEURONS = 10000;
+const AI_INPUT_NEURONS_PER_M = 4625;
+const AI_OUTPUT_NEURONS_PER_M = 30475;
+const AI_USAGE_PREFIX = "technology-news-ai-usage";
+
+function aiUsageDay(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function aiUsageKey(date = new Date()): string {
+  return `${AI_USAGE_PREFIX}:${aiUsageDay(date)}`;
+}
+
+async function getAiUsage(env: Env): Promise<any> {
+  const day = aiUsageDay();
+  const empty = {
+    day,
+    calls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    neuronsUsed: 0,
+    neuronsRemaining: AI_DAILY_FREE_NEURONS,
+    percentUsed: 0,
+    resetAtUtc: `${day}T24:00:00Z`,
+    scope: "automation-estimate",
+  };
+
+  try {
+    const saved: any =
+      await env.CONFIG.get(
+        aiUsageKey(),
+        { type: "json" },
+      );
+
+    if (!saved) return empty;
+
+    const used =
+      Math.max(
+        0,
+        Number(saved.neuronsUsed || 0),
+      );
+
+    return {
+      ...empty,
+      ...saved,
+      neuronsUsed: used,
+      neuronsRemaining:
+        Math.max(
+          0,
+          AI_DAILY_FREE_NEURONS - used,
+        ),
+      percentUsed:
+        Math.min(
+          100,
+          (used / AI_DAILY_FREE_NEURONS) * 100,
+        ),
+    };
+  } catch {
+    return empty;
+  }
+}
+
+function usageTokens(response: any) {
+  const usage =
+    response?.usage ||
+    response?.result?.usage ||
+    response?.choices?.[0]?.usage ||
+    {};
+
+  const inputTokens =
+    Number(
+      usage.prompt_tokens ??
+      usage.input_tokens ??
+      usage.inputTokens ??
+      0,
+    ) || 0;
+
+  const outputTokens =
+    Number(
+      usage.completion_tokens ??
+      usage.output_tokens ??
+      usage.outputTokens ??
+      0,
+    ) || 0;
+
+  return {
+    inputTokens,
+    outputTokens,
+  };
+}
+
+async function recordAiUsage(
+  env: Env,
+  response: any,
+) {
+  const tokens =
+    usageTokens(response);
+
+  const neurons =
+    tokens.inputTokens *
+      AI_INPUT_NEURONS_PER_M /
+      1_000_000 +
+    tokens.outputTokens *
+      AI_OUTPUT_NEURONS_PER_M /
+      1_000_000;
+
+  const current =
+    await getAiUsage(env);
+
+  const next = {
+    day: aiUsageDay(),
+    calls:
+      Number(current.calls || 0) + 1,
+    inputTokens:
+      Number(current.inputTokens || 0) +
+      tokens.inputTokens,
+    outputTokens:
+      Number(current.outputTokens || 0) +
+      tokens.outputTokens,
+    neuronsUsed:
+      Number(current.neuronsUsed || 0) +
+      neurons,
+    scope: "automation-estimate",
+    updatedAt: new Date().toISOString(),
+  };
+
+  await env.CONFIG.put(
+    aiUsageKey(),
+    JSON.stringify(next),
+    {
+      expirationTtl: 172800,
+    },
+  );
+}
+
+async function runAiTracked(
+  env: Env,
+  options: any,
+) {
+  const response =
+    await env.AI.run(
+      MODEL,
+      options,
+    );
+
+  try {
+    await recordAiUsage(
+      env,
+      response,
+    );
+  } catch (error) {
+    console.warn(
+      "Không ghi được AI usage:",
+      error,
+    );
+  }
+
+  return response;
+}
+
+function splitLongText(
+  text: string,
+  targetChars = 16000,
+): string[] {
+  const source =
+    String(text || "").trim();
+
+  if (!source) return [];
+  if (source.length <= targetChars) {
+    return [source];
+  }
+
+  const paragraphs =
+    source.split(/\n{2,}/);
+
+  const chunks: string[] = [];
+  let current = "";
+
+  function pushCurrent() {
+    const value = current.trim();
+    if (value) chunks.push(value);
+    current = "";
+  }
+
+  for (const paragraph of paragraphs) {
+    const p = paragraph.trim();
+    if (!p) continue;
+
+    if (
+      current &&
+      current.length + p.length + 2 >
+        targetChars
+    ) {
+      pushCurrent();
+    }
+
+    if (p.length <= targetChars) {
+      current +=
+        (current ? "\n\n" : "") +
+        p;
+      continue;
+    }
+
+    pushCurrent();
+
+    let offset = 0;
+    while (offset < p.length) {
+      let end =
+        Math.min(
+          p.length,
+          offset + targetChars,
+        );
+
+      if (end < p.length) {
+        const boundary =
+          Math.max(
+            p.lastIndexOf(". ", end),
+            p.lastIndexOf("\n", end),
+          );
+
+        if (
+          boundary >
+          offset + targetChars * 0.55
+        ) {
+          end = boundary + 1;
+        }
+      }
+
+      chunks.push(
+        p.slice(offset, end).trim(),
+      );
+
+      offset = end;
+    }
+  }
+
+  pushCurrent();
+  return chunks.filter(Boolean);
+}
+
+function aiResponseText(
+  response: any,
+): string {
+  if (typeof response === "string") {
+    return response;
+  }
+
+  if (
+    typeof response
+      ?.choices?.[0]?.message?.content ===
+      "string"
+  ) {
+    return response
+      .choices[0]
+      .message.content;
+  }
+
+  if (
+    typeof response?.response === "string"
+  ) {
+    return response.response;
+  }
+
+  if (
+    typeof response?.result === "string"
+  ) {
+    return response.result;
+  }
+
+  throw new Error(
+    "Không nhận diện được response shape từ Workers AI: " +
+    JSON.stringify(response).slice(0, 1200),
+  );
+}
+
+function cleanAiResponse(
+  raw: string,
+): string {
+  return String(raw || "")
+    .replace(
+      /<think>[\s\S]*?<\/think>/gi,
+      "",
+    )
+    .replace(
+      /^```(?:text|markdown|md)?\s*/i,
+      "",
+    )
+    .replace(
+      /\s*```$/i,
+      "",
+    )
+    .trim();
+}
+
+async function sourceForEditorial(
+  env: Env,
+  sourceArticle: string,
+): Promise<string> {
+  const source =
+    String(sourceArticle || "").trim();
+
+  // Bài vừa/nhỏ: dùng toàn văn trực tiếp.
+  // Bài dài: đọc TOÀN BỘ theo từng chunk rồi tạo fact notes.
+  if (source.length <= 24000) {
+    return source;
+  }
+
+  const chunks =
+    splitLongText(
+      source,
+      16000,
+    );
+
+  const notes: string[] = [];
+
+  for (
+    let index = 0;
+    index < chunks.length;
+    index++
+  ) {
+    const response =
+      await runAiTracked(
+        env,
+        {
+          messages: [
+            {
+              role: "system",
+              content:
+                "Extract dense factual editorial notes. Preserve every important specification, benchmark, price, comparison, limitation, strength, weakness, methodology detail and conclusion. Never invent facts. Do not write the final article.",
+            },
+            {
+              role: "user",
+              content:
+`SOURCE PART ${index + 1}/${chunks.length}
+
+Extract detailed factual notes from this source part.
+Keep exact numbers, units, model names and comparisons.
+Keep table-like data in compact Markdown tables when useful.
+Do not discard a detail merely to make the notes shorter.
+
+${chunks[index]}`,
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 3200,
+        },
+      );
+
+    notes.push(
+      `## SOURCE PART ${index + 1}/${chunks.length}\n` +
+      cleanAiResponse(
+        aiResponseText(response),
+      ),
+    );
+  }
+
+  let combined =
+    notes.join("\n\n");
+
+  // If the accumulated notes themselves are too large for one final context,
+  // recursively merge them by groups instead of chopping off the tail.
+  while (combined.length > 30000) {
+    const noteChunks =
+      splitLongText(
+        combined,
+        18000,
+      );
+
+    if (noteChunks.length <= 1) break;
+
+    const merged: string[] = [];
+
+    for (
+      let index = 0;
+      index < noteChunks.length;
+      index++
+    ) {
+      const response =
+        await runAiTracked(
+          env,
+          {
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Merge factual notes without inventing or intentionally dropping source-supported specifications, numbers, benchmark relationships or conclusions.",
+              },
+              {
+                role: "user",
+                content:
+`MERGE FACT NOTES ${index + 1}/${noteChunks.length}
+
+Preserve meaningful facts and exact quantitative data. Remove repetition only.
+
+${noteChunks[index]}`,
+              },
+            ],
+            temperature: 0.1,
+            max_tokens: 3600,
+          },
+        );
+
+      merged.push(
+        cleanAiResponse(
+          aiResponseText(response),
+        ),
+      );
+    }
+
+    const next =
+      merged.join("\n\n");
+
+    // Safety against a non-shrinking model response.
+    if (next.length >= combined.length) {
+      combined = next;
+      break;
+    }
+
+    combined = next;
+  }
+
+  return combined;
+}
+
 async function generateDraft(
   env: Env,
   item: FeedItem,
@@ -1751,214 +2329,264 @@ async function generateDraft(
 
   if (
     !sourceArticle ||
-    sourceArticle.trim().length < 300
+    !sourceArticle.trim()
   ) {
     throw new Error(
-      `Source article quá ngắn (${sourceArticle?.length || 0} ký tự)`,
+      "Không lấy được nội dung bài nguồn.",
     );
   }
 
-  const prompt = `
-Bạn là biên tập viên tin công nghệ cho nguyenlekhanhhoa.com.
-
-NHIỆM VỤ
-Viết một bản nháp tin công nghệ hoàn chỉnh bằng TIẾNG VIỆT dựa trên nội dung nguồn bên dưới.
-
-YÊU CẦU BẮT BUỘC
-- Không sao chép nguyên văn bài nguồn.
-- Không bịa dữ kiện, con số, giá, benchmark, tên người, trích dẫn hoặc thông số.
-- Chỉ dùng những thông tin được hỗ trợ bởi nội dung nguồn.
-- Có thể bổ sung giải thích kỹ thuật để người đọc hiểu vấn đề, nhưng không được biến suy luận thành sự thật.
-- Không viết clickbait.
-- Không nhồi từ khóa.
-- Tên công ty, chip, GPU, CPU, sản phẩm và thuật ngữ kỹ thuật có thể giữ tiếng Anh khi phù hợp.
-- Toàn bộ title_vi, excerpt_vi và content_vi phải là tiếng Việt tự nhiên.
-
-ĐỘ DÀI
-- title_vi: tối đa 100 ký tự.
-- excerpt_vi: khoảng 120-165 ký tự.
-- content_vi: tối thiểu khoảng 700 từ, mục tiêu 800-1200 từ nếu nguồn đủ dữ liệu.
-- Không kéo dài bằng cách lặp nội dung.
-
-CẤU TRÚC CONTENT_VI
-1. Đoạn mở đầu tóm tắt sự kiện và ý nghĩa.
-2. Ít nhất 3 phần nội dung có tiêu đề Markdown dạng ##.
-3. Giải thích bối cảnh hoặc yếu tố kỹ thuật quan trọng.
-4. Ý nghĩa đối với người dùng/ngành hoặc điều cần theo dõi tiếp theo.
-5. Kết luận ngắn.
-
-OUTPUT
-Chỉ trả về JSON hợp lệ.
-Không dùng markdown code fence.
-Không thêm lời giải thích ngoài JSON.
-
-Cấu trúc chính xác:
-
-{
-  "title_vi": "...",
-  "excerpt_vi": "...",
-  "content_vi": "...",
-  "tags": ["...", "..."]
-}
-
-NGUỒN
-Tên nguồn: ${item.source}
-Tiêu đề gốc: ${item.title}
-URL: ${item.link}
-Ngày nguồn: ${item.publishedAt || "Không rõ"}
-
-NỘI DUNG BÀI NGUỒN:
-${sourceArticle}
-`;
-
-  const response = await env.AI.run(
-    MODEL,
-    {
-      messages: [
-        {
-          role: "system",
-          content:
-            "Bạn là biên tập viên công nghệ tiếng Việt. Trả về JSON hợp lệ và không được bỏ ngắn bài viết.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      temperature: 0.2,
-      max_tokens: 5000,
-    },
-  );
-
-  let raw = "";
-
-  if (typeof response === "string") {
-    raw = response;
-  }
-  else if (
-    typeof response?.choices?.[0]?.message?.content === "string"
-  ) {
-    // Qwen3 / Chat Completions response shape.
-    raw =
-      response.choices[0].message.content;
-  }
-  else if (
-    typeof response?.response === "string"
-  ) {
-    // Legacy Workers AI response shape.
-    raw = response.response;
-  }
-  else if (
-    response?.response &&
-    typeof response.response === "object"
-  ) {
-    // Một số structured-output model có thể trả object trực tiếp.
-    return response.response;
-  }
-  else if (
-    typeof response?.result === "string"
-  ) {
-    raw = response.result;
-  }
-  else {
-    throw new Error(
-      "Không nhận diện được response shape từ Workers AI: " +
-      JSON.stringify(response).slice(0, 1200)
+  const editorialSource =
+    await sourceForEditorial(
+      env,
+      sourceArticle,
     );
+
+  function field(
+    head: string,
+    name: string,
+  ): string {
+    const match =
+      head.match(
+        new RegExp(
+          `^${name}:\\s*(.*)$`,
+          "mi",
+        ),
+      );
+
+    return String(
+      match?.[1] || "",
+    ).trim();
   }
 
-  raw = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  const firstBrace =
-    raw.indexOf("{");
-
-  const lastBrace =
-    raw.lastIndexOf("}");
-
-  if (
-    firstBrace >= 0 &&
-    lastBrace > firstBrace
+  function parseArticle(
+    response: any,
+    language: "vi" | "en",
   ) {
-    raw = raw.slice(
-      firstBrace,
-      lastBrace + 1,
-    );
-  }
+    const text =
+      cleanAiResponse(
+        aiResponseText(response),
+      );
 
-  let parsed: any;
+    const marker =
+      "\nCONTENT:";
 
-  try {
-    parsed = JSON.parse(raw);
-  }
-  catch (firstError: any) {
-    // Sửa một số lỗi JSON phổ biến của LLM:
-    // dấu phẩy cuối object/array và control characters.
-    const repaired = raw
-      .replace(/,\s*([}\]])/g, "$1")
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ");
+    const position =
+      text.indexOf(marker);
 
-    try {
-      parsed = JSON.parse(repaired);
-    }
-    catch {
+    if (position < 0) {
       throw new Error(
-        "AI returned invalid JSON: " +
-        String(firstError?.message || firstError)
+        `AI ${language.toUpperCase()} thiếu marker CONTENT:`,
       );
     }
+
+    const head =
+      text
+        .slice(0, position)
+        .trim();
+
+    const content =
+      text
+        .slice(
+          position +
+          marker.length,
+        )
+        .trim();
+
+    const title =
+      field(head, "TITLE");
+
+    const subtitle =
+      field(head, "SUBTITLE");
+
+    const excerpt =
+      field(head, "EXCERPT");
+
+    const seoSlug =
+      field(head, "SLUG");
+
+    const tags =
+      field(head, "TAGS")
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .slice(0, 12);
+
+    if (!title) {
+      throw new Error(
+        `AI ${language.toUpperCase()} thiếu TITLE`,
+      );
+    }
+
+    if (!excerpt) {
+      throw new Error(
+        `AI ${language.toUpperCase()} thiếu EXCERPT`,
+      );
+    }
+
+    if (!content) {
+      throw new Error(
+        `AI ${language.toUpperCase()} thiếu CONTENT`,
+      );
+    }
+
+    return {
+      title,
+      subtitle,
+      excerpt,
+      seoSlug,
+      tags,
+      content,
+    };
   }
 
-  const titleVi =
-    String(parsed?.title_vi || "").trim();
+  async function createVersion(
+    language: "vi" | "en",
+  ) {
+    const vi =
+      language === "vi";
 
-  const excerptVi =
-    String(parsed?.excerpt_vi || "").trim();
+    const prompt =
+      vi
+        ? `
+Bạn là biên tập viên công nghệ của nguyenlekhanhhoa.com.
 
-  const contentVi =
-    String(parsed?.content_vi || "").trim();
+Viết một BẢN NHÁP BÀI CÔNG NGHỆ HOÀN CHỈNH BẰNG TIẾNG VIỆT dựa trên toàn bộ dữ liệu nguồn bên dưới.
 
-  if (!titleVi) {
-    throw new Error(
-      "AI thiếu title_vi",
+NGUYÊN TẮC BIÊN TẬP
+- KHÔNG đặt quota số từ hoặc số ký tự cho nội dung bài.
+- Độ dài phải do lượng thông tin thực tế của nguồn quyết định.
+- Viết đủ dài để truyền tải trọn vẹn những dữ kiện có giá trị; không rút ngắn chỉ để đạt một độ dài cố định.
+- Đồng thời không kéo dài bằng lặp ý hoặc câu vô nghĩa.
+- Giữ các cấu hình, thông số, benchmark, giá, phương pháp thử, ưu/nhược điểm, bối cảnh và kết luận khi nguồn có.
+- Không bịa dữ kiện, con số, trích dẫn hoặc thử nghiệm.
+- Không sao chép nguyên văn các đoạn dài.
+- Dùng Markdown với ## và ###.
+- Dùng bảng Markdown khi bảng giúp giữ dữ liệu kỹ thuật/benchmark rõ hơn.
+- Dùng bullet list khi phù hợp.
+- Không nhắc AI.
+- Không thêm phần nguồn cuối bài; website hiển thị citation riêng.
+
+SEO
+- TITLE: tự nhiên, tối đa 100 ký tự.
+- SUBTITLE: bổ sung ý, không lặp TITLE.
+- EXCERPT: ngắn gọn nhưng đủ ý cho thẻ tin/SEO.
+- SLUG: chỉ a-z, 0-9, gạch ngang; ưu tiên tên sản phẩm/chủ đề; không hash và không nhồi từ khóa.
+- TAGS: các tag thực sự liên quan.
+
+TRẢ ĐÚNG TEXT, KHÔNG JSON:
+TITLE: ...
+SUBTITLE: ...
+EXCERPT: ...
+SLUG: ...
+TAGS: tag 1, tag 2
+CONTENT:
+[nội dung Markdown đầy đủ]
+
+NGUỒN
+Tên: ${item.source}
+URL: ${item.link}
+Tiêu đề feed: ${item.title}
+Tóm tắt feed: ${item.summary || ""}
+
+DỮ LIỆU NGUỒN ĐÃ ĐƯỢC ĐỌC:
+${editorialSource}
+`.trim()
+        : `
+You are the English technology editor for nguyenlekhanhhoa.com.
+
+Write a COMPLETE ENGLISH EDITORIAL DRAFT from all source material below.
+
+EDITORIAL RULES
+- Do NOT impose an article word-count or character-count quota.
+- Article length must be determined by the amount of meaningful source information.
+- Write as much as needed to preserve useful source-supported detail; do not shorten merely to hit an arbitrary length.
+- Do not pad or repeat ideas.
+- Preserve specifications, benchmarks, pricing, test methodology, strengths, weaknesses, context and conclusions when supported by the source.
+- Never invent facts, numbers, quotes or testing.
+- Rewrite editorially instead of copying long passages.
+- Use Markdown with ## and ###.
+- Use Markdown tables when they preserve technical or benchmark data clearly.
+- Use bullet lists where useful.
+- Do not mention AI.
+- Do not append a source section; the site renders citation separately.
+
+SEO
+- TITLE: natural headline, max 100 characters.
+- SUBTITLE: useful support line without repeating TITLE.
+- EXCERPT: concise but meaningful.
+- TAGS: only genuinely relevant tags.
+
+RETURN EXACTLY THIS TEXT FORMAT, NOT JSON:
+TITLE: ...
+SUBTITLE: ...
+EXCERPT: ...
+CONTENT:
+[complete Markdown article]
+
+SOURCE
+Publisher: ${item.source}
+URL: ${item.link}
+Feed title: ${item.title}
+Feed summary: ${item.summary || ""}
+
+SOURCE MATERIAL ALREADY READ:
+${editorialSource}
+`.trim();
+
+    const response =
+      await runAiTracked(
+        env,
+        {
+          messages: [
+            {
+              role: "system",
+              content:
+                vi
+                  ? "Biên tập chính xác, đầy đủ, không bịa. Không ép độ dài bài theo quota. Trả đúng marker text."
+                  : "Edit accurately and comprehensively. Do not impose an article-length quota. Never invent facts. Return marker text only.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.2,
+          max_tokens: 8000,
+        },
+      );
+
+    return parseArticle(
+      response,
+      language,
     );
   }
 
-  if (!excerptVi) {
-    throw new Error(
-      "AI thiếu excerpt_vi",
-    );
-  }
+  const vi =
+    await createVersion("vi");
 
-  if (contentVi.length < 1200) {
+  const en =
+    await createVersion("en");
+
+  if (!vi.seoSlug) {
     throw new Error(
-      `AI content_vi quá ngắn (${contentVi.length} ký tự)`,
+      "AI VI thiếu SLUG SEO",
     );
   }
 
   return {
-    title_vi: titleVi,
-
-    // English để trống ở giai đoạn automation.
-    // Admin có thể bổ sung hoặc dịch sau.
-    title_en: "",
-
-    subtitle_vi: "",
-    subtitle_en: "",
-
-    excerpt_vi: excerptVi,
-    excerpt_en: "",
-
-    content_vi: contentVi,
-    content_en: "",
-
-    tags:
-      Array.isArray(parsed?.tags)
-        ? parsed.tags
-        : [],
+    title_vi: vi.title,
+    title_en: en.title,
+    subtitle_vi: vi.subtitle,
+    subtitle_en: en.subtitle,
+    excerpt_vi: vi.excerpt,
+    excerpt_en: en.excerpt,
+    content_vi: vi.content,
+    content_en: en.content,
+    seo_slug: vi.seoSlug,
+    tags: vi.tags,
+    source_chars:
+      sourceArticle.length,
   };
 }
 function sleep(ms: number): Promise<void> {
@@ -2447,7 +3075,111 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
         ai,
         candidate.score,
       );
+      let mediaIngestError = "";
+      try {
+        if (draft.articleId) {
+          const sourceImages =
+            await findSourceImageUrls(candidate.item);
 
+          const inlineUrls: string[] = [];
+
+          for (
+            let imageIndex = 0;
+            imageIndex < sourceImages.length;
+            imageIndex++
+          ) {
+            try {
+              const role =
+                imageIndex === 0
+                  ? "cover"
+                  : "inline";
+
+              const saved =
+                await ingestNewsMedia(
+                  env,
+                  String(draft.articleId),
+                  sourceImages[imageIndex],
+                  role,
+                  imageIndex,
+                );
+
+              if (
+                role === "inline" &&
+                saved?.url
+              ) {
+                inlineUrls.push(
+                  String(saved.url),
+                );
+              }
+            } catch (imageError: any) {
+              processingErrors.push({
+                source: candidate.item.source,
+                url: candidate.item.link,
+                stage: "image_r2",
+                error: clip(
+                  String(
+                    imageError?.message ||
+                    imageError,
+                  ),
+                  1000,
+                ),
+              });
+            }
+
+            // Cover + tối đa 4 ảnh inline/bài.
+            if (inlineUrls.length >= 4) {
+              break;
+            }
+          }
+
+          if (inlineUrls.length) {
+            const patchedVi =
+              insertInlineImages(
+                ai.content_vi,
+                inlineUrls,
+                ai.title_vi || draft.titleVi,
+              );
+
+            const patchedEn =
+              insertInlineImages(
+                ai.content_en,
+                inlineUrls,
+                ai.title_en || ai.title_vi || draft.titleVi,
+              );
+
+            await sb(
+              env,
+              `news_articles?id=eq.${encodeURIComponent(String(draft.articleId))}`,
+              {
+                method: "PATCH",
+                headers: {
+                  Prefer: "return=minimal",
+                },
+                body: JSON.stringify({
+                  content_vi: patchedVi,
+                  content_en: patchedEn,
+                }),
+              },
+            );
+          }
+        }
+      } catch (mediaError: any) {
+        mediaIngestError =
+          String(
+            mediaError?.message ||
+            mediaError,
+          );
+
+        processingErrors.push({
+          source: candidate.item.source,
+          url: candidate.item.link,
+          stage: "media_r2",
+          error: clip(
+            mediaIngestError,
+            1000,
+          ),
+        });
+      }
       await sb(
         env,
         `technology_news_ingest?source_url=eq.${encodeURIComponent(candidate.item.link)}`,
@@ -2534,6 +3266,8 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
     processingErrors,
 
     settings,
+
+    aiUsage: await getAiUsage(env),
 
     finishedAt:
       new Date().toISOString(),
@@ -2886,6 +3620,9 @@ export default {
     <div class="meta">
       <span>Mode</span><span>Draft only</span>
       <span>AI model</span><span>${MODEL}</span>
+      <span>AI quota (Automation)</span><span>${lastRun?.aiUsage ? Math.round(Number(lastRun.aiUsage.neuronsUsed || 0)).toLocaleString("vi-VN") + " / 10.000 neurons · còn ~" + Math.max(0, Math.round(10000 - Number(lastRun.aiUsage.neuronsUsed || 0))).toLocaleString("vi-VN") + " · " + Number(lastRun.aiUsage.percentUsed || 0).toFixed(1) + "%" : "Chưa có dữ liệu usage hôm nay"}</span>
+      <span>AI calls / tokens</span><span>${lastRun?.aiUsage ? Number(lastRun.aiUsage.calls || 0) + " calls · " + Number(lastRun.aiUsage.inputTokens || 0).toLocaleString("vi-VN") + " input · " + Number(lastRun.aiUsage.outputTokens || 0).toLocaleString("vi-VN") + " output" : "—"}</span>
+      <span>Reset quota</span><span>00:00 UTC / 07:00 Việt Nam · số liệu là ước tính riêng của Automation</span>
       <span>Cloudflare cron</span><span>06:00 Vietnam time</span>
       <span>Health</span><span><a href="/health">/health</a></span>
     </div>
