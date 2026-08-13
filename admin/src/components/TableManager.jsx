@@ -18,6 +18,18 @@ function helpText(f,form={}){
   return isRequired(f,form)?`${f.label} là trường bắt buộc.`:`${f.label} là trường không bắt buộc; có thể để trống nếu chưa dùng.`;
 }
 
+function nlkhToDateTimeLocal(value){
+  if(value===null||value===undefined||value==="")return "";
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime()))return String(value).slice(0,16);
+  const p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function nlkhFromDateTimeLocal(value){
+  if(value===null||value===undefined||value==="")return "";
+  const d=new Date(value);
+  return Number.isNaN(d.getTime())?String(value):d.toISOString();
+}
 function parseField(f,v){
   // Optional media/relation fields are backed by FK/UUID columns.
   // An unselected control uses an empty string in the browser, but Postgres UUID
@@ -127,7 +139,16 @@ function Input({f,value,onChange,onMirror,form={}}){
   if(f.type==="checkbox")return <label className="switchRow"><input type="checkbox" checked={!!value} onChange={e=>onChange(e.target.checked)}/><span>{f.trueLabel||"Bật"}</span></label>;
   if(f.type==="select")return <select value={value??""} onChange={e=>onChange(e.target.value)}>{f.placeholder&&<option value="">{f.placeholder}</option>}{(f.options||[]).map(o=><option key={String(o.value)} value={o.value}>{o.label}</option>)}</select>;
   if(f.type==="color")return <div className="colorInput"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value||"")?value:"#3157f6"} onChange={e=>onChange(e.target.value)}/><input value={value??""} onChange={e=>onChange(e.target.value)} placeholder="#3157f6"/></div>;
-  const type=f.type==="number"||f.type==="sort"?"number":f.type==="url"?"url":f.type==="datetime"?"datetime-local":"text";
+  if(f.type==="datetime")return <input
+    type="datetime-local"
+    min={f.min}
+    max={f.max}
+    step={f.step||60}
+    value={nlkhToDateTimeLocal(value)}
+    onChange={e=>onChange(nlkhFromDateTimeLocal(e.target.value))}
+    placeholder={f.placeholder||""}
+  />;
+  const type=f.type==="number"||f.type==="sort"?"number":f.type==="url"?"url":"text";
   return <input type={type} min={f.min} max={f.max} step={f.step} value={value??""} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||""}/>;
 }
 

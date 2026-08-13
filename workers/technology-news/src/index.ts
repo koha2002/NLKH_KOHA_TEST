@@ -29,6 +29,9 @@ const MAX_ITEMS_PER_SOURCE = 15;
 
 const SETTINGS_KEY = "technology-news-settings";
 const LAST_RUN_KEY = "technology-news-last-run";
+const V55_DRAFT_REPAIR_KEY = "technology-news-v55-draft-repair";
+const V55_SOURCE_PRESET_KEY = "technology-news-v55-source-preset";
+const V55_SOURCE_PRESET_START_VN = "2026-08-14";
 
 const DEFAULT_SOURCES: Source[] = [
   {
@@ -1096,12 +1099,73 @@ function normalizeSettings(input: any): Settings {
   };
 }
 
+async function maybeApplyV55SourcePreset(
+  env: Env,
+  settings: Settings,
+): Promise<Settings> {
+  try {
+    const todayVn = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    if (todayVn < V55_SOURCE_PRESET_START_VN) {
+      return settings;
+    }
+
+    const alreadyApplied = await env.CONFIG.get(V55_SOURCE_PRESET_KEY);
+    if (alreadyApplied) {
+      return settings;
+    }
+
+    const recommended = new Set([
+      "Tom's Hardware",
+      "All About Circuits",
+      "Electronic Design - Digital ICs",
+      "Electronic Design - Embedded",
+      "Electronic Design - Power",
+      "Electronic Design - EDA",
+      "Electronic Design - Test & Measurement",
+    ]);
+
+    const next: Settings = {
+      ...settings,
+      sources: Array.isArray(settings.sources)
+        ? settings.sources.map((source) =>
+            recommended.has(source.name)
+              ? { ...source, enabled: true }
+              : source,
+          )
+        : settings.sources,
+    };
+
+    await env.CONFIG.put(
+      SETTINGS_KEY,
+      JSON.stringify(next),
+    );
+
+    await env.CONFIG.put(
+      V55_SOURCE_PRESET_KEY,
+      JSON.stringify({
+        appliedAt: new Date().toISOString(),
+        startDateVietnam: V55_SOURCE_PRESET_START_VN,
+        enabledSources: [...recommended],
+      }),
+    );
+
+    return next;
+  } catch {
+    return settings;
+  }
+}
 async function getSettings(env: Env): Promise<Settings> {
   try {
     const saved = await env.CONFIG.get(SETTINGS_KEY, { type: "json" });
-    return normalizeSettings(saved);
+    return await maybeApplyV55SourcePreset(env, normalizeSettings(saved));
   } catch {
-    return DEFAULT_SETTINGS;
+    return await maybeApplyV55SourcePreset(env, DEFAULT_SETTINGS);
   }
 }
 
@@ -1226,6 +1290,21 @@ async function getAutomationIdentity(
     ),
     permissions,
   };
+}
+function formatVietnamDateTime(value: unknown): string {
+  if (!value) return "Không có dữ liệu";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 function htmlEscape(value: unknown) {
   return String(value ?? "")
@@ -3117,7 +3196,276 @@ async function fetchSourceItems(
 
   return items.slice(0, MAX_ITEMS_PER_SOURCE);
 }
+async function repairExistingDraftsV55(
+  env: Env,
+  limit = 20,
+) {
+  const state =
+    (await env.CONFIG.get(
+      V55_DRAFT_REPAIR_KEY,
+      { type: "json" },
+    ).catch(() => null)) as any || {};
+
+  const doneIds = new Set<string>(
+    Array.isArray(state?.doneIds)
+      ? state.doneIds.map(String)
+      : [],
+  );
+
+  const rows = await sb(
+    env,
+    "news_articles?select=id,title_vi,title_en,subtitle_vi,subtitle_en,excerpt_vi,excerpt_en,content_vi,content_en,source_name,source_url,tags,category_id,published_at,created_at,status&status=eq.draft&order=created_at.asc&limit=50",
+  );
+
+  const drafts = Array.isArray(rows)
+    ? rows.filter(
+        (row: any) =>
+          row?.id &&
+          row?.source_url &&
+          !doneIds.has(String(row.id)),
+      )
+    : [];
+
+  const repaired: any[] = [];
+  const failed: any[] = [];
+
+  for (const row of drafts.slice(0, Math.max(1, limit))) {
+    const articleId = String(row.id);
+
+    try {
+      const item: FeedItem = {
+        source:
+          String(row.source_name || "Nguồn bài viết"),
+        title:
+          String(row.title_en || row.title_vi || ""),
+        link:
+          String(row.source_url),
+        summary:
+          String(row.excerpt_en || row.excerpt_vi || ""),
+        publishedAt:
+          row.published_at || row.created_at || null,
+      };
+
+      const ai = await generateDraft(env, item);
+
+      let contentVi = String(ai?.content_vi || "").trim();
+      let contentEn = String(ai?.content_en || "").trim();
+
+      if (
+        !contentVi ||
+        contentVi === "[object Object]" ||
+        contentVi.length < 500
+      ) {
+        throw new Error(
+          "AI repair trả content_vi không hợp lệ",
+        );
+      }
+
+      if (
+        !contentEn ||
+        contentEn === "[object Object]" ||
+        contentEn.length < 500
+      ) {
+        throw new Error(
+          "AI repair trả content_en không hợp lệ",
+        );
+      }
+
+      // Reuse the CURRENT image pipeline for legacy Drafts too.
+      // Existing media mappings remain owned by the same article;
+      // R2 SHA/media_id dedupe prevents repeated binary assets.
+      try {
+        const sourceImages =
+          await findSourceImageCandidates(item);
+
+        const inlineImages: PlacedNewsImage[] = [];
+        const usedMediaIds = new Set<string>();
+        const usedUrls = new Set<string>();
+
+        for (
+          let imageIndex = 0;
+          imageIndex < sourceImages.length;
+          imageIndex++
+        ) {
+          const candidateImage =
+            sourceImages[imageIndex];
+
+          try {
+            const role =
+              imageIndex === 0
+                ? "cover"
+                : "inline";
+
+            const saved =
+              await ingestNewsMedia(
+                env,
+                articleId,
+                candidateImage.url,
+                role,
+                imageIndex,
+              );
+
+            const mediaId =
+              String(saved?.media_id || "");
+            const savedUrl =
+              String(saved?.url || "");
+
+            if (mediaId) {
+              if (usedMediaIds.has(mediaId)) {
+                continue;
+              }
+              usedMediaIds.add(mediaId);
+            }
+
+            if (savedUrl) {
+              if (usedUrls.has(savedUrl)) {
+                continue;
+              }
+              usedUrls.add(savedUrl);
+            }
+
+            if (
+              role === "inline" &&
+              savedUrl
+            ) {
+              inlineImages.push({
+                url: savedUrl,
+                hint:
+                  candidateImage.hint ||
+                  item.title ||
+                  "",
+                mediaId,
+              });
+            }
+          } catch {
+            // Text repair must not fail only because one source image fails.
+          }
+
+          if (inlineImages.length >= 4) {
+            break;
+          }
+        }
+
+        if (inlineImages.length) {
+          contentVi =
+            await placeInlineImagesWithAi(
+              env,
+              contentVi,
+              inlineImages,
+              "vi",
+            );
+
+          contentEn =
+            await placeInlineImagesWithAi(
+              env,
+              contentEn,
+              inlineImages,
+              "en",
+            );
+        }
+      } catch {
+        // Keep regenerated text if the media phase cannot run.
+      }
+
+      const payload = {
+        title_vi:
+          clip(ai?.title_vi || row.title_vi, 100),
+        title_en:
+          clip(ai?.title_en || row.title_en || row.title_vi, 100),
+        subtitle_vi:
+          clip(ai?.subtitle_vi || "", 180),
+        subtitle_en:
+          clip(ai?.subtitle_en || "", 180),
+        excerpt_vi:
+          clip(
+            ai?.excerpt_vi ||
+            contentVi ||
+            row.excerpt_vi ||
+            row.title_vi,
+            165,
+          ),
+        excerpt_en:
+          clip(
+            ai?.excerpt_en ||
+            contentEn ||
+            row.excerpt_en ||
+            row.title_en ||
+            row.title_vi,
+            165,
+          ),
+        content_vi: contentVi,
+        content_en: contentEn,
+        tags: normalizeTags(ai?.tags),
+        editor_name: "AI hỗ trợ biên tập",
+        published_at:
+          row.published_at ||
+          row.created_at ||
+          new Date().toISOString(),
+      };
+
+      await sb(
+        env,
+        `news_articles?id=eq.${encodeURIComponent(articleId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      doneIds.add(articleId);
+
+      await env.CONFIG.put(
+        V55_DRAFT_REPAIR_KEY,
+        JSON.stringify({
+          doneIds: [...doneIds],
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+
+      repaired.push({
+        articleId,
+        titleVi: payload.title_vi,
+      });
+    } catch (error: any) {
+      failed.push({
+        articleId,
+        sourceUrl: row.source_url,
+        error: clip(
+          String(error?.message || error),
+          1000,
+        ),
+      });
+    }
+  }
+
+  const remaining =
+    Math.max(0, drafts.length - repaired.length);
+
+  await env.CONFIG.put(
+    V55_DRAFT_REPAIR_KEY,
+    JSON.stringify({
+      doneIds: [...doneIds],
+      repairedLastRun: repaired,
+      failedLastRun: failed,
+      remaining,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+
+  return {
+    attempted:
+      repaired.length + failed.length,
+    repaired,
+    failed,
+    remaining,
+  };
+}
 async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
+  const existingDraftRepair =
+    await repairExistingDraftsV55(env, 20);
   const candidates: Array<{ item: FeedItem; score: number }> = [];
   const sourceErrors: Array<{ source: string; error: string }> = [];
 
@@ -3497,6 +3845,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
     draftsCreated:
       created.length,
 
+    existingDraftRepair,
     created,
     sourceErrors,
     processingErrors,
@@ -3624,7 +3973,7 @@ export default {
             <div>${lastRun.ok ? "Hoàn tất" : "Có lỗi"}</div>
 
             <div class="key">Thời gian hoàn tất</div>
-            <div>${htmlEscape(lastRun.finishedAt || "Không có dữ liệu")}</div>
+            <div>${htmlEscape(formatVietnamDateTime(lastRun.finishedAt))}</div>
 
             <div class="key">Số nguồn đã kiểm tra</div>
             <div>${htmlEscape(lastRun.sources ?? "Không có dữ liệu")}</div>
@@ -4449,7 +4798,7 @@ export default {
           '<div>' + (body.ok ? "Hoàn tất" : "Có lỗi") + '</div>' +
 
           '<div class="key">Thời gian hoàn tất</div>' +
-          '<div>' + (body.finishedAt || "Không có dữ liệu") + '</div>' +
+          '<div>' + htmlEscape(formatVietnamDateTime(body.finishedAt)) + '</div>' +
 
           '<div class="key">Số nguồn đã kiểm tra</div>' +
           '<div>' + (body.sources ?? "Không có dữ liệu") + '</div>' +
