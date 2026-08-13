@@ -73,7 +73,7 @@ export function Header() {
 
         {access.authenticated ? <div className={styles.accountWrap}>
           <button className={styles.avatarButton} onClick={() => setAccountOpen((v) => !v)} aria-expanded={accountOpen} aria-label={vi ? "Tài khoản" : "Account"}>{access.avatar_url ? <img src={access.avatar_url} alt="" /> : <span>{initials(access.display_name, access.email)}</span>}</button>
-          {accountOpen ? <div className={styles.accountMenu}><strong>{access.display_name || access.email}</strong><small>{access.email}</small><a href="/account">{vi ? "Tài khoản & ảnh đại diện" : "Account & profile picture"}</a>{access.status === "active" && (access.permissions || []).length ? <a href={process.env.NEXT_PUBLIC_ADMIN_URL || "https://admin.nguyenlekhanhhoa.com"}>{vi ? "Quản trị" : "Admin"} ↗</a> : null}</div> : null}
+          {accountOpen ? <div className={styles.accountMenu}><strong>{access.display_name || access.email}</strong><small>{access.email}</small><a href="/account">{vi ? "Tài khoản & ảnh đại diện" : "Account & profile picture"}</a>{access.status === "active" && (access.permissions || []).length ? <><a href={process.env.NEXT_PUBLIC_ADMIN_URL || "https://admin.nguyenlekhanhhoa.com"}>{vi ? "Quản trị" : "Admin"} ↗</a><a href="https://automation.nguyenlekhanhhoa.com">Automation {"\u2197"}</a></> : null}</div> : null}
         </div> : <a className={styles.loginButton} href="/login">{vi ? "Đăng nhập" : "Sign in"}</a>}
 
         <button className={styles.menu} onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={open ? t.nav.close : t.nav.menu}><span /><span /></button>
