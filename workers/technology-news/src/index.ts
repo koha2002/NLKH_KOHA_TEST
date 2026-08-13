@@ -376,6 +376,94 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/") {
+      const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NLKH Automation</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #0b0f14;
+      color: #e8eef6;
+      font: 16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    main {
+      width: min(680px, calc(100% - 32px));
+      border: 1px solid #263241;
+      border-radius: 18px;
+      padding: 28px;
+      background: #111821;
+      box-shadow: 0 18px 60px rgba(0,0,0,.32);
+    }
+    .eyebrow { color: #8fa8c2; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 8px 0 6px; font-size: 32px; }
+    .ok { color: #7ee787; font-weight: 700; }
+    dl {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 10px 18px;
+      margin: 24px 0;
+    }
+    dt { color: #8fa8c2; }
+    dd { margin: 0; }
+    a {
+      color: #79c0ff;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    code {
+      background: #0b0f14;
+      border: 1px solid #263241;
+      border-radius: 7px;
+      padding: 2px 6px;
+    }
+    .note {
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid #263241;
+      color: #aebdca;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">NLKH / AUTOMATION</div>
+    <h1>Technology News Automation</h1>
+    <p class="ok">● Online</p>
+
+    <dl>
+      <dt>Mode</dt><dd>Draft only</dd>
+      <dt>AI model</dt><dd>${MODEL}</dd>
+      <dt>Daily schedule</dt><dd>06:00 Vietnam time</dd>
+      <dt>Max drafts / run</dt><dd>${MAX_DRAFTS_PER_RUN}</dd>
+      <dt>Health endpoint</dt><dd><a href="/health">/health</a></dd>
+    </dl>
+
+    <p class="note">
+      Articles are created as drafts for manual review. Publishing is never automatic.
+      Manual execution uses the protected <code>POST /run</code> endpoint.
+    </p>
+  </main>
+</body>
+</html>`;
+
+      return new Response(html, {
+        headers: {
+          "content-type": "text/html; charset=UTF-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
+
     if (url.pathname === "/health") {
       return Response.json({
         ok: true,
