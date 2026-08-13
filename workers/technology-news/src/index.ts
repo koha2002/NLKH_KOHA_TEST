@@ -1624,7 +1624,7 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
 
   const article = {
     slug,
-    category_id: await resolveTechnologyCategoryId(env),
+    category_id: null,
     title_vi: titleVi,
     title_en: titleEn || "",
     subtitle_vi: clip(ai.subtitle_vi, 180) || "",
@@ -1947,12 +1947,19 @@ RETURN ONLY THE COMPLETE MARKDOWN AFTER IMAGE PLACEMENT.
       },
     );
 
-    const placed=String(response||"")
-      .replace(/^```(?:markdown)?\s*/i,"")
-      .replace(/\s*```$/,"")
-      .trim();
+    const placed=
+      cleanAiResponse(
+        aiResponseText(response),
+      );
 
-    if(!placed)return original;
+    // Never overwrite a valid article with a malformed AI wrapper/result.
+    if(
+      !placed ||
+      placed==="[object Object]" ||
+      placed.length < Math.max(120, Math.floor(original.length*0.65))
+    ){
+      return original;
+    }
 
     // Safety: every inserted image URL must be one we supplied.
     const allowed=new Set(usable.map((x)=>x.url));
