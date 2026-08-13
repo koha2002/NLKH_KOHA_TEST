@@ -1655,13 +1655,15 @@ return { articleId, slug, titleVi };
 }
 
 
+
 type SourceImageCandidate = {
   url: string;
+  hint: string;
 };
 
-async function findSourceImageUrls(
+async function findSourceImageCandidates(
   item: FeedItem,
-): Promise<string[]> {
+): Promise<SourceImageCandidate[]> {
   try {
     const response = await fetch(item.link, {
       headers: {
@@ -1674,10 +1676,10 @@ async function findSourceImageUrls(
 
     const html = await response.text();
     const baseUrl = response.url || item.link;
-    const found: string[] = [];
+    const found: SourceImageCandidate[] = [];
     const normalized = new Set<string>();
 
-    const decodeRaw = (raw: string) =>
+    const decode = (raw: string) =>
       raw
         .replace(/\\u002F/gi, "/")
         .replace(/\\\//g, "/")
@@ -1686,10 +1688,22 @@ async function findSourceImageUrls(
         .replace(/&#47;/g, "/")
         .trim();
 
-    const push = (raw: string | undefined) => {
+    const cleanHint = (raw: string) =>
+      String(raw || "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 320);
+
+    const push = (
+      raw: string | undefined,
+      hint = "",
+    ) => {
       if (!raw) return;
       try {
-        const decoded = decodeRaw(raw);
+        const decoded = decode(raw);
         if (!decoded || /^data:/i.test(decoded)) return;
 
         const url = new URL(decoded, baseUrl);
@@ -1702,26 +1716,43 @@ async function findSourceImageUrls(
           )
         ) return;
 
-        const key =
+        const pathKey =
           `${url.origin}${url.pathname}`
-            .replace(/-\d+x\d+(?=\.[a-z]+$)/i, "")
+            .replace(/[-_]\d{2,4}x\d{2,4}(?=\.[a-z0-9]+$)/i, "")
+            .replace(/\/(?:resize|width|height)\/\d+/ig, "")
             .toLowerCase();
 
-        if (normalized.has(key)) return;
-        normalized.add(key);
-        found.push(text);
+        if (normalized.has(pathKey)) return;
+        normalized.add(pathKey);
+
+        found.push({
+          url: text,
+          hint: cleanHint(hint),
+        });
       } catch {}
     };
 
-    const pushSrcset = (raw: string | undefined) => {
+    const pushSrcset = (
+      raw: string | undefined,
+      hint = "",
+    ) => {
       if (!raw) return;
-      for (const part of decodeRaw(raw).split(",")) {
-        const url = part.trim().split(/\s+/)[0];
-        push(url);
-      }
+      const candidates =
+        decode(raw)
+          .split(",")
+          .map((part) => {
+            const bits=part.trim().split(/\s+/);
+            const descriptor=bits[1]||"";
+            const numeric=parseInt(descriptor,10)||0;
+            return {url:bits[0]||"",numeric};
+          })
+          .filter((x)=>x.url)
+          .sort((a,b)=>b.numeric-a.numeric);
+
+      if(candidates[0])push(candidates[0].url,hint);
     };
 
-    // 1) Main social/hero image first.
+    // Social/hero image comes first.
     const metaPatterns = [
       /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
       /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/ig,
@@ -1729,59 +1760,60 @@ async function findSourceImageUrls(
       /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/ig,
     ];
     for (const pattern of metaPatterns) {
-      for (const match of html.matchAll(pattern)) push(match[1]);
+      for (const match of html.matchAll(pattern)) {
+        push(match[1], item.title);
+      }
     }
 
-    // 2) Prefer images inside article/main, including lazy-load/srcset variants.
     const articleHtml =
       html.match(/<article\b[\s\S]*?<\/article>/i)?.[0] ||
       html.match(/<main\b[\s\S]*?<\/main>/i)?.[0] ||
       html;
 
-    for (const tag of articleHtml.matchAll(/<(?:img|source)\b[^>]*>/ig)) {
-      const rawTag = tag[0];
+    // Figure blocks preserve semantic caption context.
+    for (const figure of articleHtml.matchAll(/<figure\b[\s\S]*?<\/figure>/ig)) {
+      const block=figure[0];
+      const img=block.match(/<img\b[^>]*>/i)?.[0]||"";
+      if(!img)continue;
 
-      for (const attr of [
-        "src",
-        "data-src",
-        "data-lazy-src",
-        "data-original",
-        "data-image",
-        "data-url",
-      ]) {
-        const m = rawTag.match(
-          new RegExp(`${attr}=["']([^"']+)["']`, "i"),
-        );
-        push(m?.[1]);
+      const alt=img.match(/\balt=["']([^"']*)["']/i)?.[1]||"";
+      const title=img.match(/\btitle=["']([^"']*)["']/i)?.[1]||"";
+      const caption=block.match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i)?.[1]||"";
+      const hint=[alt,title,caption].filter(Boolean).join(" | ");
+
+      const srcset=
+        img.match(/\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i)?.[1];
+      if(srcset)pushSrcset(srcset,hint);
+      else{
+        const src=
+          img.match(/\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url)=["']([^"']+)["']/i)?.[1];
+        push(src,hint);
       }
 
-      for (const attr of [
-        "srcset",
-        "data-srcset",
-        "data-lazy-srcset",
-      ]) {
-        const m = rawTag.match(
-          new RegExp(`${attr}=["']([^"']+)["']`, "i"),
-        );
-        pushSrcset(m?.[1]);
-      }
-
-      if (found.length >= 14) break;
+      if(found.length>=14)break;
     }
 
-    // 3) JSON-LD / embedded CDN URLs as fallback.
-    if (found.length < 6) {
-      const urlPattern =
-        /https?:\\?\/\\?\/[^"'<>\\\s]+?\.(?:jpe?g|png|webp|avif)(?:\?[^"'<>\\\s]*)?/ig;
+    // Remaining img tags.
+    if(found.length<10){
+      for (const tag of articleHtml.matchAll(/<img\b[^>]*>/ig)) {
+        const rawTag=tag[0];
+        const alt=rawTag.match(/\balt=["']([^"']*)["']/i)?.[1]||"";
+        const title=rawTag.match(/\btitle=["']([^"']*)["']/i)?.[1]||"";
+        const hint=[alt,title].filter(Boolean).join(" | ");
 
-      for (const match of html.matchAll(urlPattern)) {
-        push(match[0]);
-        if (found.length >= 14) break;
+        const srcset=
+          rawTag.match(/\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i)?.[1];
+        if(srcset)pushSrcset(srcset,hint);
+        else{
+          const src=
+            rawTag.match(/\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url)=["']([^"']+)["']/i)?.[1];
+          push(src,hint);
+        }
+        if(found.length>=14)break;
       }
     }
 
-    // Give the ingest loop enough candidates because some hosts reject hot fetches.
-    return found.slice(0, 12);
+    return found.slice(0,12);
   } catch {
     return [];
   }
@@ -1820,54 +1852,118 @@ async function ingestNewsMedia(
   return JSON.parse(text);
 }
 
-function insertInlineImages(
+type PlacedNewsImage = {
+  url: string;
+  hint: string;
+  mediaId: string;
+};
+
+async function placeInlineImagesWithAi(
+  env: Env,
   markdown: string,
-  imageUrls: string[],
-  altBase: string,
-): string {
-  if (!imageUrls.length) return markdown;
+  images: PlacedNewsImage[],
+  language: "vi" | "en",
+): Promise<string> {
+  const original=String(markdown||"").trim();
+  if(!original||!images.length)return original;
 
-  const lines = String(markdown || "").replace(/\r/g, "").split("\n");
-  const headingIndexes: number[] = [];
+  const usable=images.slice(0,4);
+  const mediaList=usable.map((img,index)=>
+    `IMAGE_${index+1}
+URL: ${img.url}
+SOURCE_HINT: ${img.hint||"(none)"}`
+  ).join("\n\n");
 
-  for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+/.test(lines[i].trim())) headingIndexes.push(i);
-  }
+  const vi=language==="vi";
+  const prompt=vi
+    ? `
+Bạn là biên tập viên bố cục cho một bài công nghệ TIẾNG VIỆT.
 
-  if (!headingIndexes.length) {
-    const chunks = String(markdown || "").split(/\n{2,}/);
-    const step = Math.max(2, Math.floor(chunks.length / (imageUrls.length + 1)));
-    let offset = 0;
-    imageUrls.forEach((url, index) => {
-      const at = Math.min(chunks.length, step * (index + 1) + offset);
-      chunks.splice(at, 0, `![${altBase} — ${index + 1}](${url})`);
-      offset++;
-    });
-    return chunks.join("\n\n");
-  }
+NHIỆM VỤ DUY NHẤT:
+- Giữ nguyên toàn bộ thông tin và ý nghĩa của Markdown gốc.
+- Chèn các ảnh R2 vào đúng đoạn mà ảnh minh họa tốt nhất.
+- KHÔNG dồn ảnh liên tiếp.
+- KHÔNG dùng một ảnh quá một lần.
+- Nếu nhiều ảnh có nội dung tương tự nhau, chỉ dùng ảnh hữu ích nhất.
+- Không chèn ảnh ngay sát nhau; ưu tiên cách nhau ít nhất một mục/đoạn có nội dung.
+- Caption của ảnh PHẢI là tiếng Việt tự nhiên, ngắn, mô tả đúng SOURCE_HINT và ngữ cảnh bài.
+- Không để caption/heading tiếng Anh, trừ tên riêng, model, thương hiệu và thuật ngữ bắt buộc.
+- Không thêm "Hình 1", "Ảnh 1" máy móc nếu không cần.
+- Chỉ chèn theo đúng Markdown:
+  ![caption tiếng Việt](URL)
+- Không tạo URL mới.
+- Không đổi tiêu đề, số liệu, bảng, kết luận hay nội dung bài.
+- Nếu một ảnh không phù hợp với bất kỳ đoạn nào, có thể bỏ ảnh đó.
 
-  let added = 0;
-  imageUrls.forEach((url, index) => {
-    const targetHeading =
-      headingIndexes[
-        Math.min(
-          headingIndexes.length - 1,
-          Math.floor((index + 1) * headingIndexes.length / (imageUrls.length + 1)),
-        )
-      ];
+ẢNH CÓ THỂ DÙNG:
+${mediaList}
 
-    const at = targetHeading + 1 + added;
-    lines.splice(
-      at,
-      0,
-      "",
-      `![${altBase} — ${index + 1}](${url})`,
-      "",
+MARKDOWN GỐC:
+${original}
+
+TRẢ VỀ DUY NHẤT MARKDOWN HOÀN CHỈNH SAU KHI CHÈN ẢNH.
+`.trim()
+    : `
+You are laying out an ENGLISH technology article.
+
+ONLY TASK:
+- Preserve the original Markdown's facts and meaning.
+- Insert R2 images where each image best illustrates the surrounding section.
+- Never stack images consecutively.
+- Use each image at most once.
+- If images are semantically repetitive, use only the most useful one.
+- Prefer at least one substantive paragraph/section between images.
+- Write short natural English captions based on SOURCE_HINT and article context.
+- Insert only as:
+  ![English caption](URL)
+- Never invent a URL.
+- Do not change headings, numbers, tables, conclusions or article facts.
+- An irrelevant image may be omitted.
+
+AVAILABLE IMAGES:
+${mediaList}
+
+ORIGINAL MARKDOWN:
+${original}
+
+RETURN ONLY THE COMPLETE MARKDOWN AFTER IMAGE PLACEMENT.
+`.trim();
+
+  try{
+    const response=await runAiTracked(
+      env,
+      {
+        messages:[
+          {
+            role:"system",
+            content:vi
+              ?"Chỉ làm bố cục ảnh cho bài tiếng Việt. Không viết lại bài. Không được trả tiếng Anh ngoài tên riêng/model/thuật ngữ bắt buộc."
+              :"Only place images in the English article. Do not rewrite the article."
+          },
+          {role:"user",content:prompt}
+        ],
+        temperature:0.1,
+        max_tokens:8000,
+      },
     );
-    added += 3;
-  });
 
-  return lines.join("\n");
+    const placed=String(response||"")
+      .replace(/^```(?:markdown)?\s*/i,"")
+      .replace(/\s*```$/,"")
+      .trim();
+
+    if(!placed)return original;
+
+    // Safety: every inserted image URL must be one we supplied.
+    const allowed=new Set(usable.map((x)=>x.url));
+    for(const match of placed.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)){
+      if(!allowed.has(match[1]))return original;
+    }
+
+    return placed;
+  }catch{
+    return original;
+  }
 }
 
 function htmlToArticleText(html: string): string {
@@ -2643,8 +2739,8 @@ ${editorialSource}
               role: "system",
               content:
                 vi
-                  ? "Biên tập chính xác, đầy đủ, không bịa. Không ép độ dài bài theo quota. Trả đúng marker text."
-                  : "Edit accurately and comprehensively. Do not impose an article-length quota. Never invent facts. Return marker text only.",
+                  ? "NLKH_V541_LANGUAGE_RULES: Biên tập chính xác, đầy đủ, không bịa, không ép độ dài bài theo quota. Toàn bộ bản VI phải là tiếng Việt tự nhiên: tiêu đề mục, đoạn văn, bảng, nhãn, chú thích ảnh và kết luận đều bằng tiếng Việt; chỉ giữ nguyên tên riêng, thương hiệu, model và viết tắt kỹ thuật bắt buộc. Không để câu giải thích hoặc heading tiếng Anh trong content_vi. Trả đúng marker text."
+                  : "NLKH_V541_LANGUAGE_RULES: Edit accurately and comprehensively. Do not impose an article-length quota. Never invent facts. The entire EN version, including headings, tables, labels and image captions, must be English. Return marker text only.",
             },
             {
               role: "user",
@@ -3179,9 +3275,11 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
       try {
         if (draft.articleId) {
           const sourceImages =
-            await findSourceImageUrls(candidate.item);
+            await findSourceImageCandidates(candidate.item);
 
-          const inlineUrls: string[] = [];
+          const inlineImages: PlacedNewsImage[] = [];
+          const usedMediaIds = new Set<string>();
+          const usedUrls = new Set<string>();
 
           for (
             let imageIndex = 0;
@@ -3189,6 +3287,9 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
             imageIndex++
           ) {
             try {
+              const candidateImage =
+                sourceImages[imageIndex];
+
               const role =
                 imageIndex === 0
                   ? "cover"
@@ -3198,18 +3299,45 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
                 await ingestNewsMedia(
                   env,
                   String(draft.articleId),
-                  sourceImages[imageIndex],
+                  candidateImage.url,
                   role,
                   imageIndex,
                 );
 
+              const mediaId =
+                String(saved?.media_id || "");
+              const savedUrl =
+                String(saved?.url || "");
+
+              // R2/media_assets SHA dedupe is authoritative:
+              // if multiple source URLs resolve to identical bytes,
+              // do NOT render the same asset repeatedly.
+              if (mediaId) {
+                if (usedMediaIds.has(mediaId)) {
+                  continue;
+                }
+                usedMediaIds.add(mediaId);
+              }
+
+              if (savedUrl) {
+                if (usedUrls.has(savedUrl)) {
+                  continue;
+                }
+                usedUrls.add(savedUrl);
+              }
+
               if (
                 role === "inline" &&
-                saved?.url
+                savedUrl
               ) {
-                inlineUrls.push(
-                  String(saved.url),
-                );
+                inlineImages.push({
+                  url: savedUrl,
+                  hint:
+                    candidateImage.hint ||
+                    candidate.item.title ||
+                    "",
+                  mediaId,
+                });
               }
             } catch (imageError: any) {
               processingErrors.push({
@@ -3226,25 +3354,26 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
               });
             }
 
-            // Cover + tối đa 4 ảnh inline/bài.
-            if (inlineUrls.length >= 4) {
+            if (inlineImages.length >= 4) {
               break;
             }
           }
 
-          if (inlineUrls.length) {
+          if (inlineImages.length) {
             const patchedVi =
-              insertInlineImages(
+              await placeInlineImagesWithAi(
+                env,
                 ai.content_vi,
-                inlineUrls,
-                ai.title_vi || draft.titleVi,
+                inlineImages,
+                "vi",
               );
 
             const patchedEn =
-              insertInlineImages(
+              await placeInlineImagesWithAi(
+                env,
                 ai.content_en,
-                inlineUrls,
-                ai.title_en || ai.title_vi || draft.titleVi,
+                inlineImages,
+                "en",
               );
 
             await sb(

@@ -37,7 +37,7 @@ export default function News({access}){return <AdminPage access={access}>
  f.arr("tags","Tags / từ khóa",{placeholder:"điện, relay, comtrade",help:"Không phải JSON. Nhập nhiều tag, cách nhau bằng dấu phẩy; dùng để phân loại/tìm kiếm."}),
  f.sel("status","Trạng thái",[{value:"draft",label:"Nháp"},{value:"review",label:"Chờ duyệt"},{value:"scheduled",label:"Hẹn xuất bản"},{value:"published",label:"Đã xuất bản"},{value:"archived",label:"Lưu trữ"}],{required:true,help:"Chỉ Published được đọc công khai theo chính sách hiện tại."}),
  f.bool("featured","Nổi bật",{trueLabel:"Đánh dấu là bài nổi bật",help:"Bài nổi bật có thể được ưu tiên lên vị trí/khối nổi bật trên giao diện. Không bật thì vẫn là bài bình thường trong danh sách."}),
- f.bool("allow_comments","Cho bình luận",{trueLabel:"Người đọc được gửi bình luận",help:"Bình luận mới luôn ở trạng thái chờ; Admin phải duyệt thì mới hiển thị."}),f.dt("published_at","Ngày/giờ xuất bản",{nullable:true,requiredWhen:form=>form.status==="scheduled",help:"Bắt buộc khi trạng thái = Hẹn xuất bản. Với bài Published có thể điền để ghi đúng mốc công khai; để trống nếu không cần."})
+ f.bool("allow_comments","Cho bình luận",{trueLabel:"Người đọc được gửi bình luận",help:"Bình luận mới luôn ở trạng thái chờ; Admin phải duyệt thì mới hiển thị."}),f.dt("published_at","Ngày/giờ xuất bản",{nullable:true,requiredWhen:form=>form.status==="scheduled",help:"Tự điền khi bài được tạo. Bạn chỉ cần sửa nếu muốn đổi mốc ngày/giờ."})
 ]}/>
 <CommentsModeration/>
 </AdminPage>}

@@ -101,7 +101,7 @@ export function NewsPageClient({
           ? <div className={styles.v53Grid}>
               {rows.map((article:any)=>{
                 const cat=categoryById.get(String(article.category_id||""));
-                const date=article.published_at||article.created_at||"";
+                const date=article.published_at||"";
                 return <article className={styles.v53Card} key={article.id||article.slug}>
                   <a href={`/news/${article.slug}`} className={styles.v53Cover}>
                     {article.cover_image
