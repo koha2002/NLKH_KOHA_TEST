@@ -1496,6 +1496,35 @@ function ingestAlreadyHasDraft(
   );
 }
 
+
+async function resolveTechnologyCategoryId(
+  env: Env,
+): Promise<string | null> {
+  try {
+    const rows: any =
+      await sb(
+        env,
+        "news_categories?select=id,slug,visible,sort_order&visible=eq.true&order=sort_order.asc",
+      );
+
+    if (!Array.isArray(rows) || !rows.length) {
+      return null;
+    }
+
+    const preferred =
+      rows.find(
+        (row: any) =>
+          String(row?.slug || "").toLowerCase() ===
+          "congnghe",
+      ) || rows[0];
+
+    return preferred?.id
+      ? String(preferred.id)
+      : null;
+  } catch {
+    return null;
+  }
+}
 async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
   const titleVi =
     clip(ai.title_vi, 100);
@@ -1595,7 +1624,7 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
 
   const article = {
     slug,
-    category_id: null,
+    category_id: await resolveTechnologyCategoryId(env),
     title_vi: titleVi,
     title_en: titleEn || "",
     subtitle_vi: clip(ai.subtitle_vi, 180) || "",
@@ -1605,6 +1634,7 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     content_vi: contentVi,
     content_en: contentEn || "",
     status: "draft",
+    published_at: new Date().toISOString(),
     featured: false,
     allow_comments: false,
     tags,
@@ -1643,45 +1673,115 @@ async function findSourceImageUrls(
     if (!response.ok) return [];
 
     const html = await response.text();
+    const baseUrl = response.url || item.link;
     const found: string[] = [];
+    const normalized = new Set<string>();
+
+    const decodeRaw = (raw: string) =>
+      raw
+        .replace(/\\u002F/gi, "/")
+        .replace(/\\\//g, "/")
+        .replace(/&amp;/g, "&")
+        .replace(/&#x2F;/gi, "/")
+        .replace(/&#47;/g, "/")
+        .trim();
 
     const push = (raw: string | undefined) => {
       if (!raw) return;
       try {
-        const decoded = raw.replace(/&amp;/g, "&").trim();
-        const url = new URL(decoded, response.url || item.link);
+        const decoded = decodeRaw(raw);
+        if (!decoded || /^data:/i.test(decoded)) return;
+
+        const url = new URL(decoded, baseUrl);
         if (!["http:", "https:"].includes(url.protocol)) return;
 
         const text = url.toString();
-        if (/logo|icon|avatar|badge|sprite|emoji|tracking|pixel/i.test(text)) return;
-        if (!found.includes(text)) found.push(text);
+        if (
+          /logo|icon|avatar|badge|sprite|emoji|tracking|pixel|author|profile|newsletter|advert|adsystem/i.test(
+            text,
+          )
+        ) return;
+
+        const key =
+          `${url.origin}${url.pathname}`
+            .replace(/-\d+x\d+(?=\.[a-z]+$)/i, "")
+            .toLowerCase();
+
+        if (normalized.has(key)) return;
+        normalized.add(key);
+        found.push(text);
       } catch {}
     };
 
+    const pushSrcset = (raw: string | undefined) => {
+      if (!raw) return;
+      for (const part of decodeRaw(raw).split(",")) {
+        const url = part.trim().split(/\s+/)[0];
+        push(url);
+      }
+    };
+
+    // 1) Main social/hero image first.
     const metaPatterns = [
       /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
       /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/ig,
       /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
       /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/ig,
     ];
-
     for (const pattern of metaPatterns) {
       for (const match of html.matchAll(pattern)) push(match[1]);
     }
 
+    // 2) Prefer images inside article/main, including lazy-load/srcset variants.
     const articleHtml =
       html.match(/<article\b[\s\S]*?<\/article>/i)?.[0] ||
       html.match(/<main\b[\s\S]*?<\/main>/i)?.[0] ||
       html;
 
-    for (const match of articleHtml.matchAll(
-      /<img\b[^>]+(?:src|data-src|data-lazy-src)=["']([^"']+)["'][^>]*>/ig
-    )) {
-      push(match[1]);
-      if (found.length >= 8) break;
+    for (const tag of articleHtml.matchAll(/<(?:img|source)\b[^>]*>/ig)) {
+      const rawTag = tag[0];
+
+      for (const attr of [
+        "src",
+        "data-src",
+        "data-lazy-src",
+        "data-original",
+        "data-image",
+        "data-url",
+      ]) {
+        const m = rawTag.match(
+          new RegExp(`${attr}=["']([^"']+)["']`, "i"),
+        );
+        push(m?.[1]);
+      }
+
+      for (const attr of [
+        "srcset",
+        "data-srcset",
+        "data-lazy-srcset",
+      ]) {
+        const m = rawTag.match(
+          new RegExp(`${attr}=["']([^"']+)["']`, "i"),
+        );
+        pushSrcset(m?.[1]);
+      }
+
+      if (found.length >= 14) break;
     }
 
-    return found.slice(0, 6);
+    // 3) JSON-LD / embedded CDN URLs as fallback.
+    if (found.length < 6) {
+      const urlPattern =
+        /https?:\\?\/\\?\/[^"'<>\\\s]+?\.(?:jpe?g|png|webp|avif)(?:\?[^"'<>\\\s]*)?/ig;
+
+      for (const match of html.matchAll(urlPattern)) {
+        push(match[0]);
+        if (found.length >= 14) break;
+      }
+    }
+
+    // Give the ingest loop enough candidates because some hosts reject hot fetches.
+    return found.slice(0, 12);
   } catch {
     return [];
   }

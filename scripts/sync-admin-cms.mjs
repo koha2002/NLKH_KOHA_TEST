@@ -63,7 +63,7 @@ if (!URL || !KEY) {
 }
 
 try {
-  const [settingsRows, nav, social, tools, rings, cvProfiles, cvSections, software, news, pages, contentRoutes, seo, redirects] = await Promise.all([
+  const [settingsRows, nav, social, tools, rings, cvProfiles, cvSections, software, news, newsCategories, pages, contentRoutes, seo, redirects] = await Promise.all([
     rest("site_settings", "select=*&limit=1"),
     rest("navigation_items", "select=*&visible=eq.true&order=sort_order.asc"),
     rest("social_links", "select=*&visible=eq.true&order=sort_order.asc"),
@@ -72,7 +72,8 @@ try {
     rest("cv_profiles", "select=*&published=eq.true&order=updated_at.desc&limit=1"),
     rest("cv_sections", "select=*&visible=eq.true&order=sort_order.asc"),
     rest("software_items", "select=*&visible=eq.true&order=sort_order.asc"),
-    rest("news_articles", "select=*&status=eq.published&order=featured.desc,published_at.desc"),
+    rest("news_articles", "select=*&status=eq.published&order=published_at.desc,created_at.desc"),
+    rest("news_categories", "select=*&visible=eq.true&order=sort_order.asc"),
     rest("content_pages", "select=*&status=eq.published&order=published_at.desc"),
     rpc("list_content_page_routes"),
     rest("seo_entries", "select=*&order=route.asc"),
@@ -203,6 +204,7 @@ try {
 `export const adminOrbitRings = ${ts(normalizedRings)};\n`+
 `export const adminSoftwareItems = ${ts(software)};\n`+
 `export const adminNewsArticles = ${ts(news)};\n`+
+`export const adminNewsCategories = ${ts(newsCategories)};\n`+
 `export const adminContentPages = ${ts(pages)};\n`+
 `export const adminContentRoutes = ${ts(contentRoutes)};\n`+
 `export const adminSeoEntries = ${ts(seo)};\n`+
