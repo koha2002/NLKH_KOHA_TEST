@@ -30,8 +30,11 @@ const MAX_ITEMS_PER_SOURCE = 15;
 const SETTINGS_KEY = "technology-news-settings";
 const LAST_RUN_KEY = "technology-news-last-run";
 const V55_DRAFT_REPAIR_KEY = "technology-news-v55-draft-repair";
-const V55_SOURCE_PRESET_KEY = "technology-news-v57-source-preset";
+const V55_SOURCE_PRESET_KEY = "technology-news-v572-source-preset";
 const V55_SOURCE_PRESET_START_VN = "2026-08-13";
+const SOURCE_ROTATION_KEY = "technology-news-source-rotation-v572";
+const MAX_SOURCES_PER_RUN = 4;
+const MAX_ITEMS_PER_SCANNED_SOURCE = 4;
 
 const DEFAULT_SOURCES: Source[] = [
   // ==========================================================
@@ -3568,13 +3571,85 @@ async function repairExistingDraftsV55(
     remaining,
   };
 }
+async function selectSourcesForRunV572(
+  env: Env,
+  settings: Settings,
+): Promise<Source[]> {
+  const enabled =
+    settings.sources.filter(
+      (source) => source.enabled !== false,
+    );
+
+  if (
+    enabled.length <= MAX_SOURCES_PER_RUN
+  ) {
+    return enabled;
+  }
+
+  let cursor = 0;
+
+  try {
+    const saved =
+      await env.CONFIG.get(SOURCE_ROTATION_KEY);
+
+    const parsed =
+      Number(saved || "0");
+
+    if (
+      Number.isFinite(parsed) &&
+      parsed >= 0
+    ) {
+      cursor =
+        Math.floor(parsed) %
+        enabled.length;
+    }
+  } catch {
+    cursor = 0;
+  }
+
+  const selected: Source[] = [];
+
+  for (
+    let offset = 0;
+    offset < MAX_SOURCES_PER_RUN;
+    offset++
+  ) {
+    selected.push(
+      enabled[
+        (cursor + offset) %
+        enabled.length
+      ],
+    );
+  }
+
+  const nextCursor =
+    (cursor + selected.length) %
+    enabled.length;
+
+  try {
+    await env.CONFIG.put(
+      SOURCE_ROTATION_KEY,
+      String(nextCursor),
+    );
+  } catch {
+    // Rotation persistence is best-effort.
+  }
+
+  return selected;
+}
 async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
   const existingDraftRepair =
     await repairExistingDraftsV55(env, 20);
   const candidates: Array<{ item: FeedItem; score: number }> = [];
   const sourceErrors: Array<{ source: string; error: string }> = [];
 
-  for (const source of settings.sources) {
+  const sourcesForRun =
+    await selectSourcesForRunV572(
+      env,
+      settings,
+    );
+
+  for (const source of sourcesForRun) {
     if (source.enabled === false) continue;
 
     try {
@@ -3584,7 +3659,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
         throw new Error("Không tìm thấy bài phù hợp trong nguồn");
       }
 
-      for (const item of items) {
+      for (const item of items.slice(0, MAX_ITEMS_PER_SCANNED_SOURCE)) {
         const score = scoreItem(item, source.baseScore);
 
         if (score >= settings.relevanceThreshold) {
