@@ -1,8 +1,9 @@
 type Env = {
   AI: any;
+  CONFIG: any;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
-  MANUAL_RUN_TOKEN?: string;
+
 };
 
 type Source = {
@@ -21,7 +22,179 @@ type FeedItem = {
 
 const MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
 const MAX_ITEMS_PER_SOURCE = 15;
-const MAX_DRAFTS_PER_RUN = 5;
+
+const SETTINGS_KEY = "technology-news-settings";
+const LAST_RUN_KEY = "technology-news-last-run";
+
+type Settings = {
+  maxDraftsPerRun: number;
+  relevanceThreshold: number;
+  automationEnabled: boolean;
+};
+
+const DEFAULT_SETTINGS: Settings = {
+  maxDraftsPerRun: 1,
+  relevanceThreshold: 30,
+  automationEnabled: true,
+};
+
+function normalizeSettings(input: any): Settings {
+  const maxDrafts = Number(input?.maxDraftsPerRun);
+  const threshold = Number(input?.relevanceThreshold);
+
+  return {
+    maxDraftsPerRun:
+      Number.isFinite(maxDrafts)
+        ? Math.min(20, Math.max(1, Math.round(maxDrafts)))
+        : DEFAULT_SETTINGS.maxDraftsPerRun,
+    relevanceThreshold:
+      Number.isFinite(threshold)
+        ? Math.min(100, Math.max(0, Math.round(threshold)))
+        : DEFAULT_SETTINGS.relevanceThreshold,
+    automationEnabled:
+      typeof input?.automationEnabled === "boolean"
+        ? input.automationEnabled
+        : DEFAULT_SETTINGS.automationEnabled,
+  };
+}
+
+async function getSettings(env: Env): Promise<Settings> {
+  try {
+    const saved = await env.CONFIG.get(SETTINGS_KEY, { type: "json" });
+    return normalizeSettings(saved);
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+async function putSettings(env: Env, settings: Settings) {
+  await env.CONFIG.put(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+async function putLastRun(env: Env, value: any) {
+  await env.CONFIG.put(LAST_RUN_KEY, JSON.stringify(value));
+}
+
+async function getLastRun(env: Env) {
+  try {
+    return await env.CONFIG.get(LAST_RUN_KEY, { type: "json" });
+  } catch {
+    return null;
+  }
+}
+
+type AutomationIdentity = {
+  id: string;
+  email: string;
+  displayName: string;
+  permissions: string[];
+};
+
+function getCookie(request: Request, name: string) {
+  const header = request.headers.get("Cookie") || "";
+
+  for (const part of header.split(";")) {
+    const [key, ...valueParts] = part.trim().split("=");
+
+    if (key === name) {
+      return decodeURIComponent(valueParts.join("="));
+    }
+  }
+
+  return "";
+}
+
+function getAutomationToken(request: Request) {
+  const auth = request.headers.get("Authorization") || "";
+
+  if (auth.startsWith("Bearer ")) {
+    return auth.slice(7).trim();
+  }
+
+  return getCookie(request, "nlkh_automation_session");
+}
+
+async function getAutomationIdentity(
+  request: Request,
+  env: Env,
+): Promise<AutomationIdentity | null> {
+  const accessToken = getAutomationToken(request);
+
+  if (!accessToken) return null;
+
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+
+  // Xác minh access token với Supabase Auth.
+  const userResponse = await fetch(`${base}/auth/v1/user`, {
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!userResponse.ok) return null;
+
+  const user = await userResponse.json() as {
+    id?: string;
+    email?: string;
+  };
+
+  if (!user.id) return null;
+
+  // Dùng server secret để đọc profile + role.
+  const profileUrl =
+    `${base}/rest/v1/profiles` +
+    `?id=eq.${encodeURIComponent(user.id)}` +
+    `&select=id,email,display_name,status,roles(permissions)` +
+    `&limit=1`;
+
+  const profileResponse = await fetch(profileUrl, {
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!profileResponse.ok) return null;
+
+  const rows = await profileResponse.json() as any[];
+  const profile = rows[0];
+
+  if (!profile || profile.status !== "active") {
+    return null;
+  }
+
+  const relation = profile.roles;
+
+  const permissions: string[] = Array.isArray(relation)
+    ? relation[0]?.permissions ?? []
+    : relation?.permissions ?? [];
+
+  // Giữ đúng tiêu chí đang dùng để hiện menu Admin/Automation:
+  // active + có ít nhất một permission.
+  if (!permissions.length) {
+    return null;
+  }
+
+  return {
+    id: String(profile.id),
+    email: String(profile.email || user.email || ""),
+    displayName: String(
+      profile.display_name ||
+      profile.email ||
+      user.email ||
+      "",
+    ),
+    permissions,
+  };
+}
+function htmlEscape(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 // V1: chá»‰ 2 nguá»“n. ThÃªm nguá»“n sau khi cháº¡y á»•n.
 // Náº¿u má»™t feed bá»‹ cháº·n/lá»—i, nguá»“n Ä‘Ã³ bá»‹ bá» qua; cron váº«n tiáº¿p tá»¥c nguá»“n khÃ¡c.
@@ -277,7 +450,7 @@ Chá»‰ tráº£ JSON há»£p lá»‡ theo schema:
   return extractJson(safeJsonText(out));
 }
 
-async function scan(env: Env) {
+async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
   const candidates: Array<{ item: FeedItem; score: number }> = [];
   const sourceErrors: Array<{ source: string; error: string }> = [];
 
@@ -293,7 +466,7 @@ async function scan(env: Env) {
       const xml = await res.text();
       for (const item of parseFeed(xml, source.name)) {
         const score = scoreItem(item, source.baseScore);
-        if (score >= 30) candidates.push({ item, score });
+        if (score >= settings.relevanceThreshold) candidates.push({ item, score });
       }
     } catch (e: any) {
       sourceErrors.push({ source: source.name, error: String(e?.message || e) });
@@ -304,7 +477,7 @@ async function scan(env: Env) {
 
   const created: any[] = [];
   for (const candidate of candidates) {
-    if (created.length >= MAX_DRAFTS_PER_RUN) break;
+    if (created.length >= settings.maxDraftsPerRun) break;
     if (await alreadySeen(env, candidate.item.link)) continue;
 
     // Ghi seen trÆ°á»›c khi AI Ä‘á»ƒ cron sau khÃ´ng láº·p vÃ´ háº¡n náº¿u item lá»—i.
@@ -357,7 +530,7 @@ async function scan(env: Env) {
     }
   }
 
-  return {
+  const result = {
     ok: true,
     model: MODEL,
     sources: SOURCES.length,
@@ -365,18 +538,118 @@ async function scan(env: Env) {
     draftsCreated: created.length,
     created,
     sourceErrors,
+    settings,
+    finishedAt: new Date().toISOString(),
   };
+
+  await putLastRun(env, result);
+  return result;
 }
 
 export default {
   async scheduled(_event: any, env: Env, ctx: any) {
-    ctx.waitUntil(scan(env));
+    ctx.waitUntil((async () => {
+      const settings = await getSettings(env);
+
+      if (!settings.automationEnabled) {
+        await putLastRun(env, {
+          ok: true,
+          skipped: true,
+          reason: "automation-disabled",
+          settings,
+          finishedAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      await scan(env, settings);
+    })());
   },
 
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/session" && request.method === "POST") {
+      const identity = await getAutomationIdentity(request, env);
+
+      if (!identity) {
+        return Response.json(
+          { error: "Tài khoản không có quyền Automation." },
+          { status: 403 },
+        );
+      }
+
+      const auth = request.headers.get("Authorization") || "";
+
+      if (!auth.startsWith("Bearer ")) {
+        return Response.json(
+          { error: "Missing access token" },
+          { status: 401 },
+        );
+      }
+
+      const accessToken = auth.slice(7).trim();
+
+      return Response.json(
+        {
+          ok: true,
+          user: {
+            id: identity.id,
+            email: identity.email,
+            displayName: identity.displayName,
+          },
+        },
+        {
+          headers: {
+            "Set-Cookie":
+              `nlkh_automation_session=${encodeURIComponent(accessToken)}; ` +
+              "Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600",
+          },
+        },
+      );
+    }
+
+    if (url.pathname === "/me" && request.method === "GET") {
+      const identity = await getAutomationIdentity(request, env);
+
+      if (!identity) {
+        return Response.json(
+          { authenticated: false },
+          { status: 401 },
+        );
+      }
+
+      return Response.json({
+        authenticated: true,
+        user: {
+          id: identity.id,
+          email: identity.email,
+          displayName: identity.displayName,
+        },
+      });
+    }
+
+    if (url.pathname === "/logout" && request.method === "POST") {
+      return Response.json(
+        { ok: true },
+        {
+          headers: {
+            "Set-Cookie":
+              "nlkh_automation_session=; " +
+              "Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+          },
+        },
+      );
+    }
+
     if (url.pathname === "/") {
+      const settings = await getSettings(env);
+      const lastRun = await getLastRun(env);
+
+      const lastRunText = lastRun
+        ? htmlEscape(JSON.stringify(lastRun, null, 2))
+        : "No run recorded yet.";
+
       const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -387,72 +660,381 @@ export default {
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
     body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: #0b0f14;
-      color: #e8eef6;
-      font: 16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      margin:0;
+      background:#0b0f14;
+      color:#e8eef6;
+      font:15px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     }
     main {
-      width: min(680px, calc(100% - 32px));
-      border: 1px solid #263241;
-      border-radius: 18px;
-      padding: 28px;
-      background: #111821;
-      box-shadow: 0 18px 60px rgba(0,0,0,.32);
+      width:min(900px,calc(100% - 32px));
+      margin:40px auto;
     }
-    .eyebrow { color: #8fa8c2; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
-    h1 { margin: 8px 0 6px; font-size: 32px; }
-    .ok { color: #7ee787; font-weight: 700; }
-    dl {
-      display: grid;
-      grid-template-columns: 160px 1fr;
-      gap: 10px 18px;
-      margin: 24px 0;
+    .card {
+      background:#111821;
+      border:1px solid #263241;
+      border-radius:18px;
+      padding:24px;
+      margin-bottom:18px;
     }
-    dt { color: #8fa8c2; }
-    dd { margin: 0; }
-    a {
-      color: #79c0ff;
-      text-decoration: none;
+    .eyebrow {
+      color:#8fa8c2;
+      font-size:12px;
+      letter-spacing:.12em;
+      text-transform:uppercase;
     }
-    a:hover { text-decoration: underline; }
-    code {
-      background: #0b0f14;
-      border: 1px solid #263241;
-      border-radius: 7px;
-      padding: 2px 6px;
+    h1 { margin:6px 0; font-size:32px; }
+    h2 { margin:0 0 18px; font-size:20px; }
+    .ok { color:#7ee787; font-weight:700; }
+    .grid {
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:16px;
     }
-    .note {
-      margin-top: 20px;
-      padding-top: 18px;
-      border-top: 1px solid #263241;
-      color: #aebdca;
-      font-size: 14px;
+    label { display:grid; gap:7px; color:#aebdca; }
+    .help {
+      color:#8193a6;
+      font-size:13px;
+      line-height:1.45;
+    }
+    .help strong {
+      color:#aebdca;
+      font-weight:600;
+    }
+    .section-help {
+      margin:-8px 0 20px;
+      color:#8193a6;
+      font-size:14px;
+    }
+    input[type=number],
+    input[type=password] {
+      width:100%;
+      padding:11px 12px;
+      border:1px solid #34465a;
+      border-radius:9px;
+      background:#0b0f14;
+      color:#fff;
+    }
+    .toggle {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-height:43px;
+    }
+    .actions {
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:18px;
+    }
+    button {
+      padding:11px 15px;
+      border-radius:9px;
+      border:1px solid #3c5269;
+      background:#162332;
+      color:#fff;
+      cursor:pointer;
+    }
+    button.primary {
+      background:#1f6feb;
+      border-color:#1f6feb;
+    }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    pre {
+      white-space:pre-wrap;
+      overflow-wrap:anywhere;
+      background:#0b0f14;
+      border:1px solid #263241;
+      padding:14px;
+      border-radius:10px;
+      max-height:420px;
+      overflow:auto;
+    }
+    .meta {
+      display:grid;
+      grid-template-columns:170px 1fr;
+      gap:7px 14px;
+      margin-top:20px;
+    }
+    .meta span:nth-child(odd) { color:#8fa8c2; }
+    #message { margin-top:14px; color:#79c0ff; min-height:22px; }
+    .note { color:#8fa8c2; font-size:13px; }
+    a { color:#79c0ff; }
+    @media(max-width:650px) {
+      .grid { grid-template-columns:1fr; }
+      .meta { grid-template-columns:1fr; }
     }
   </style>
 </head>
 <body>
-  <main>
+<main>
+  <section class="card">
     <div class="eyebrow">NLKH / AUTOMATION</div>
     <h1>Technology News Automation</h1>
-    <p class="ok">● Online</p>
+    <div class="ok">● Online</div>
 
-    <dl>
-      <dt>Mode</dt><dd>Draft only</dd>
-      <dt>AI model</dt><dd>${MODEL}</dd>
-      <dt>Daily schedule</dt><dd>06:00 Vietnam time</dd>
-      <dt>Max drafts / run</dt><dd>${MAX_DRAFTS_PER_RUN}</dd>
-      <dt>Health endpoint</dt><dd><a href="/health">/health</a></dd>
-    </dl>
+    <div class="meta">
+      <span>Mode</span><span>Draft only</span>
+      <span>AI model</span><span>${MODEL}</span>
+      <span>Cloudflare cron</span><span>06:00 Vietnam time</span>
+      <span>Health</span><span><a href="/health">/health</a></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Automation settings</h2>
+    <p class="section-help">
+      Cấu hình cách hệ thống thu thập và tạo bản nháp tin công nghệ.
+      Tất cả bài viết chỉ được tạo ở trạng thái Draft; hệ thống không tự xuất bản.
+    </p>
+
+    <div class="grid">
+      <label>
+        Max drafts / run
+        <input id="maxDrafts" type="number" min="1" max="20"
+          value="${settings.maxDraftsPerRun}" />
+        <span class="help">
+          Số bài nháp tối đa được tạo trong <strong>mỗi lần chạy</strong>.
+          Khuyên dùng <strong>1</strong> khi kiểm tra, sau khi ổn định có thể dùng
+          <strong>3–5</strong>. Giá trị cho phép: 1–20.
+        </span>
+      </label>
+
+      <label>
+        Relevance threshold
+        <input id="threshold" type="number" min="0" max="100"
+          value="${settings.relevanceThreshold}" />
+        <span class="help">
+          Ngưỡng điểm để một tin được xem là đủ liên quan và chuyển sang AI xử lý.
+          Khuyên dùng <strong>30</strong>.
+          Điểm càng cao = lọc chặt hơn, ít tin hơn.
+          Điểm càng thấp = lấy nhiều tin hơn nhưng có thể kém liên quan.
+        </span>
+      </label>
+    </div>
+
+    <label class="toggle">
+      <input id="enabled" type="checkbox"
+        ${settings.automationEnabled ? "checked" : ""} />
+      <span>
+        Enable scheduled automation
+        <span class="help" style="display:block;margin-top:3px">
+          Bật: hệ thống tự chạy mỗi ngày lúc <strong>06:00 giờ Việt Nam</strong>.
+          Tắt: Cloudflare vẫn kích hoạt lịch nhưng Worker sẽ bỏ qua và không tạo bài.
+        </span>
+      </span>
+    </label>
+
+    <div style="margin-top:20px">
+      <strong>Quyền quản trị</strong>
+
+      <div id="authStatus" class="help" style="margin-top:6px">
+        Đang kiểm tra tài khoản...
+      </div>
+
+      <div class="actions">
+        <button id="loginAdmin">
+          Xác thực bằng tài khoản website
+        </button>
+
+        <button id="logoutAdmin">
+          Đăng xuất Automation
+        </button>
+      </div>
+
+      <p class="help">
+        Automation sử dụng cùng tài khoản và quyền Quản trị của
+        nguyenlekhanhhoa.com. Không cần mật khẩu hoặc token Automation riêng.
+      </p>
+    </div>
+    <div class="actions">
+      <button class="primary" id="save">Save settings</button>
+      <button id="run">Run now</button>
+    </div>
+
+    <div class="help" style="margin-top:10px">
+      <strong>Save settings:</strong> lưu cấu hình vào Cloudflare KV và có hiệu lực
+      cho các lần chạy tiếp theo.<br />
+      <strong>Run now:</strong> chạy crawler + AI ngay lập tức với cấu hình hiện tại.
+      Ví dụ Max drafts / run = 1 thì tối đa chỉ tạo 1 Draft.
+    </div>
+
+    <div id="message"></div>
 
     <p class="note">
-      Articles are created as drafts for manual review. Publishing is never automatic.
-      Manual execution uses the protected <code>POST /run</code> endpoint.
+      Save settings và Run now chỉ hoạt động với tài khoản đã đăng nhập,
+      trạng thái active và có quyền quản trị. Mọi bài Automation tạo ra
+      luôn ở trạng thái Draft để người quản trị kiểm tra trước khi xuất bản.
     </p>
-  </main>
+  </section>
+
+  <section class="card">
+    <h2>Last run</h2>
+    <p class="section-help">
+      Kết quả lần chạy gần nhất. Có thể kiểm tra số tin đạt điều kiện
+      (<strong>candidates</strong>), số Draft đã tạo
+      (<strong>draftsCreated</strong>), nguồn bị lỗi
+      (<strong>sourceErrors</strong>) và thời gian hoàn tất.
+    </p>
+    <pre id="lastRun">${lastRunText}</pre>
+  </section>
+</main>
+
+<script>
+(() => {
+  const WEBSITE_ORIGIN = "https://nguyenlekhanhhoa.com";
+  const $ = (id) => document.getElementById(id);
+  const message = $("message");
+
+  async function checkAuth() {
+    const response = await fetch("/me");
+    const status = $("authStatus");
+
+    if (!response.ok) {
+      status.textContent =
+        "Chưa xác thực quyền quản trị. Hãy bấm nút xác thực bên dưới.";
+      return false;
+    }
+
+    const body = await response.json();
+
+    status.textContent =
+      "Đã xác thực: " +
+      (body.user?.displayName || body.user?.email || "Admin");
+
+    return true;
+  }
+
+  async function protectedRequest(path, options = {}) {
+    const response = await fetch(path, options);
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        body.error ||
+        ("HTTP " + response.status)
+      );
+    }
+
+    return body;
+  }
+
+  $("loginAdmin").addEventListener("click", () => {
+    window.open(
+      WEBSITE_ORIGIN + "/automation-auth",
+      "nlkhAutomationAuth",
+      "width=600,height=650"
+    );
+  });
+
+  $("logoutAdmin").addEventListener("click", async () => {
+    await fetch("/logout", { method: "POST" });
+    location.reload();
+  });
+
+  window.addEventListener("message", async (event) => {
+    if (event.origin !== WEBSITE_ORIGIN) return;
+
+    if (
+      event.data?.type !== "nlkh-automation-auth" ||
+      !event.data?.accessToken
+    ) {
+      return;
+    }
+
+    const response = await fetch("/session", {
+      method: "POST",
+      headers: {
+        Authorization:
+          "Bearer " + event.data.accessToken
+      }
+    });
+
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      $("authStatus").textContent =
+        body.error ||
+        "Tài khoản không có quyền Automation.";
+      return;
+    }
+
+    $("authStatus").textContent =
+      "Đã xác thực: " +
+      (
+        body.user?.displayName ||
+        body.user?.email ||
+        "Admin"
+      );
+
+    location.reload();
+  });
+
+  $("save").addEventListener("click", async () => {
+    message.textContent = "Đang lưu cấu hình...";
+
+    try {
+      const body = await protectedRequest("/settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          maxDraftsPerRun:
+            Number($("maxDrafts").value),
+
+          relevanceThreshold:
+            Number($("threshold").value),
+
+          automationEnabled:
+            $("enabled").checked
+        })
+      });
+
+      message.textContent = "Đã lưu cấu hình.";
+
+      $("maxDrafts").value =
+        body.settings.maxDraftsPerRun;
+
+      $("threshold").value =
+        body.settings.relevanceThreshold;
+
+      $("enabled").checked =
+        body.settings.automationEnabled;
+    } catch (e) {
+      message.textContent =
+        e.message || String(e);
+    }
+  });
+
+  $("run").addEventListener("click", async () => {
+    const button = $("run");
+
+    button.disabled = true;
+    message.textContent = "Đang chạy Automation...";
+
+    try {
+      const body = await protectedRequest(
+        "/run",
+        { method: "POST" }
+      );
+
+      message.textContent =
+        "Hoàn tất. Draft đã tạo: " +
+        (body.draftsCreated ?? 0);
+
+      $("lastRun").textContent =
+        JSON.stringify(body, null, 2);
+    } catch (e) {
+      message.textContent =
+        e.message || String(e);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  void checkAuth();
+})();
+</script>
 </body>
 </html>`;
 
@@ -460,30 +1042,57 @@ export default {
         headers: {
           "content-type": "text/html; charset=UTF-8",
           "cache-control": "no-store",
+          "x-frame-options": "DENY",
         },
       });
     }
-
     if (url.pathname === "/health") {
+      const settings = await getSettings(env);
       return Response.json({
         ok: true,
         service: "technology-news",
         mode: "draft-only",
         model: MODEL,
-        maxDraftsPerRun: MAX_DRAFTS_PER_RUN,
+        ...settings,
       });
     }
 
-    if (url.pathname === "/run" && request.method === "POST") {
-      if (!env.MANUAL_RUN_TOKEN) {
-        return Response.json({ error: "Manual run disabled" }, { status: 403 });
+    if (url.pathname === "/settings" && request.method === "POST") {
+      const identity = await getAutomationIdentity(request, env);
+
+      if (!identity) {
+        return Response.json(
+          { error: "Admin access required" },
+          { status: 403 },
+        );
       }
-      const auth = request.headers.get("Authorization") || "";
-      if (auth !== `Bearer ${env.MANUAL_RUN_TOKEN}`) {
-        return Response.json({ error: "Unauthorized" }, { status: 401 });
-      }
+
       try {
-        return Response.json(await scan(env));
+        const input = await request.json();
+        const settings = normalizeSettings(input);
+        await putSettings(env, settings);
+        return Response.json({ ok: true, settings });
+      } catch (e: any) {
+        return Response.json(
+          { error: String(e?.message || e) },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (url.pathname === "/run" && request.method === "POST") {
+      const identity = await getAutomationIdentity(request, env);
+
+      if (!identity) {
+        return Response.json(
+          { error: "Admin access required" },
+          { status: 403 },
+        );
+      }
+
+      try {
+        const settings = await getSettings(env);
+        return Response.json(await scan(env, settings));
       } catch (e: any) {
         return Response.json({ error: String(e?.message || e) }, { status: 500 });
       }

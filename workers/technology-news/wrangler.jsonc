@@ -8,6 +8,12 @@
   "ai": {
     "binding": "AI"
   },
+  "kv_namespaces": [
+    {
+      "binding": "CONFIG",
+      "id": "54d6f9668dbc49aea8a43b6865ff197b"
+    }
+  ],
   "routes": [
     {
       "pattern": "automation.nguyenlekhanhhoa.com",
