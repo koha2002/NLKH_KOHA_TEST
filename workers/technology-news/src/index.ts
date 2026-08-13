@@ -30,116 +30,120 @@ const MAX_ITEMS_PER_SOURCE = 15;
 const SETTINGS_KEY = "technology-news-settings";
 const LAST_RUN_KEY = "technology-news-last-run";
 const V55_DRAFT_REPAIR_KEY = "technology-news-v55-draft-repair";
-const V55_SOURCE_PRESET_KEY = "technology-news-v55-source-preset";
-const V55_SOURCE_PRESET_START_VN = "2026-08-14";
+const V55_SOURCE_PRESET_KEY = "technology-news-v57-source-preset";
+const V55_SOURCE_PRESET_START_VN = "2026-08-13";
 
 const DEFAULT_SOURCES: Source[] = [
+  // ==========================================================
+  // TECHNOLOGY NEWS
+  // ==========================================================
   {
-    name: "Tom's Hardware",
+    name: "TECH - Tom's Hardware",
     website: "https://www.tomshardware.com",
-    feed: "https://www.tomshardware.com/feeds/all",
+    feed: "https://www.tomshardware.com/feeds.xml",
     baseScore: 10,
     type: "rss",
     enabled: true,
   },
-
   {
-    name: "All About Circuits",
+    name: "TECH - IEEE Spectrum News",
+    website: "https://spectrum.ieee.org",
+    feed: "https://spectrum.ieee.org/type/news/",
+    baseScore: 16,
+    type: "html",
+    enabled: true,
+  },
+  {
+    name: "TECH - All About Circuits Latest",
     website: "https://www.allaboutcircuits.com",
     feed: "https://www.allaboutcircuits.com/latest/",
+    baseScore: 15,
+    type: "html",
+    enabled: true,
+  },
+  {
+    name: "TECH - Electronic Design Technologies",
+    website: "https://www.electronicdesign.com",
+    feed: "https://www.electronicdesign.com/technologies",
     baseScore: 14,
     type: "html",
     enabled: true,
   },
-
   {
-    name: "Electronic Design - Latest",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22home%22%7D",
-    baseScore: 11,
-    type: "rss",
+    name: "TECH - TechCrunch Latest",
+    website: "https://techcrunch.com",
+    feed: "https://techcrunch.com/latest/",
+    baseScore: 8,
+    type: "html",
     enabled: true,
   },
 
+  // ==========================================================
+  // ELECTRICAL / POWER SYSTEMS / POWER ELECTRONICS
+  // ==========================================================
   {
-    name: "Electronic Design - Analog",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Fanalog%22%7D",
-    baseScore: 12,
-    type: "rss",
+    name: "ELECTRICAL - IEEE Spectrum Energy",
+    website: "https://spectrum.ieee.org",
+    feed: "https://spectrum.ieee.org/topic/energy/",
+    baseScore: 22,
+    type: "html",
     enabled: true,
   },
-
   {
-    name: "Electronic Design - Digital ICs",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Fdigital-ics%22%7D",
-    baseScore: 13,
-    type: "rss",
+    name: "ELECTRICAL - IEEE Spectrum Power Electronics",
+    website: "https://spectrum.ieee.org",
+    feed: "https://spectrum.ieee.org/tag/power-electronics",
+    baseScore: 24,
+    type: "html",
     enabled: true,
   },
-
   {
-    name: "Electronic Design - Embedded",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Fembedded%22%7D",
-    baseScore: 13,
-    type: "rss",
+    name: "ELECTRICAL - POWER Magazine News",
+    website: "https://www.powermag.com",
+    feed: "https://www.powermag.com/category/news/",
+    baseScore: 22,
+    type: "html",
     enabled: true,
   },
-
   {
-    name: "Electronic Design - Power",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Fpower%22%7D",
-    baseScore: 15,
-    type: "rss",
+    name: "ELECTRICAL - All About Circuits Power",
+    website: "https://www.allaboutcircuits.com",
+    feed: "https://www.allaboutcircuits.com/news/category/power/",
+    baseScore: 21,
+    type: "html",
     enabled: true,
   },
-
   {
-    name: "Electronic Design - Industrial",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Findustrial%22%7D",
-    baseScore: 14,
-    type: "rss",
+    name: "ELECTRICAL - All About Circuits Smart Grid",
+    website: "https://www.allaboutcircuits.com",
+    feed: "https://www.allaboutcircuits.com/news/category/smart-grid-energy/",
+    baseScore: 24,
+    type: "html",
     enabled: true,
   },
-
   {
-    name: "Electronic Design - Communications",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Fcommunications%22%7D",
-    baseScore: 11,
-    type: "rss",
+    name: "ELECTRICAL - Electronic Design Power",
+    website: "https://www.electronicdesign.com",
+    feed: "https://www.electronicdesign.com/technologies/power",
+    baseScore: 22,
+    type: "html",
     enabled: true,
   },
-
   {
-    name: "Electronic Design - Components",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Fcomponents%22%7D",
-    baseScore: 12,
-    type: "rss",
-    enabled: true,
-  },
-
-  {
-    name: "Electronic Design - EDA",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Feda%22%7D",
-    baseScore: 11,
-    type: "rss",
-    enabled: true,
-  },
-
-  {
-    name: "Electronic Design - Test & Measurement",
-    feed: "https://www.electronicdesign.com/__rss/website-scheduled-content.xml?input=%7B%22sectionAlias%22%3A%22technologies%2Ftest-measurement%22%7D",
-    baseScore: 12,
-    type: "rss",
+    name: "ELECTRICAL - Electronic Design Embedded",
+    website: "https://www.electronicdesign.com",
+    feed: "https://www.electronicdesign.com/technologies/embedded",
+    baseScore: 18,
+    type: "html",
     enabled: true,
   },
 ];
-
 type Settings = {
   maxDraftsPerRun: number;
   relevanceThreshold: number;
   automationEnabled: boolean;
   sources: Source[];
 };
-
 const DEFAULT_SETTINGS: Settings = {
   maxDraftsPerRun: 1,
   relevanceThreshold: 30,
@@ -1115,30 +1119,20 @@ async function maybeApplyV55SourcePreset(
       return settings;
     }
 
-    const alreadyApplied = await env.CONFIG.get(V55_SOURCE_PRESET_KEY);
+    const alreadyApplied =
+      await env.CONFIG.get(V55_SOURCE_PRESET_KEY);
+
     if (alreadyApplied) {
       return settings;
     }
 
-    const recommended = new Set([
-      "Tom's Hardware",
-      "All About Circuits",
-      "Electronic Design - Digital ICs",
-      "Electronic Design - Embedded",
-      "Electronic Design - Power",
-      "Electronic Design - EDA",
-      "Electronic Design - Test & Measurement",
-    ]);
-
+    // V5.7: apply the curated international set once.
+    // After this one-time write, the dashboard remains fully editable.
     const next: Settings = {
       ...settings,
-      sources: Array.isArray(settings.sources)
-        ? settings.sources.map((source) =>
-            recommended.has(source.name)
-              ? { ...source, enabled: true }
-              : source,
-          )
-        : settings.sources,
+      sources: DEFAULT_SOURCES.map((source) => ({
+        ...source,
+      })),
     };
 
     await env.CONFIG.put(
@@ -1151,7 +1145,12 @@ async function maybeApplyV55SourcePreset(
       JSON.stringify({
         appliedAt: new Date().toISOString(),
         startDateVietnam: V55_SOURCE_PRESET_START_VN,
-        enabledSources: [...recommended],
+        mode: "international-tech-electrical-v57",
+        sourceCount: next.sources.length,
+        enabledSources:
+          next.sources
+            .filter((source) => source.enabled !== false)
+            .map((source) => source.name),
       }),
     );
 
@@ -1729,8 +1728,37 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     body: JSON.stringify(article),
   });
 
-  const articleId = Array.isArray(created) ? created[0]?.id : null;
-return { articleId, slug, titleVi };
+  const returnedId =
+    Array.isArray(created)
+      ? created[0]?.id
+      : created?.id;
+
+  // Supabase/PostgREST response is not trusted as the final FK source.
+  // Read the row back from news_articles by source_url and use only
+  // the ID that is confirmed to exist in the database.
+  const persistedRows = await sb(
+    env,
+    `news_articles?select=id,slug,title_vi,source_url&source_url=eq.${encodeURIComponent(item.link)}&order=created_at.desc&limit=1`,
+  );
+
+  const persisted =
+    Array.isArray(persistedRows) && persistedRows[0]
+      ? persistedRows[0]
+      : null;
+
+  if (!persisted?.id) {
+    throw new Error(
+      `Draft insert chưa tồn tại trong news_articles; returnedId=${String(returnedId || "")}; source_url=${item.link}`,
+    );
+  }
+
+  const articleId = String(persisted.id);
+
+  return {
+    articleId,
+    slug: persisted.slug || slug,
+    titleVi: persisted.title_vi || titleVi,
+  };
 }
 
 
@@ -3167,18 +3195,95 @@ async function fetchSourceItems(
     );
   }
 
-  const response = await fetch(source.feed, {
-    headers: {
-      "User-Agent":
-        "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
-      Accept:
-        "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5",
-    },
-    redirect: "follow",
-  });
+  let response: Response | null = null;
+  let lastFetchError = "";
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const current = await fetch(source.feed, {
+        headers: {
+          "User-Agent":
+            "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
+          Accept:
+            "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        redirect: "follow",
+      });
+
+      response = current;
+
+      if (current.ok) {
+        break;
+      }
+
+      lastFetchError =
+        `HTTP ${current.status}`;
+
+      const transient =
+        current.status === 408 ||
+        current.status === 425 ||
+        current.status === 429 ||
+        current.status === 500 ||
+        current.status === 502 ||
+        current.status === 503 ||
+        current.status === 504;
+
+      if (!transient) {
+        break;
+      }
+    } catch (error: any) {
+      lastFetchError =
+        String(error?.message || error);
+      response = null;
+    }
+
+    if (attempt < 3) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, attempt * 700),
+      );
+    }
+  }
+
+  // RSS fetch can occasionally fail from Cloudflare with
+  // "Network connection lost". Fall back to the source website
+  // through the already-configured Browser Run instead of returning
+  // zero candidates for the whole source.
+  if (!response?.ok) {
+    if (env.BROWSER && source.website) {
+      try {
+        const fallbackSource: Source = {
+          ...source,
+          feed: source.website,
+          type: "html",
+        };
+
+        const fallbackItems =
+          await scrapeLinksWithBrowserRun(
+            env,
+            fallbackSource,
+          );
+
+        if (fallbackItems.length) {
+          return fallbackItems;
+        }
+      } catch (fallbackError: any) {
+        const detail =
+          String(
+            fallbackError?.message ||
+            fallbackError,
+          );
+
+        throw new Error(
+          `RSS lỗi (${lastFetchError || "unknown"}); Browser fallback lỗi (${detail})`,
+        );
+      }
+    }
+
+    throw new Error(
+      lastFetchError ||
+      `HTTP ${response?.status || 0}`,
+    );
   }
 
   const xml = await response.text();
@@ -4203,7 +4308,7 @@ export default {
     <div class="ok">● Online</div>
 
     <div class="meta">
-      <span>Mode</span><span>Draft only</span>
+      <span>Mode</span><span>Work</span>
       <span>AI model</span><span>${MODEL}</span>
       <span>AI quota (Automation)</span><span>${lastRun?.aiUsage ? Math.round(Number(lastRun.aiUsage.neuronsUsed || 0)).toLocaleString("vi-VN") + " / 10.000 neurons · còn ~" + Math.max(0, Math.round(10000 - Number(lastRun.aiUsage.neuronsUsed || 0))).toLocaleString("vi-VN") + " · " + Number(lastRun.aiUsage.percentUsed || 0).toFixed(1) + "%" : "Chưa có dữ liệu usage hôm nay"}</span>
       <span>AI calls / tokens</span><span>${lastRun?.aiUsage ? Number(lastRun.aiUsage.calls || 0) + " calls · " + Number(lastRun.aiUsage.inputTokens || 0).toLocaleString("vi-VN") + " input · " + Number(lastRun.aiUsage.outputTokens || 0).toLocaleString("vi-VN") + " output" : "—"}</span>
@@ -4798,7 +4903,7 @@ export default {
           '<div>' + (body.ok ? "Hoàn tất" : "Có lỗi") + '</div>' +
 
           '<div class="key">Thời gian hoàn tất</div>' +
-          '<div>' + htmlEscape(formatVietnamDateTime(body.finishedAt)) + '</div>' +
+          '<div>' + (body.finishedAt ? new Date(body.finishedAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour12: false }) : "Không có dữ liệu") + '</div>' +
 
           '<div class="key">Số nguồn đã kiểm tra</div>' +
           '<div>' + (body.sources ?? "Không có dữ liệu") + '</div>' +
@@ -4839,7 +4944,7 @@ export default {
       return Response.json({
         ok: true,
         service: "technology-news",
-        mode: "draft-only",
+        mode: "work",
         model: MODEL,
         ...settings,
       });
