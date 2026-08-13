@@ -38,7 +38,7 @@ export default function CvPage() {
   useEffect(() => {
     fetch("/content/cv/profile.json",{cache:"no-store"})
       .then((response) => response.json())
-      .then((data)=>setProfile(data))
+      .then((data)=>setProfile(data as Profile))
       .catch(() => setProfile(null))
       .finally(()=>setLoaded(true));
   }, []);

@@ -11,7 +11,7 @@ export function NewsIndex() {
   const vi = language === "vi";
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { fetch("/api/public/news", { cache:"no-store" }).then((response) => response.json()).then((payload) => setArticles(payload.articles ?? [])).finally(() => setLoading(false)); }, []);
+  useEffect(() => { fetch("/api/public/news", { cache:"no-store" }).then((response) => response.json() as Promise<{ articles?: Article[] }>).then((payload) => setArticles(payload.articles ?? [])).finally(() => setLoading(false)); }, []);
   return <>
     <section className={styles.hero}><div className="container"><p>NEWS / JOURNAL</p><h1>{vi ? "Tin tức, ghi chép và kiến thức." : "News, notes and knowledge."}</h1><span>{vi ? "Bài viết được biên tập, ghi nguồn và quản lý tập trung từ trang Admin." : "Edited, sourced and managed centrally from the Admin panel."}</span></div></section>
     <section className={`container ${styles.list}`}>

@@ -53,7 +53,7 @@ export function AdminResourcePanel({ config, filter }: { config: ResourcePageCon
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/admin/${config.resource}`, { cache: "no-store" });
-    const body = await response.json();
+    const body = await response.json() as { error?: string; data?: Row[] };
     if (!response.ok) { setMessage(body.error || "Không thể tải dữ liệu."); return; }
     setRows(body.data || []);
     const first = (body.data || []).find((row: Row) => !filter || filter(row));
@@ -70,7 +70,7 @@ export function AdminResourcePanel({ config, filter }: { config: ResourcePageCon
     try {
       const payload = payloadFrom(form, config.fields);
       const response = await fetch(selected?.id ? `/api/admin/${config.resource}/${selected.id}` : `/api/admin/${config.resource}`, { method: selected?.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const body = await response.json();
+      const body = await response.json() as { error?: string; data?: Row };
       if (!response.ok) throw new Error(body.error || "Không thể lưu.");
       setMessage("Đã lưu thay đổi."); await load(); if (body.data) edit(body.data);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Không thể lưu."); }
@@ -80,7 +80,7 @@ export function AdminResourcePanel({ config, filter }: { config: ResourcePageCon
   async function remove(row: Row) {
     if (!row.id || !confirm(`Xóa “${summary(row, config.fields)}”?`)) return;
     const response = await fetch(`/api/admin/${config.resource}/${row.id}`, { method: "DELETE" });
-    const body = await response.json();
+    const body = await response.json() as { error?: string; data?: Row[] };
     if (!response.ok) { setMessage(body.error || "Không thể xóa."); return; }
     if (selected?.id === row.id) createNew(); await load();
   }
@@ -111,7 +111,7 @@ function ReferenceField({ field, value, onChange }: { field: AdminField; value: 
   const [options, setOptions] = useState<Row[]>([]);
   useEffect(() => {
     let alive = true;
-    fetch(`/api/admin/${reference.resource}`, { cache: "no-store" }).then((response) => response.json()).then((body) => { if (alive) setOptions(body.data ?? []); }).catch(() => undefined);
+    fetch(`/api/admin/${reference.resource}`, { cache: "no-store" }).then((response) => response.json() as Promise<{ data?: Row[] }>).then((body) => { if (alive) setOptions(body.data ?? []); }).catch(() => undefined);
     return () => { alive = false; };
   }, [reference.resource]);
   const label = (row: Row) => reference.labelKeys.map((key) => row[key]).find(Boolean) || row.id;

@@ -16,7 +16,7 @@ export function encryptIntegrationSecret(value: string) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
   const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return [VERSION, iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), ciphertext.toString("base64url")].join(".");
+  return [VERSION, Buffer.from(iv).toString("base64url"), Buffer.from(cipher.getAuthTag()).toString("base64url"), ciphertext.toString("base64url")].join(".");
 }
 
 /** Giải mã khóa API tại server ngay trước khi gọi dịch vụ bên ngoài. */

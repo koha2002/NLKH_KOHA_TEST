@@ -13,7 +13,7 @@ export function usePublicTools() {
   const [state, setState] = useState<{ tools: PublicTool[] | null; rings: PublicRing[] | null }>({ tools: null, rings: null });
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/public/tools", { signal: controller.signal, cache: "no-store" }).then((response) => response.ok ? response.json() : Promise.reject()).then((data) => setState({ tools: data.tools || [], rings: data.rings || [] })).catch(() => undefined);
+    fetch("/api/public/tools", { signal: controller.signal, cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<{ tools?: PublicTool[]; rings?: PublicRing[] }> : Promise.reject()).then((data) => setState({ tools: data.tools || [], rings: data.rings || [] })).catch(() => undefined);
     return () => controller.abort();
   }, []);
   return state;

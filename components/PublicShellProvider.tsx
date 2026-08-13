@@ -30,7 +30,7 @@ export function PublicShellProvider({ children }: { children: React.ReactNode })
   const [value, setValue] = useState(fallback);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/public/shell", { signal: controller.signal, cache: "no-store" }).then((response) => response.ok ? response.json() : Promise.reject()).then((data) => setValue({ ...fallback, ...data })).catch(() => undefined);
+    fetch("/api/public/shell", { signal: controller.signal, cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<Partial<ShellState>> : Promise.reject()).then((data) => setValue({ ...fallback, ...data })).catch(() => undefined);
     return () => controller.abort();
   }, []);
   const stable = useMemo(() => value, [value]);

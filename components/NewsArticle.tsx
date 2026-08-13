@@ -13,7 +13,7 @@ export function NewsArticle({ slug }: { slug: string }) {
   const vi = language === "vi";
   const [article, setArticle] = useState<Article | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { fetch(`/api/public/news?slug=${encodeURIComponent(slug)}`, { cache:"no-store" }).then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error); setArticle(payload.article); }).catch((reason) => setError(reason.message || "Không thể tải bài viết.")); }, [slug]);
+  useEffect(() => { fetch(`/api/public/news?slug=${encodeURIComponent(slug)}`, { cache:"no-store" }).then(async (response) => { const payload = await response.json() as { error?: string; article?: Article }; if (!response.ok) throw new Error(payload.error); setArticle(payload.article ?? null); }).catch((reason) => setError(reason.message || "Không thể tải bài viết.")); }, [slug]);
   if (error) return <main className={`container ${styles.articleState}`}><h1>{error}</h1><Link href="/news">← {vi ? "Về Tin tức" : "Back to News"}</Link></main>;
   if (!article) return <main className={`container ${styles.articleState}`}>{vi ? "Đang tải bài viết…" : "Loading article…"}</main>;
   return <main className={styles.article}>

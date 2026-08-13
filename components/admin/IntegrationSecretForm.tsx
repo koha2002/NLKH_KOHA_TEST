@@ -8,11 +8,11 @@ export function IntegrationSecretForm() {
   const [id, setId] = useState("");
   const [secret, setSecret] = useState("");
   const [message, setMessage] = useState("");
-  useEffect(() => { fetch("/api/admin/integrations", { cache:"no-store" }).then((response) => response.json()).then((body) => setIntegrations(body.data ?? [])).catch(() => undefined); }, []);
+  useEffect(() => { fetch("/api/admin/integrations", { cache:"no-store" }).then((response) => response.json() as Promise<{ data?: { id: string; name: string; slug: string }[] }>).then((body) => setIntegrations(body.data ?? [])).catch(() => undefined); }, []);
   async function submit(event: FormEvent) {
     event.preventDefault(); setMessage("Đang lưu…");
     const response = await fetch(`/api/admin/integrations/${encodeURIComponent(id)}/secret`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret }) });
-    const body = await response.json();
+    const body = await response.json() as { error?: string };
     if (!response.ok) return setMessage(body.error || "Không thể lưu khóa.");
     setSecret(""); setMessage("Đã mã hóa khóa trong Supabase Vault. Khóa không được gửi lại trình duyệt.");
   }
