@@ -56,6 +56,14 @@ function decodeMeta(v){
  }catch{return{}}
 }
 
+function decodeB64uBytes(v=""){
+ const p=String(v||"").replace(/-/g,"+").replace(/_/g,"/");
+ const raw=atob(p+"=".repeat((4-p.length%4)%4));
+ const b=new Uint8Array(raw.length);
+ for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);
+ return b;
+}
+
 const RESTORE_GUIDE=`NLKH FULL DISASTER BACKUP V3
 
 VALID BACKUP
@@ -252,7 +260,7 @@ export default function Backup({access}){
   if(x?.error)throw new Error(x.error);
   return x;
  }
- const R2_CHUNK_BYTES=2*1024*1024;
+ const R2_CHUNK_BYTES=512*1024;
  function r2ChunkStream(bucket,key,size,onFirstMeta,onProgress){
   let offset=0;
   let closed=false;
@@ -266,22 +274,26 @@ export default function Backup({access}){
     }
     try{
      const wanted=Math.min(R2_CHUNK_BYTES,size-offset);
-     const res=await edgeFetch({
-      op:"r2-file",bucket,key,start:offset,length:wanted
+     const pack=await invoke("manual-backup",{
+      action:"r2-chunk",
+      bucket,key,
+      start:offset,
+      length:wanted
      });
-     const buffer=new Uint8Array(await res.arrayBuffer());
+     if(pack?.error)throw new Error(pack.error);
+     const buffer=decodeB64uBytes(pack?.bytes_b64||"");
      if(buffer.byteLength<=0){
       throw new Error(`R2 chunk rỗng tại byte ${offset}: ${bucket}/${key}`);
      }
      if(offset===0){
       onFirstMeta?.({
-       content_type:res.headers.get("Content-Type"),
-       etag:res.headers.get("ETag"),
-       last_modified:res.headers.get("Last-Modified"),
-       cache_control:res.headers.get("Cache-Control"),
-       content_disposition:res.headers.get("Content-Disposition"),
-       content_language:res.headers.get("Content-Language"),
-       proxy_meta:decodeMeta(res.headers.get("X-NLKH-Object-Meta"))
+       content_type:pack?.meta?.content_type||null,
+       etag:pack?.meta?.etag||null,
+       last_modified:pack?.meta?.last_modified||null,
+       cache_control:pack?.meta?.cache_control||null,
+       content_disposition:pack?.meta?.content_disposition||null,
+       content_language:pack?.meta?.content_language||null,
+       proxy_meta:pack?.meta||{}
       });
      }
      controller.enqueue(buffer);
@@ -349,7 +361,7 @@ export default function Backup({access}){
    });
 
    const rootManifest={
-    format:"NLKH_FULL_DISASTER_BACKUP_V4_2",
+    format:"NLKH_FULL_DISASTER_BACKUP_V4_3",
     started_at:startedAt,
     preflight:inv,
     complete_marker:"BACKUP_COMPLETE.json",
@@ -556,7 +568,7 @@ export default function Backup({access}){
 
    const complete={
     ok:true,
-    format:"NLKH_FULL_DISASTER_BACKUP_V4_2",
+    format:"NLKH_FULL_DISASTER_BACKUP_V4_3",
     started_at:startedAt,
     completed_at:new Date().toISOString(),
     database_tables:tables.length,
@@ -581,7 +593,7 @@ export default function Backup({access}){
    setMessage(
     `Backup FULL hoàn tất: ${dbRows} dòng DB · ${authSeen} users · ${storageSeen} Storage · ${r2Seen} R2 · ${kvKeys} KV. Hãy mở ZIP và kiểm tra BACKUP_COMPLETE.json.`
    );
-   notify("FULL backup V4.2 đã hoàn tất.","success",8000);
+   notify("FULL backup V4.3 đã hoàn tất.","success",8000);
   }catch(e){
    try{await zip?.close?.({preventClose:true})}catch{}
    try{await writable?.abort?.()}catch{}
@@ -604,7 +616,7 @@ export default function Backup({access}){
   <section className="adminSection">
    <div className="sectionTitle">
     <div>
-     <h1>Backup FULL thủ công V4.2</h1>
+     <h1>Backup FULL thủ công V4.3</h1>
      <p className="sectionDescription">
       Một nút tạo ZIP64 và ghi trực tiếp xuống ổ đĩa. Metadata đi qua request Admin đã xác thực;
       file R2/Storage đi qua luồng GET có ticket ngắn hạn và CORS riêng.

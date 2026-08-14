@@ -238,7 +238,7 @@ async function inventory(admin:any){
   return{
     ok:true,
     ready:true,
-    format:"NLKH_MANUAL_FULL_BACKUP_V4_2",
+    format:"NLKH_MANUAL_FULL_BACKUP_V4_3",
     checked_at:new Date().toISOString(),
     database:{
       tables,
@@ -410,6 +410,52 @@ async function getR2File(u:URL,req:Request){
   return new Response(bytes,{status:200,headers:h});
 }
 
+async function getR2ChunkJson(body:any){
+  const bucket=String(body?.bucket||"");
+  const key=String(body?.key||"");
+  if(!bucket||!key)throw new Error("Missing R2 bucket/object key.");
+
+  const start=Math.max(0,Math.floor(Number(body?.start||0)));
+  const requested=Math.max(1,Math.floor(Number(body?.length||524288)));
+  const length=Math.min(1024*1024,requested);
+  const end=start+length-1;
+
+  const{s3}=r2Config();
+  const allowed=await accessibleR2Buckets();
+  if(!allowed.names.includes(bucket))throw new Error("R2 bucket is not accessible.");
+
+  // NLKH_BACKUP_V43_R2_POST_CHUNKS:
+  // Browser -> Supabase uses the same authenticated POST invoke path that already
+  // works for schema/database/auth. No cross-origin binary GET is required.
+  const obj=await s3.send(new GetObjectCommand({
+    Bucket:bucket,
+    Key:key,
+    Range:`bytes=${start}-${end}`
+  }));
+  if(!obj.Body)throw new Error(`R2 object has no body: ${key}`);
+
+  const bytes=await bodyToBytes(obj.Body);
+  return{
+    ok:true,
+    bytes_b64:b64u(bytes),
+    byte_length:bytes.byteLength,
+    meta:{
+      provider:"cloudflare-r2",
+      bucket,key,
+      content_type:obj.ContentType||null,
+      cache_control:obj.CacheControl||null,
+      content_disposition:obj.ContentDisposition||null,
+      content_encoding:obj.ContentEncoding||null,
+      content_language:obj.ContentLanguage||null,
+      expires:obj.Expires?obj.Expires.toISOString():null,
+      metadata:obj.Metadata||{},
+      etag:obj.ETag||null,
+      last_modified:obj.LastModified?obj.LastModified.toISOString():null,
+      content_range:obj.ContentRange||null
+    }
+  };
+}
+
 Deno.serve(async req=>{
   const u=new URL(req.url);
 
@@ -480,6 +526,10 @@ Deno.serve(async req=>{
     const body=await req.json().catch(()=>({}));
     const action=String(body?.action||"inventory");
     const admin=adminClient();
+
+    if(action==="r2-chunk"){
+      return json(req,await getR2ChunkJson(body));
+    }
 
     if(action==="json-op"){
       const op=String(body?.op||"");
