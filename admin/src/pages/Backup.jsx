@@ -303,7 +303,7 @@ export default function Backup({access}){
    });
 
    const rootManifest={
-    format:"NLKH_FULL_DISASTER_BACKUP_V4",
+    format:"NLKH_FULL_DISASTER_BACKUP_V4_1",
     started_at:startedAt,
     preflight:inv,
     complete_marker:"BACKUP_COMPLETE.json",
@@ -503,7 +503,7 @@ export default function Backup({access}){
 
    const complete={
     ok:true,
-    format:"NLKH_FULL_DISASTER_BACKUP_V4",
+    format:"NLKH_FULL_DISASTER_BACKUP_V4_1",
     started_at:startedAt,
     completed_at:new Date().toISOString(),
     database_tables:tables.length,
@@ -528,7 +528,7 @@ export default function Backup({access}){
    setMessage(
     `Backup FULL hoàn tất: ${dbRows} dòng DB · ${authSeen} users · ${storageSeen} Storage · ${r2Seen} R2 · ${kvKeys} KV. Hãy mở ZIP và kiểm tra BACKUP_COMPLETE.json.`
    );
-   notify("FULL backup V4 đã hoàn tất.","success",8000);
+   notify("FULL backup V4.1 đã hoàn tất.","success",8000);
   }catch(e){
    try{await zip?.close?.({preventClose:true})}catch{}
    try{await writable?.abort?.()}catch{}
@@ -551,7 +551,7 @@ export default function Backup({access}){
   <section className="adminSection">
    <div className="sectionTitle">
     <div>
-     <h1>Backup FULL thủ công V4</h1>
+     <h1>Backup FULL thủ công V4.1</h1>
      <p className="sectionDescription">
       Một nút tạo ZIP64 và ghi trực tiếp xuống ổ đĩa. Metadata đi qua request Admin đã xác thực;
       file R2/Storage đi qua luồng GET có ticket ngắn hạn và CORS riêng.

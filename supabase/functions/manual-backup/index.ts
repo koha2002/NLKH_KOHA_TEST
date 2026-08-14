@@ -238,7 +238,7 @@ async function inventory(admin:any){
   return{
     ok:true,
     ready:true,
-    format:"NLKH_MANUAL_FULL_BACKUP_V4",
+    format:"NLKH_MANUAL_FULL_BACKUP_V4_1",
     checked_at:new Date().toISOString(),
     database:{
       tables,
