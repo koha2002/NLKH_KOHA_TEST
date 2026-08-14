@@ -2014,163 +2014,410 @@ type SourceImageCandidate = {
 };
 
 async function findSourceImageCandidates(
+  env: Env,
   item: FeedItem,
 ): Promise<SourceImageCandidate[]> {
-  try {
-    const response = await fetch(item.link, {
-      headers: {
-        "User-Agent": "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
-        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
-      },
-      redirect: "follow",
-    });
-    if (!response.ok) return [];
+  // NLKH_V579_IMAGE_DIVERSITY
+  const found: SourceImageCandidate[] = [];
+  const normalized = new Set<string>();
 
-    const html = await response.text();
-    const baseUrl = response.url || item.link;
-    const found: SourceImageCandidate[] = [];
-    const normalized = new Set<string>();
+  const decode = (raw: string) =>
+    String(raw || "")
+      .replace(/\\u002F/gi, "/")
+      .replace(/\\\//g, "/")
+      .replace(/&amp;/g, "&")
+      .replace(/&#x2F;/gi, "/")
+      .replace(/&#47;/g, "/")
+      .trim();
 
-    const decode = (raw: string) =>
-      raw
-        .replace(/\\u002F/gi, "/")
-        .replace(/\\\//g, "/")
-        .replace(/&amp;/g, "&")
-        .replace(/&#x2F;/gi, "/")
-        .replace(/&#47;/g, "/")
-        .trim();
+  const cleanHint = (raw: string) =>
+    String(raw || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 320);
 
-    const cleanHint = (raw: string) =>
-      String(raw || "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 320);
+  const push = (
+    raw: string | undefined,
+    hint: string,
+    baseUrl: string,
+  ) => {
+    if (!raw) return;
 
-    const push = (
-      raw: string | undefined,
-      hint = "",
-    ) => {
-      if (!raw) return;
-      try {
-        const decoded = decode(raw);
-        if (!decoded || /^data:/i.test(decoded)) return;
+    try {
+      const decoded = decode(raw);
+      if (!decoded || /^data:/i.test(decoded)) return;
 
-        const url = new URL(decoded, baseUrl);
-        if (!["http:", "https:"].includes(url.protocol)) return;
+      const url = new URL(decoded, baseUrl);
+      if (!["http:", "https:"].includes(url.protocol)) return;
 
-        const text = url.toString();
-        if (
-          /logo|icon|avatar|badge|sprite|emoji|tracking|pixel|author|profile|newsletter|advert|adsystem/i.test(
-            text,
+      const text = url.toString();
+
+      if (
+        /logo|icon|avatar|badge|sprite|emoji|tracking|pixel|author|profile|newsletter|advert|adsystem|favicon/i.test(
+          text,
+        )
+      ) return;
+
+      if (
+        /\.(?:svg|gif)(?:$|\?)/i.test(text)
+      ) return;
+
+      // Ignore crop/resize query differences for diversity/dedupe.
+      const pathKey =
+        `${url.origin}${url.pathname}`
+          .replace(
+            /[-_]\d{2,4}x\d{2,4}(?=\.[a-z0-9]+$)/i,
+            "",
           )
-        ) return;
+          .replace(
+            /\/(?:resize|width|height)\/\d+/ig,
+            "",
+          )
+          .toLowerCase();
 
-        const pathKey =
-          `${url.origin}${url.pathname}`
-            .replace(/[-_]\d{2,4}x\d{2,4}(?=\.[a-z0-9]+$)/i, "")
-            .replace(/\/(?:resize|width|height)\/\d+/ig, "")
-            .toLowerCase();
+      if (normalized.has(pathKey)) return;
+      normalized.add(pathKey);
 
-        if (normalized.has(pathKey)) return;
-        normalized.add(pathKey);
+      found.push({
+        url: text,
+        hint: cleanHint(hint),
+      });
+    } catch {}
+  };
 
-        found.push({
-          url: text,
-          hint: cleanHint(hint),
-        });
-      } catch {}
-    };
+  const pushSrcset = (
+    raw: string | undefined,
+    hint: string,
+    baseUrl: string,
+  ) => {
+    if (!raw) return;
 
-    const pushSrcset = (
-      raw: string | undefined,
-      hint = "",
-    ) => {
-      if (!raw) return;
-      const candidates =
-        decode(raw)
-          .split(",")
-          .map((part) => {
-            const bits=part.trim().split(/\s+/);
-            const descriptor=bits[1]||"";
-            const numeric=parseInt(descriptor,10)||0;
-            return {url:bits[0]||"",numeric};
-          })
-          .filter((x)=>x.url)
-          .sort((a,b)=>b.numeric-a.numeric);
+    const candidates =
+      decode(raw)
+        .split(",")
+        .map((part) => {
+          const bits =
+            part
+              .trim()
+              .split(/\s+/);
 
-      if(candidates[0])push(candidates[0].url,hint);
-    };
+          const descriptor =
+            bits[1] || "";
 
-    // Social/hero image comes first.
+          const numeric =
+            parseInt(
+              descriptor,
+              10,
+            ) || 0;
+
+          return {
+            url:
+              bits[0] || "",
+            numeric,
+          };
+        })
+        .filter((x) => x.url)
+        .sort(
+          (a,b) =>
+            b.numeric -
+            a.numeric,
+        );
+
+    if (candidates[0]) {
+      push(
+        candidates[0].url,
+        hint,
+        baseUrl,
+      );
+    }
+  };
+
+  const extract = (
+    html: string,
+    baseUrl: string,
+  ) => {
+    if (!html) return;
+
+    // Cover/social image stays first.
     const metaPatterns = [
       /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
       /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/ig,
       /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
       /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/ig,
     ];
+
     for (const pattern of metaPatterns) {
       for (const match of html.matchAll(pattern)) {
-        push(match[1], item.title);
+        push(
+          match[1],
+          item.title,
+          baseUrl,
+        );
       }
     }
 
     const articleHtml =
-      html.match(/<article\b[\s\S]*?<\/article>/i)?.[0] ||
-      html.match(/<main\b[\s\S]*?<\/main>/i)?.[0] ||
+      html.match(
+        /<article\b[\s\S]*?<\/article>/i,
+      )?.[0] ||
+      html.match(
+        /<main\b[\s\S]*?<\/main>/i,
+      )?.[0] ||
       html;
 
-    // Figure blocks preserve semantic caption context.
-    for (const figure of articleHtml.matchAll(/<figure\b[\s\S]*?<\/figure>/ig)) {
-      const block=figure[0];
-      const img=block.match(/<img\b[^>]*>/i)?.[0]||"";
-      if(!img)continue;
+    // Semantic figure blocks first because captions improve placement.
+    for (
+      const figure of
+      articleHtml.matchAll(
+        /<figure\b[\s\S]*?<\/figure>/ig,
+      )
+    ) {
+      const block =
+        figure[0];
 
-      const alt=img.match(/\balt=["']([^"']*)["']/i)?.[1]||"";
-      const title=img.match(/\btitle=["']([^"']*)["']/i)?.[1]||"";
-      const caption=block.match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i)?.[1]||"";
-      const hint=[alt,title,caption].filter(Boolean).join(" | ");
+      const img =
+        block.match(
+          /<img\b[^>]*>/i,
+        )?.[0] || "";
 
-      const srcset=
-        img.match(/\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i)?.[1];
-      if(srcset)pushSrcset(srcset,hint);
-      else{
-        const src=
-          img.match(/\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url)=["']([^"']+)["']/i)?.[1];
-        push(src,hint);
+      if (!img) continue;
+
+      const alt =
+        img.match(
+          /\balt=["']([^"']*)["']/i,
+        )?.[1] || "";
+
+      const title =
+        img.match(
+          /\btitle=["']([^"']*)["']/i,
+        )?.[1] || "";
+
+      const caption =
+        block.match(
+          /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i,
+        )?.[1] || "";
+
+      const hint =
+        [alt,title,caption]
+          .filter(Boolean)
+          .join(" | ");
+
+      const srcset =
+        img.match(
+          /\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i,
+        )?.[1];
+
+      if (srcset) {
+        pushSrcset(
+          srcset,
+          hint,
+          baseUrl,
+        );
+      } else {
+        const src =
+          img.match(
+            /\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url)=["']([^"']+)["']/i,
+          )?.[1];
+
+        push(
+          src,
+          hint,
+          baseUrl,
+        );
       }
 
-      if(found.length>=14)break;
+      if (found.length >= 18) break;
     }
 
-    // Remaining img tags.
-    if(found.length<10){
-      for (const tag of articleHtml.matchAll(/<img\b[^>]*>/ig)) {
-        const rawTag=tag[0];
-        const alt=rawTag.match(/\balt=["']([^"']*)["']/i)?.[1]||"";
-        const title=rawTag.match(/\btitle=["']([^"']*)["']/i)?.[1]||"";
-        const hint=[alt,title].filter(Boolean).join(" | ");
+    // picture/source tags often contain the real high-res source.
+    if (found.length < 16) {
+      for (
+        const tag of
+        articleHtml.matchAll(
+          /<source\b[^>]*>/ig,
+        )
+      ) {
+        const rawTag =
+          tag[0];
 
-        const srcset=
-          rawTag.match(/\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i)?.[1];
-        if(srcset)pushSrcset(srcset,hint);
-        else{
-          const src=
-            rawTag.match(/\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url)=["']([^"']+)["']/i)?.[1];
-          push(src,hint);
+        const srcset =
+          rawTag.match(
+            /\b(?:srcset|data-srcset)=["']([^"']+)["']/i,
+          )?.[1];
+
+        pushSrcset(
+          srcset,
+          "",
+          baseUrl,
+        );
+
+        if (found.length >= 18) break;
+      }
+    }
+
+    // Remaining image tags, including common lazy-load attributes.
+    if (found.length < 16) {
+      for (
+        const tag of
+        articleHtml.matchAll(
+          /<img\b[^>]*>/ig,
+        )
+      ) {
+        const rawTag =
+          tag[0];
+
+        const alt =
+          rawTag.match(
+            /\balt=["']([^"']*)["']/i,
+          )?.[1] || "";
+
+        const title =
+          rawTag.match(
+            /\btitle=["']([^"']*)["']/i,
+          )?.[1] || "";
+
+        const hint =
+          [alt,title]
+            .filter(Boolean)
+            .join(" | ");
+
+        const srcset =
+          rawTag.match(
+            /\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i,
+          )?.[1];
+
+        if (srcset) {
+          pushSrcset(
+            srcset,
+            hint,
+            baseUrl,
+          );
+        } else {
+          const src =
+            rawTag.match(
+              /\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url|data-flickity-lazyload)=["']([^"']+)["']/i,
+            )?.[1];
+
+          push(
+            src,
+            hint,
+            baseUrl,
+          );
         }
-        if(found.length>=14)break;
+
+        if (found.length >= 18) break;
       }
     }
 
-    return found.slice(0,12);
-  } catch {
-    return [];
-  }
-}
+    // JSON-LD / hydrated application state can carry images not present as img src.
+    if (found.length < 16) {
+      for (
+        const match of
+        html.matchAll(
+          /"(?:image|contentUrl|thumbnailUrl)"\s*:\s*"([^"]+)"/ig,
+        )
+      ) {
+        push(
+          match[1],
+          item.title,
+          baseUrl,
+        );
 
+        if (found.length >= 18) break;
+      }
+    }
+  };
+
+  let directBase =
+    item.link;
+
+  try {
+    const response =
+      await fetch(
+        item.link,
+        {
+          headers: {
+            "User-Agent":
+              "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
+            Accept:
+              "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+          },
+          redirect:
+            "follow",
+        },
+      );
+
+    if (response.ok) {
+      directBase =
+        response.url ||
+        item.link;
+
+      const html =
+        await response.text();
+
+      extract(
+        html,
+        directBase,
+      );
+    }
+  } catch {
+    // Browser fallback below.
+  }
+
+  // Static HTML often exposes only og:image while the real body images
+  // are lazy-rendered. Ask Browser Run for rendered content when needed.
+  if (
+    found.length < 6 &&
+    env.BROWSER
+  ) {
+    try {
+      const rendered =
+        await browserQuickActionWithRetry(
+          env,
+          "content",
+          {
+            url:
+              item.link,
+          },
+        );
+
+      let renderedHtml =
+        "";
+
+      if (
+        typeof rendered ===
+        "string"
+      ) {
+        renderedHtml =
+          rendered;
+      } else if (
+        typeof rendered?.content ===
+        "string"
+      ) {
+        renderedHtml =
+          rendered.content;
+      } else if (
+        typeof rendered?.result ===
+        "string"
+      ) {
+        renderedHtml =
+          rendered.result;
+      }
+
+      extract(
+        renderedHtml,
+        directBase,
+      );
+    } catch {
+      // Do not fail the article because image discovery failed.
+    }
+  }
+
+  return found.slice(0, 16);
+}
 async function ingestNewsMedia(
   env: Env,
   articleId: string,
@@ -2210,42 +2457,336 @@ type PlacedNewsImage = {
   mediaId: string;
 };
 
+function inlineImageTarget(
+  markdown: string,
+  available: number,
+): number {
+  const length =
+    String(
+      markdown || "",
+    ).length;
+
+  const wanted =
+    length >= 5200
+      ? 4
+      : length >= 2800
+        ? 3
+        : length >= 1200
+          ? 2
+          : 1;
+
+  return Math.min(
+    available,
+    wanted,
+  );
+}
+
+function safeImageCaption(
+  image: PlacedNewsImage,
+  language: "vi" | "en",
+  index: number,
+): string {
+  const hint =
+    String(
+      image.hint || "",
+    )
+      .replace(
+        /[\[\]\r\n]+/g,
+        " ",
+      )
+      .replace(
+        /\s+/g,
+        " ",
+      )
+      .trim()
+      .slice(
+        0,
+        150,
+      );
+
+  if (
+    language === "en" &&
+    hint.length >= 8
+  ) {
+    return hint;
+  }
+
+  return language === "vi"
+    ? `Ảnh minh họa từ nguồn bài viết ${index + 1}`
+    : `Source article illustration ${index + 1}`;
+}
+
+function ensureInlineImageCoverage(
+  markdown: string,
+  images: PlacedNewsImage[],
+  language: "vi" | "en",
+): string {
+  const original =
+    String(
+      markdown || "",
+    ).trim();
+
+  if (
+    !original ||
+    !images.length
+  ) {
+    return original;
+  }
+
+  const usable =
+    images.slice(
+      0,
+      5,
+    );
+
+  const target =
+    inlineImageTarget(
+      original,
+      usable.length,
+    );
+
+  if (
+    target <= 0
+  ) {
+    return original;
+  }
+
+  const existingUrls =
+    new Set<string>();
+
+  for (
+    const match of
+    original.matchAll(
+      /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g,
+    )
+  ) {
+    existingUrls.add(
+      match[1],
+    );
+  }
+
+  let already =
+    existingUrls.size;
+
+  if (
+    already >=
+    target
+  ) {
+    return original;
+  }
+
+  const missing =
+    usable.filter(
+      (image) =>
+        !existingUrls.has(
+          image.url,
+        ),
+    );
+
+  const need =
+    Math.min(
+      target -
+        already,
+      missing.length,
+    );
+
+  if (
+    need <= 0
+  ) {
+    return original;
+  }
+
+  const blocks =
+    original.split(
+      /\n{2,}/,
+    );
+
+  const eligible: number[] =
+    [];
+
+  for (
+    let i = 0;
+    i < blocks.length;
+    i++
+  ) {
+    const block =
+      blocks[i].trim();
+
+    if (
+      block.length < 90
+    ) continue;
+
+    if (
+      /^#{1,6}\s/.test(
+        block,
+      ) ||
+      /^!\[/.test(
+        block,
+      ) ||
+      /^```/.test(
+        block,
+      ) ||
+      /^\|/.test(
+        block,
+      )
+    ) {
+      continue;
+    }
+
+    eligible.push(i);
+  }
+
+  const placements =
+    new Map<
+      number,
+      string[]
+    >();
+
+  for (
+    let i = 0;
+    i < need;
+    i++
+  ) {
+    const image =
+      missing[i];
+
+    const caption =
+      safeImageCaption(
+        image,
+        language,
+        i,
+      );
+
+    const markdownImage =
+      `![${caption}](${image.url})`;
+
+    let blockIndex =
+      blocks.length - 1;
+
+    if (
+      eligible.length
+    ) {
+      const slot =
+        Math.min(
+          eligible.length - 1,
+          Math.max(
+            0,
+            Math.floor(
+              ((i + 1) *
+                eligible.length) /
+              (need + 1),
+            ),
+          ),
+        );
+
+      blockIndex =
+        eligible[slot];
+    }
+
+    const list =
+      placements.get(
+        blockIndex,
+      ) || [];
+
+    list.push(
+      markdownImage,
+    );
+
+    placements.set(
+      blockIndex,
+      list,
+    );
+  }
+
+  const out: string[] =
+    [];
+
+  for (
+    let i = 0;
+    i < blocks.length;
+    i++
+  ) {
+    out.push(
+      blocks[i],
+    );
+
+    const imagesHere =
+      placements.get(i);
+
+    if (
+      imagesHere?.length
+    ) {
+      out.push(
+        ...imagesHere,
+      );
+    }
+  }
+
+  return out
+    .join("\n\n")
+    .trim();
+}
+
 async function placeInlineImagesWithAi(
   env: Env,
   markdown: string,
   images: PlacedNewsImage[],
   language: "vi" | "en",
 ): Promise<string> {
-  const original=String(markdown||"").trim();
-  if(!original||!images.length)return original;
+  // NLKH_V579_IMAGE_PLACEMENT_MINIMUM
+  const original =
+    String(
+      markdown || "",
+    ).trim();
 
-  const usable=images.slice(0,4);
-  const mediaList=usable.map((img,index)=>
-    `IMAGE_${index+1}
+  if (
+    !original ||
+    !images.length
+  ) {
+    return original;
+  }
+
+  const usable =
+    images.slice(
+      0,
+      5,
+    );
+
+  const target =
+    inlineImageTarget(
+      original,
+      usable.length,
+    );
+
+  const mediaList =
+    usable
+      .map(
+        (img,index) =>
+          `IMAGE_${index+1}
 URL: ${img.url}
-SOURCE_HINT: ${img.hint||"(none)"}`
-  ).join("\n\n");
+SOURCE_HINT: ${img.hint||"(none)"}`,
+      )
+      .join("\n\n");
 
-  const vi=language==="vi";
-  const prompt=vi
-    ? `
+  const vi =
+    language ===
+    "vi";
+
+  const prompt =
+    vi
+      ? `
 Bạn là biên tập viên bố cục cho một bài công nghệ TIẾNG VIỆT.
 
 NHIỆM VỤ DUY NHẤT:
-- Giữ nguyên toàn bộ thông tin và ý nghĩa của Markdown gốc.
-- Chèn các ảnh R2 vào đúng đoạn mà ảnh minh họa tốt nhất.
-- KHÔNG dồn ảnh liên tiếp.
-- KHÔNG dùng một ảnh quá một lần.
-- Nếu nhiều ảnh có nội dung tương tự nhau, chỉ dùng ảnh hữu ích nhất.
-- Không chèn ảnh ngay sát nhau; ưu tiên cách nhau ít nhất một mục/đoạn có nội dung.
-- Caption của ảnh PHẢI là tiếng Việt tự nhiên, ngắn, mô tả đúng SOURCE_HINT và ngữ cảnh bài.
-- Không để caption/heading tiếng Anh, trừ tên riêng, model, thương hiệu và thuật ngữ bắt buộc.
-- Không thêm "Hình 1", "Ảnh 1" máy móc nếu không cần.
-- Chỉ chèn theo đúng Markdown:
-  ![caption tiếng Việt](URL)
+- Giữ nguyên toàn bộ thông tin và ý nghĩa Markdown gốc.
+- Chèn ảnh R2 vào các phần phù hợp, không dồn ảnh liên tiếp.
+- Dùng mỗi ảnh tối đa một lần.
+- Có ${usable.length} ảnh inline khả dụng; mục tiêu dùng ít nhất ${target} ảnh nếu có đủ ảnh hợp lệ.
+- Không bỏ ảnh chỉ vì muốn bài "gọn"; chỉ bỏ khi ảnh thực sự trùng hoặc không liên quan.
+- Caption phải ngắn, tiếng Việt tự nhiên, dựa trên SOURCE_HINT và ngữ cảnh.
+- Chỉ chèn đúng Markdown: ![caption](URL)
 - Không tạo URL mới.
 - Không đổi tiêu đề, số liệu, bảng, kết luận hay nội dung bài.
-- Nếu một ảnh không phù hợp với bất kỳ đoạn nào, có thể bỏ ảnh đó.
 
 ẢNH CÓ THỂ DÙNG:
 ${mediaList}
@@ -2255,22 +2796,19 @@ ${original}
 
 TRẢ VỀ DUY NHẤT MARKDOWN HOÀN CHỈNH SAU KHI CHÈN ẢNH.
 `.trim()
-    : `
+      : `
 You are laying out an ENGLISH technology article.
 
 ONLY TASK:
-- Preserve the original Markdown's facts and meaning.
-- Insert R2 images where each image best illustrates the surrounding section.
-- Never stack images consecutively.
+- Preserve all facts and meaning of the original Markdown.
+- Place R2 images in relevant sections and never stack them.
 - Use each image at most once.
-- If images are semantically repetitive, use only the most useful one.
-- Prefer at least one substantive paragraph/section between images.
-- Write short natural English captions based on SOURCE_HINT and article context.
-- Insert only as:
-  ![English caption](URL)
+- ${usable.length} inline images are available; target at least ${target} images when enough valid images exist.
+- Do not omit an image merely to keep the article visually minimal; omit only a genuinely duplicate or irrelevant image.
+- Keep captions short and natural, based on SOURCE_HINT and context.
+- Insert only: ![caption](URL)
 - Never invent a URL.
-- Do not change headings, numbers, tables, conclusions or article facts.
-- An irrelevant image may be omitted.
+- Do not alter headings, numbers, tables, conclusions or article facts.
 
 AVAILABLE IMAGES:
 ${mediaList}
@@ -2281,50 +2819,102 @@ ${original}
 RETURN ONLY THE COMPLETE MARKDOWN AFTER IMAGE PLACEMENT.
 `.trim();
 
-  try{
-    const response=await runAiTracked(
-      env,
-      {
-        messages:[
-          {
-            role:"system",
-            content:vi
-              ?"Chỉ làm bố cục ảnh cho bài tiếng Việt. Không viết lại bài. Không được trả tiếng Anh ngoài tên riêng/model/thuật ngữ bắt buộc."
-              :"Only place images in the English article. Do not rewrite the article."
-          },
-          {role:"user",content:prompt}
-        ],
-        temperature:0.1,
-        max_tokens:8000,
-      },
-    );
-
-    const placed=
-      cleanAiResponse(
-        aiResponseText(response),
+  try {
+    const response =
+      await runAiTracked(
+        env,
+        {
+          messages: [
+            {
+              role:
+                "system",
+              content:
+                vi
+                  ? "Chỉ làm bố cục ảnh cho bài tiếng Việt. Không viết lại bài."
+                  : "Only place images in the English article. Do not rewrite the article.",
+            },
+            {
+              role:
+                "user",
+              content:
+                prompt,
+            },
+          ],
+          temperature:
+            0.1,
+          max_tokens:
+            8000,
+        },
       );
 
-    // Never overwrite a valid article with a malformed AI wrapper/result.
-    if(
+    const placed =
+      cleanAiResponse(
+        aiResponseText(
+          response,
+        ),
+      );
+
+    if (
       !placed ||
-      placed==="[object Object]" ||
-      placed.length < Math.max(120, Math.floor(original.length*0.65))
-    ){
-      return original;
+      placed ===
+        "[object Object]" ||
+      placed.length <
+        Math.max(
+          120,
+          Math.floor(
+            original.length *
+            0.65,
+          ),
+        )
+    ) {
+      return ensureInlineImageCoverage(
+        original,
+        usable,
+        language,
+      );
     }
 
-    // Safety: every inserted image URL must be one we supplied.
-    const allowed=new Set(usable.map((x)=>x.url));
-    for(const match of placed.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)){
-      if(!allowed.has(match[1]))return original;
+    const allowed =
+      new Set(
+        usable.map(
+          (x) => x.url,
+        ),
+      );
+
+    for (
+      const match of
+      placed.matchAll(
+        /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g,
+      )
+    ) {
+      if (
+        !allowed.has(
+          match[1],
+        )
+      ) {
+        return ensureInlineImageCoverage(
+          original,
+          usable,
+          language,
+        );
+      }
     }
 
-    return placed;
-  }catch{
-    return original;
+    // AI may legally choose too few images. Enforce a deterministic
+    // minimum afterwards without rewriting the article text.
+    return ensureInlineImageCoverage(
+      placed,
+      usable,
+      language,
+    );
+  } catch {
+    return ensureInlineImageCoverage(
+      original,
+      usable,
+      language,
+    );
   }
 }
-
 function htmlToArticleText(html: string): string {
   let text = String(html || "");
 
@@ -3719,7 +4309,7 @@ async function repairExistingDraftsV55(
       // R2 SHA/media_id dedupe prevents repeated binary assets.
       try {
         const sourceImages =
-          await findSourceImageCandidates(item);
+          await findSourceImageCandidates(env, item);
 
         const inlineImages: PlacedNewsImage[] = [];
         const usedMediaIds = new Set<string>();
@@ -3784,7 +4374,7 @@ async function repairExistingDraftsV55(
             // Text repair must not fail only because one source image fails.
           }
 
-          if (inlineImages.length >= 4) {
+          if (inlineImages.length >= 5) {
             break;
           }
         }
@@ -3972,7 +4562,443 @@ async function selectSourcesForRunV572(
 
   return selected;
 }
+function markdownImageCountV579(
+  value: unknown,
+): number {
+  return Array.from(
+    String(
+      value || "",
+    ).matchAll(
+      /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g,
+    ),
+  ).length;
+}
+
+// NLKH_V579_LOW_IMAGE_REPAIR
+async function repairLowImageArticlesV579(
+  env: Env,
+  limit = 1,
+) {
+  const ingestRows =
+    await sb(
+      env,
+      "technology_news_ingest?select=article_id,source_url,state,updated_at&state=eq.draft_created&article_id=not.is.null&order=updated_at.desc&limit=30",
+    );
+
+  const ids =
+    Array.isArray(
+      ingestRows,
+    )
+      ? [
+          ...new Set(
+            ingestRows
+              .map(
+                (row: any) =>
+                  String(
+                    row?.article_id ||
+                    "",
+                  ),
+              )
+              .filter(Boolean),
+          ),
+        ]
+      : [];
+
+  if (!ids.length) {
+    return {
+      attempted: 0,
+      repaired: [],
+      failed: [],
+      reason:
+        "no automation article ids",
+    };
+  }
+
+  const rows =
+    await sb(
+      env,
+      `news_articles?select=id,slug,title_vi,title_en,content_vi,content_en,source_name,source_url,cover_media_id,status,created_at&id=in.(${ids.join(",")})&order=created_at.desc`,
+    );
+
+  const lowImageRows =
+    (
+      Array.isArray(rows)
+        ? rows
+        : []
+    ).filter(
+      (row: any) =>
+        row?.id &&
+        row?.source_url &&
+        Math.max(
+          markdownImageCountV579(
+            row?.content_vi,
+          ),
+          markdownImageCountV579(
+            row?.content_en,
+          ),
+        ) < 2,
+    );
+
+  const repaired: any[] = [];
+  const failed: any[] = [];
+
+  for (
+    const row of
+    lowImageRows.slice(
+      0,
+      Math.max(
+        1,
+        limit,
+      ),
+    )
+  ) {
+    try {
+      const item: FeedItem = {
+        source:
+          String(
+            row.source_name ||
+            "Nguồn bài viết",
+          ),
+        title:
+          String(
+            row.title_en ||
+            row.title_vi ||
+            "",
+          ),
+        link:
+          String(
+            row.source_url,
+          ),
+        summary:
+          "",
+        publishedAt:
+          row.created_at ||
+          null,
+      };
+
+      const sourceImages =
+        await findSourceImageCandidates(
+          env,
+          item,
+        );
+
+      const inlineImages: PlacedNewsImage[] = [];
+      const usedMediaIds = new Set<string>();
+      const usedUrls = new Set<string>();
+
+      for (
+        let imageIndex = 0;
+        imageIndex < sourceImages.length;
+        imageIndex++
+      ) {
+        const image =
+          sourceImages[
+            imageIndex
+          ];
+
+        try {
+          // If article already has a cover, do not waste source image #1
+          // by sending it again as "cover".
+          const role =
+            row.cover_media_id
+              ? "inline"
+              : imageIndex === 0
+                ? "cover"
+                : "inline";
+
+          const saved =
+            await ingestNewsMedia(
+              env,
+              String(
+                row.id,
+              ),
+              image.url,
+              role,
+              imageIndex,
+            );
+
+          const mediaId =
+            String(
+              saved?.media_id ||
+              "",
+            );
+
+          const savedUrl =
+            String(
+              saved?.url ||
+              "",
+            );
+
+          if (
+            row.cover_media_id &&
+            mediaId ===
+              String(
+                row.cover_media_id,
+              )
+          ) {
+            continue;
+          }
+
+          if (
+            mediaId &&
+            usedMediaIds.has(
+              mediaId,
+            )
+          ) {
+            continue;
+          }
+
+          if (mediaId) {
+            usedMediaIds.add(
+              mediaId,
+            );
+          }
+
+          if (
+            savedUrl &&
+            usedUrls.has(
+              savedUrl,
+            )
+          ) {
+            continue;
+          }
+
+          if (savedUrl) {
+            usedUrls.add(
+              savedUrl,
+            );
+          }
+
+          if (
+            role ===
+              "inline" &&
+            savedUrl
+          ) {
+            inlineImages.push({
+              url:
+                savedUrl,
+              hint:
+                image.hint ||
+                item.title ||
+                "",
+              mediaId,
+            });
+          }
+        } catch (
+          imageError: any
+        ) {
+          failed.push({
+            id:
+              row.id,
+            slug:
+              row.slug,
+            stage:
+              "image_r2",
+            error:
+              clip(
+                String(
+                  imageError?.message ||
+                  imageError,
+                ),
+                700,
+              ),
+          });
+        }
+
+        if (
+          inlineImages.length >=
+          5
+        ) {
+          break;
+        }
+      }
+
+      if (
+        !inlineImages.length
+      ) {
+        failed.push({
+          id:
+            row.id,
+          slug:
+            row.slug,
+          stage:
+            "discover",
+          error:
+            `found=${sourceImages.length}; no distinct inline image saved`,
+        });
+
+        continue;
+      }
+
+      const beforeVi =
+        markdownImageCountV579(
+          row.content_vi,
+        );
+
+      const beforeEn =
+        markdownImageCountV579(
+          row.content_en,
+        );
+
+      const patchedVi =
+        ensureInlineImageCoverage(
+          String(
+            row.content_vi ||
+            "",
+          ),
+          inlineImages,
+          "vi",
+        );
+
+      const patchedEn =
+        ensureInlineImageCoverage(
+          String(
+            row.content_en ||
+            "",
+          ),
+          inlineImages,
+          "en",
+        );
+
+      const afterVi =
+        markdownImageCountV579(
+          patchedVi,
+        );
+
+      const afterEn =
+        markdownImageCountV579(
+          patchedEn,
+        );
+
+      if (
+        patchedVi !==
+          String(
+            row.content_vi ||
+            "",
+          ) ||
+        patchedEn !==
+          String(
+            row.content_en ||
+            "",
+          )
+      ) {
+        await sb(
+          env,
+          `news_articles?id=eq.${encodeURIComponent(String(row.id))}`,
+          {
+            method:
+              "PATCH",
+            headers: {
+              Prefer:
+                "return=minimal",
+            },
+            body:
+              JSON.stringify({
+                content_vi:
+                  patchedVi,
+                content_en:
+                  patchedEn,
+              }),
+          },
+        );
+      }
+
+      repaired.push({
+        id:
+          row.id,
+        slug:
+          row.slug,
+        status:
+          row.status,
+        sourceImages:
+          sourceImages.length,
+        inlineSaved:
+          inlineImages.length,
+        vi:
+          {
+            before:
+              beforeVi,
+            after:
+              afterVi,
+          },
+        en:
+          {
+            before:
+              beforeEn,
+            after:
+              afterEn,
+          },
+      });
+    } catch (
+      error: any
+    ) {
+      failed.push({
+        id:
+          row?.id,
+        slug:
+          row?.slug,
+        stage:
+          "repair",
+        error:
+          clip(
+            String(
+              error?.message ||
+              error,
+            ),
+            900,
+          ),
+      });
+    }
+  }
+
+  return {
+    attempted:
+      Math.min(
+        lowImageRows.length,
+        Math.max(
+          1,
+          limit,
+        ),
+      ),
+    candidates:
+      lowImageRows.length,
+    repaired,
+    failed,
+  };
+}
 async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
+  let existingImageRepair: any = {
+    attempted: 0,
+    candidates: 0,
+    repaired: [],
+    failed: [],
+  };
+
+  try {
+    existingImageRepair =
+      await repairLowImageArticlesV579(
+        env,
+        1,
+      );
+  } catch (error: any) {
+    existingImageRepair = {
+      attempted: 0,
+      candidates: 0,
+      repaired: [],
+      failed: [
+        {
+          stage: "repair_boot",
+          error: clip(
+            String(
+              error?.message ||
+              error,
+            ),
+            900,
+          ),
+        },
+      ],
+    };
+  }
   const existingDraftRepair = {
     attempted: 0,
     repaired: [],
@@ -4175,7 +5201,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
       try {
         if (draft.articleId) {
           const sourceImages =
-            await findSourceImageCandidates(candidate.item);
+            await findSourceImageCandidates(env, candidate.item);
 
           const inlineImages: PlacedNewsImage[] = [];
           const usedMediaIds = new Set<string>();
@@ -4254,7 +5280,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
               });
             }
 
-            if (inlineImages.length >= 4) {
+            if (inlineImages.length >= 5) {
               break;
             }
           }
@@ -4400,6 +5426,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
     draftsCreated:
       created.length,
 
+    existingImageRepair,
     existingDraftRepair,
     created,
     sourceErrors,

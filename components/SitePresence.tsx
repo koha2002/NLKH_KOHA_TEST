@@ -1,19 +1,40 @@
 "use client";
 
-import { useEffect } from "react";
-import { supabase } from "../lib/supabase-browser";
+import {
+  useEffect,
+} from "react";
 
-const KEY = "nlkh-visitor-id-v1";
-const LAST_OK_KEY = "nlkh-presence-last-ok-v3";
-const LAST_ERROR_KEY = "nlkh-presence-last-error-v3";
+import {
+  supabase,
+} from "../lib/supabase-browser";
+
+const VISITOR_KEY =
+  "nlkh-visitor-id-v1";
+
+const STATUS_KEY =
+  "nlkh-site-traffic-v4";
 
 function visitorId() {
   try {
-    let id = localStorage.getItem(KEY) || "";
-    if (!/^[0-9a-f-]{36}$/i.test(id)) {
-      id = crypto.randomUUID();
-      localStorage.setItem(KEY, id);
+    let id =
+      localStorage.getItem(
+        VISITOR_KEY,
+      ) || "";
+
+    if (
+      !/^[0-9a-f-]{36}$/i.test(
+        id,
+      )
+    ) {
+      id =
+        crypto.randomUUID();
+
+      localStorage.setItem(
+        VISITOR_KEY,
+        id,
+      );
     }
+
     return id;
   } catch {
     return crypto.randomUUID();
@@ -21,75 +42,181 @@ function visitorId() {
 }
 
 export function SitePresence() {
-  useEffect(() => {
-    let stopped = false;
-    let busy = false;
-    const id = visitorId();
+  useEffect(
+    () => {
+      let stopped =
+        false;
 
-    const ping = async () => {
-      if (stopped || busy || document.visibilityState === "hidden") return;
+      let busy =
+        false;
 
-      busy = true;
-      try {
-        const path = (location.pathname + location.search).slice(0, 300);
-        const { data, error } = await supabase.rpc("touch_site_presence_v3", {
-          p_visitor_id: id,
-          p_path: path,
-        });
+      const id =
+        visitorId();
 
-        if (error) {
-          const message = `${error.code || "RPC"}: ${error.message || "presence failed"}`;
-          try { localStorage.setItem(LAST_ERROR_KEY, message); } catch {}
-          console.warn("[NLKH presence]", message);
-          return;
-        }
+      const ping =
+        async () => {
+          if (
+            stopped ||
+            busy ||
+            document.visibilityState ===
+              "hidden"
+          ) {
+            return;
+          }
 
-        try {
-          localStorage.setItem(
-            LAST_OK_KEY,
-            JSON.stringify({
-              at: new Date().toISOString(),
-              path,
-              server: data?.server_time || null,
-            }),
-          );
-          localStorage.removeItem(LAST_ERROR_KEY);
-        } catch {}
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        try { localStorage.setItem(LAST_ERROR_KEY, message); } catch {}
-        console.warn("[NLKH presence]", message);
-      } finally {
-        busy = false;
-      }
-    };
+          busy = true;
 
-    // Ping immediately. Do not wait for requestIdleCallback:
-    // a short visit still needs to appear in Admin.
-    void ping();
+          try {
+            const path =
+              (
+                location.pathname +
+                location.search
+              ).slice(
+                0,
+                300,
+              );
 
-    const timer = window.setInterval(() => {
+            const {
+              data,
+              error,
+            } =
+              await supabase
+                .functions
+                .invoke(
+                  "site-traffic",
+                  {
+                    body: {
+                      action:
+                        "ping",
+                      visitor_id:
+                        id,
+                      path,
+                    },
+                  },
+                );
+
+            if (error) {
+              throw error;
+            }
+
+            try {
+              localStorage.setItem(
+                STATUS_KEY,
+                JSON.stringify({
+                  ok: true,
+                  at:
+                    new Date()
+                      .toISOString(),
+                  path,
+                  server:
+                    data?.server_time ||
+                    null,
+                  source:
+                    data?.source ||
+                    null,
+                }),
+              );
+            } catch {}
+          } catch (error) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : String(error);
+
+            console.warn(
+              "[NLKH site-traffic]",
+              message,
+            );
+
+            try {
+              localStorage.setItem(
+                STATUS_KEY,
+                JSON.stringify({
+                  ok: false,
+                  at:
+                    new Date()
+                      .toISOString(),
+                  error:
+                    message,
+                }),
+              );
+            } catch {}
+          } finally {
+            busy = false;
+          }
+        };
+
+      // Send immediately. A short visit must still be counted.
       void ping();
-    }, 30000);
 
-    const visible = () => {
-      if (document.visibilityState === "visible") void ping();
-    };
-    const focus = () => void ping();
-    const pageshow = () => void ping();
+      const timer =
+        window.setInterval(
+          () => {
+            void ping();
+          },
+          30000,
+        );
 
-    document.addEventListener("visibilitychange", visible);
-    window.addEventListener("focus", focus);
-    window.addEventListener("pageshow", pageshow);
+      const visible =
+        () => {
+          if (
+            document.visibilityState ===
+            "visible"
+          ) {
+            void ping();
+          }
+        };
 
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", visible);
-      window.removeEventListener("focus", focus);
-      window.removeEventListener("pageshow", pageshow);
-    };
-  }, []);
+      const focus =
+        () => {
+          void ping();
+        };
+
+      const pageshow =
+        () => {
+          void ping();
+        };
+
+      document.addEventListener(
+        "visibilitychange",
+        visible,
+      );
+
+      window.addEventListener(
+        "focus",
+        focus,
+      );
+
+      window.addEventListener(
+        "pageshow",
+        pageshow,
+      );
+
+      return () => {
+        stopped = true;
+
+        window.clearInterval(
+          timer,
+        );
+
+        document.removeEventListener(
+          "visibilitychange",
+          visible,
+        );
+
+        window.removeEventListener(
+          "focus",
+          focus,
+        );
+
+        window.removeEventListener(
+          "pageshow",
+          pageshow,
+        );
+      };
+    },
+    [],
+  );
 
   return null;
 }
