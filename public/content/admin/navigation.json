@@ -72,11 +72,27 @@
     "parent_id": null,
     "sort_order": 5,
     "visible": true,
+    "requires_auth": true,
+    "allowed_roles": [],
+    "open_new_tab": false,
+    "updated_at": "2026-08-12T04:06:37.322665+00:00",
+    "icon_media_id": null,
+    "icon_url": ""
+  },
+  {
+    "id": "49bf6f74-e94e-4a96-99cd-0774877f74b3",
+    "label_vi": "Tin tức",
+    "label_en": "News",
+    "href": "/news",
+    "location": "both",
+    "parent_id": null,
+    "sort_order": 6,
+    "visible": true,
     "requires_auth": false,
     "allowed_roles": [],
     "open_new_tab": false,
-    "updated_at": "2026-08-10T07:24:40.709414+00:00",
+    "updated_at": "2026-08-13T05:12:07.452966+00:00",
     "icon_media_id": null,
-    "icon_url": null
+    "icon_url": ""
   }
 ]

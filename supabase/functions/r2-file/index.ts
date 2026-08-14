@@ -9,6 +9,38 @@ async function collectionPermission(admin:any,userId:string,collectionId:string)
 async function usageOf(admin:any,id:string){const defs=[["site_settings","og_media_id","OG website"],["site_settings","favicon_media_id","Favicon"],["navigation_items","icon_media_id","Menu"],["social_links","icon_media_id","Social"],["seo_entries","og_media_id","SEO"],["tools","icon_media_id","Tool"],["profiles","avatar_media_id","Avatar"],["news_articles","cover_media_id","Tin tức"],["software_items","icon_media_id","Icon phần mềm"],["software_items","cover_media_id","Cover phần mềm"],["software_items","download_media_id","File tải phần mềm"],["cv_profiles","photo_media_id","Ảnh CV"],["cv_profiles","pdf_media_id","PDF CV"],["data_items","media_id","Dữ liệu"]];const usage=[];for(const[t,c,label]of defs){const{count}=await admin.from(t).select("*",{head:true,count:"exact"}).eq(c,id);if(count)usage.push({table:t,column:c,label,count})}return usage}
 async function detachEverywhere(admin:any,id:string,asset:any){await admin.from("software_items").update({visible:false}).eq("download_media_id",id);const refs=[["site_settings","og_media_id"],["site_settings","favicon_media_id"],["navigation_items","icon_media_id"],["social_links","icon_media_id"],["seo_entries","og_media_id"],["tools","icon_media_id"],["profiles","avatar_media_id"],["news_articles","cover_media_id"],["software_items","icon_media_id"],["software_items","cover_media_id"],["software_items","download_media_id"],["cv_profiles","photo_media_id"],["cv_profiles","pdf_media_id"]];for(const[t,c]of refs)await admin.from(t).update({[c]:null}).eq(c,id);await admin.from("data_items").update({media_id:null,object_key:null,visible:false}).eq("media_id",id);if(asset?.public_url){await admin.from("site_settings").update({default_og_image:null}).eq("default_og_image",asset.public_url);await admin.from("site_settings").update({favicon_url:null}).eq("favicon_url",asset.public_url)}}
 Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});if(req.method!=="POST")return json(req,{error:"Chỉ hỗ trợ POST."},405);try{const body=await req.json(),ctx=await caller(req),admin=adminClient(),s3=r2(),b=bucket();if(!b)throw new Error("Thiếu R2_BUCKET_NAME.");const action=String(body.action||"");
+if(action==="software-download"){
+  const softwareId=String(body.software_id||"");
+  if(!softwareId)return json(req,{error:"Thiếu software_id."},400);
+
+  const{data:item,error:itemErr}=await admin.from("software_items")
+    .select("id,name,visible,download_access,download_source,download_url,download_media_id,download_allowed_roles")
+    .eq("id",softwareId).maybeSingle();
+  if(itemErr)throw itemErr;
+  if(!item||!item.visible)return json(req,{error:"Phần mềm không tồn tại hoặc đang ẩn."},404);
+
+  let allowed=item.download_access==="public";
+  if(!allowed&&ctx.user){
+    const{data:profile}=await admin.from("profiles")
+      .select("status,role_id").eq("id",ctx.user.id).maybeSingle();
+    const roles=Array.isArray(item.download_allowed_roles)?item.download_allowed_roles.map(String):[];
+    allowed=profile?.status==="active"&&(!roles.length||roles.includes(String(profile.role_id||"")));
+  }
+  if(!allowed)return json(req,{error:ctx.user?"Tài khoản chưa được cấp quyền tải. Vui lòng liên hệ ADMIN.":"Bạn cần đăng nhập để tải."},403);
+
+  if(item.download_source==="link"){
+    const url=String(item.download_url||"").trim();
+    if(!/^https?:\/\//i.test(url))return json(req,{error:"Phần mềm chưa có link tải hợp lệ."},404);
+    return json(req,{url,source:"link"});
+  }
+
+  if(!item.download_media_id)return json(req,{error:"Phần mềm chưa có file R2."},404);
+  const{data:asset,error:assetErr}=await admin.from("media_assets").select("*").eq("id",item.download_media_id).maybeSingle();
+  if(assetErr)throw assetErr;
+  if(!asset?.object_key)return json(req,{error:"Không tìm thấy file R2."},404);
+  const url=await getSignedUrl(s3,new GetObjectCommand({Bucket:b,Key:asset.object_key}),{expiresIn:900});
+  return json(req,{url,source:"r2"});
+}
 if(action==="prepare-upload"){const usageType=String(body.usage_type||"admin"),isOwnAvatar=usageType==="avatar"&&!!ctx.user,isData=usageType==="data"&&!!ctx.user;let dataUploadAllowed=false;if(isData){if(hasPermission(ctx,"data.manage")||hasPermission(ctx,"media.manage"))dataUploadAllowed=true;else if(body.item_id){const{data:item}=await admin.from("data_items").select("collection_id").eq("id",body.item_id).maybeSingle();if(item?.collection_id)dataUploadAllowed=(await collectionPermission(admin,ctx.user.id,item.collection_id))==="full"}else if(body.collection_id){dataUploadAllowed=["add","full"].includes(String(await collectionPermission(admin,ctx.user.id,String(body.collection_id))))}}if(!isOwnAvatar&&!dataUploadAllowed&&!hasPermission(ctx,"media.manage"))return json(req,{error:isData?"Bạn chưa có quyền Add/Full trong thư mục dữ liệu này.":"Bạn không có quyền tải tệp lên R2."},403);const sha=String(body.sha256||"").toLowerCase(),original=String(body.original_name||"file"),mime=String(body.mime_type||"application/octet-stream"),size=Number(body.size_bytes||0),visibility=String(body.visibility||"public"),folder=safePath(String(body.folder||"uploads"));if(!sha||!original)return json(req,{error:"Thiếu SHA-256 hoặc tên tệp."},400);const{data:dupe}=await admin.from("media_assets").select("*").eq("sha256",sha).eq("visibility",visibility).eq("status","ready").maybeSingle();if(dupe){
   let reusable=dupe;
   if(visibility==="public"&&!dupe.public_url&&dupe.object_key){

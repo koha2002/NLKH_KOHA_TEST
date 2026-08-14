@@ -2,7 +2,7 @@ import React,{useEffect,useState}from"react";
 import{NavLink,useNavigate}from"react-router-dom";
 import{supabase,invoke}from"../lib/supabase";
 import{notify}from"../lib/notify";
-const baseNav=[["/site","Cấu hình chung"],["/navigation","Menu & Footer"],["/content","Trang nội dung"],["/seo","SEO"],["/redirects","Redirect"],["/tools","Danh sách Tool"],["/news","Tin tức"],["/software","Phần mềm"],["/data","Dữ liệu & quyền"],["/cv","CV"],["/users","Người dùng & quyền"],["/media","Thư viện R2"],["/api","API & lịch chạy"]];
+const baseNav=[["/site","Cấu hình chung"],["/navigation","Menu & Footer"],["/content","Trang nội dung"],["/seo","SEO"],["/redirects","Redirect"],["/tools","Danh sách Tool"],["/news","Tin tức"],["/software","Phần mềm"],["/data","Dữ liệu & quyền"],["/cv","CV"],["/users","Người dùng & quyền"],["/media","Thư viện R2"],["/api","API & lịch chạy"],["/backup","Backup FULL"]];
 function initials(name=""){const p=name.trim().split(/\s+/).filter(Boolean);return(p.slice(-2).map(x=>x[0]?.toUpperCase()).join("")||"U")}
 function initialTheme(){try{return localStorage.getItem("nlkh-admin-theme")||"dark"}catch{return"dark"}}
 export default function AdminShell({children,access}){const go=useNavigate(),[tools,setTools]=useState([]),[publishing,setPublishing]=useState(false),[toast,setToast]=useState(null),[theme,setTheme]=useState(initialTheme);

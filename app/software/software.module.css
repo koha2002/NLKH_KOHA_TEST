@@ -43,3 +43,12 @@
   .card { min-height: 300px; }
   .policyInner { padding: 55px 0; grid-template-columns: 1fr; }
 }
+
+/* NLKH_CATALOG_PAGINATION_V2 */
+.notice{padding:12px 14px;border:1px solid var(--line);background:var(--surface-soft);color:var(--muted);margin-bottom:16px}
+.cardFooter button{display:inline-flex;gap:10px;align-items:center;border:0;background:transparent;color:var(--blue-600);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.cardFooter button:disabled{opacity:.55;cursor:wait}
+.pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:30px}
+.pagination button{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 13px;border-radius:8px;cursor:pointer}
+.pagination button:disabled{opacity:.45;cursor:not-allowed}
+.pagination span{color:var(--muted);font-size:13px}

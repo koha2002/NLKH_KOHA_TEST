@@ -9,3 +9,26 @@
 
 /* System usage dashboard */
 .usagePanel{display:grid;gap:16px}.usageTitle{display:flex;align-items:center;justify-content:space-between;gap:16px}.usageTitle button{width:auto}.usageGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.usageCard{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px;display:grid;gap:14px}.usageCard h2{margin:0;font-size:16px}.usageMeter{display:grid;gap:7px}.usageMeterHead{display:flex;justify-content:space-between;gap:12px;font-size:12px}.usageMeterHead span{color:var(--muted);text-align:right}.usageBar{height:10px;border-radius:999px;background:#202a3a;overflow:hidden}.usageBar i{display:block;height:100%;border-radius:inherit;background:#4ade80}.usageMeter.warn .usageBar i{background:#facc15}.usageMeter.warn2 .usageBar i{background:#fb923c}.usageMeter.danger .usageBar i{background:#ef4444}.usageMeter small,.usageInfo small,.usageFoot{color:var(--muted)}.usageInfo{border-top:1px solid var(--line);padding-top:12px;line-height:1.5}.usageInfo p{margin:6px 0}.usageFoot{font-size:11px}@media(max-width:900px){.usageGrid{grid-template-columns:1fr}.usageTitle{align-items:flex-start;flex-direction:column}}
+/* NLKH_TRAFFIC_V2 */
+.trafficStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.trafficStats article{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--panel);display:grid;gap:4px}.trafficStats strong{font-size:1.8rem}.trafficStats span,.trafficSub{color:var(--muted);font-size:.78rem}.trafficSub{display:block;margin-top:3px}.trafficFilter{display:flex;gap:7px;margin-bottom:12px}.trafficFilter button{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:7px 10px;border-radius:999px}.trafficFilter .active{border-color:#4f8ee8}.presenceDot{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:.75rem;font-weight:800}.presenceDot.online{background:rgba(34,197,94,.15);color:#86efac}.presenceDot.offline{background:rgba(148,163,184,.12);color:var(--muted)}@media(max-width:800px){.trafficStats{grid-template-columns:1fr}}
+/* NLKH_BACKUP_ADMIN_V1 */
+.backupConnect{display:flex;justify-content:space-between;gap:16px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:14px;margin:14px 0}.backupConnect>div:first-child{display:grid;gap:4px}.backupConnect small,.backupGrid small{color:var(--muted)}.backupGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0}.backupGrid label{display:grid;gap:7px}.backupGrid input,.backupGrid select{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:10px}.backupToggle{display:flex!important;align-items:center;gap:9px}.backupToggle input{width:auto}.backupMessage{padding:11px 13px;border:1px solid var(--line);border-radius:8px;margin-top:12px}@media(max-width:800px){.backupGrid{grid-template-columns:1fr}.backupConnect{align-items:flex-start;flex-direction:column}}
+/* NLKH_MANUAL_FULL_BACKUP_V1 */
+.fullBackupStats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.fullBackupStats article{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:15px;display:grid;gap:5px}
+.fullBackupStats small,.fullBackupStats span,.fullBackupAction small{color:var(--muted)}
+.fullBackupStats strong{font-size:20px}
+.fullBackupAction{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:16px;margin:16px 0}
+.fullBackupAction>div{display:grid;gap:5px}
+.fullBackupMessage{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:12px 14px;margin:14px 0;word-break:break-word}
+.fullBackupWarnings{display:grid;gap:10px}
+.fullBackupWarnings p{margin:0;border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--muted);line-height:1.55}
+.fullBackupWarnings b{color:var(--text)}
+@media(max-width:1000px){.fullBackupStats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.fullBackupStats{grid-template-columns:1fr}.fullBackupAction{align-items:flex-start;flex-direction:column}}
+
+/* NLKH_MANUAL_FULL_BACKUP_V2 */
+.fullBackupProgress{display:grid;gap:8px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:14px;margin:16px 0}
+.fullBackupProgress>div{display:flex;justify-content:space-between;gap:12px}
+.fullBackupProgress progress{width:100%;height:12px}
+.fullBackupProgress small{color:var(--muted);word-break:break-all}

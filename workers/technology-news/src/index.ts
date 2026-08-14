@@ -255,6 +255,23 @@ async function tryRssSource(
   }
 }
 
+// NLKH_V575_AAC_DIRECT_NEWS:
+// All About Circuits may render direct article anchors with image-only or short text.
+// For direct /news/<slug>/ URLs only, derive a fallback title from the slug.
+function fallbackArticleTitleFromUrl(link: URL): string {
+  const host = link.hostname.toLowerCase().replace(/^www\./, "");
+  if (
+    (host === "allaboutcircuits.com" || host.endsWith(".allaboutcircuits.com")) &&
+    /^\/news\/[^/]+\/?$/.test(link.pathname)
+  ) {
+    const slug = decodeURIComponent(
+      link.pathname.split("/").filter(Boolean).pop() || "",
+    );
+    return slug.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
+
 function parseHtmlListing(
   html: string,
   source: Source,
@@ -310,7 +327,7 @@ function parseHtmlListing(
     const rawText =
       String(match[2] || "");
 
-    const title =
+    let title =
       rawText
         .replace(/<script[\s\S]*?<\/script>/gi, " ")
         .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -322,11 +339,7 @@ function parseHtmlListing(
         .replace(/\s+/g, " ")
         .trim();
 
-    if (!href || title.length < 12) {
-      continue;
-    }
-
-    if (badTitles.test(title)) {
+    if (!href) {
       continue;
     }
 
@@ -338,6 +351,14 @@ function parseHtmlListing(
         base,
       );
     } catch {
+      continue;
+    }
+
+    if (title.length < 12) {
+      title = fallbackArticleTitleFromUrl(link);
+    }
+
+    if (title.length < 12 || badTitles.test(title)) {
       continue;
     }
 
@@ -1190,6 +1211,100 @@ async function getLastRun(env: Env) {
   }
 }
 
+// NLKH_MANUAL_FULL_BACKUP_V3_KV
+function backupB64uDecode(value: string): Uint8Array<ArrayBuffer> {
+  const p = value.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(p + "=".repeat((4 - (p.length % 4)) % 4));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function verifyInternalBackupRequest(
+  request: Request,
+  env: Env,
+): Promise<boolean> {
+  try {
+    const ts = request.headers.get("x-nlkh-backup-ts") || "";
+    const signature =
+      request.headers.get("x-nlkh-backup-signature") || "";
+    const epoch = Number(ts);
+    if (
+      !Number.isFinite(epoch) ||
+      Math.abs(Math.floor(Date.now() / 1000) - epoch) > 90 ||
+      !signature
+    ) {
+      return false;
+    }
+
+    const secret = String(env.SUPABASE_SERVICE_ROLE_KEY || "");
+    if (!secret) return false;
+
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+
+    return await crypto.subtle.verify(
+      "HMAC",
+      key,
+      backupB64uDecode(signature),
+      encoder.encode(
+        `${ts}\n${new URL(request.url).pathname}`,
+      ),
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function exportTechnologyNewsConfigKv(env: Env) {
+  const keys: Array<{
+    name: string;
+    value: string | null;
+    expiration?: number;
+    metadata?: unknown;
+  }> = [];
+
+  let cursor: string | undefined;
+
+  do {
+    const page = await env.CONFIG.list({
+      limit: 1000,
+      ...(cursor ? { cursor } : {}),
+    });
+
+    for (const item of page.keys || []) {
+      keys.push({
+        name: item.name,
+        value: await env.CONFIG.get(item.name),
+        ...(item.expiration
+          ? { expiration: item.expiration }
+          : {}),
+        ...(item.metadata !== undefined
+          ? { metadata: item.metadata }
+          : {}),
+      });
+    }
+
+    cursor = page.list_complete
+      ? undefined
+      : String(page.cursor || "");
+  } while (cursor);
+
+  return {
+    ok: true,
+    format: "NLKH_TECHNOLOGY_NEWS_KV_V1",
+    binding: "CONFIG",
+    exportedAt: new Date().toISOString(),
+    keys,
+  };
+}
+
 type AutomationIdentity = {
   id: string;
   email: string;
@@ -1429,6 +1544,10 @@ const RULES: Array<[RegExp, number]> = [
   [/\b(power electronics|inverter|mosfet|igbt|sic|gan|gate driver|pmic)\b/i, 28],
   [/\b(electrical|electronics|embedded|microcontroller|mcu|sensor|pcb|rf|wireless)\b/i, 22],
   [/\b(ai accelerator|npu|edge ai|data center|server)\b/i, 16],
+  // NLKH_V574_SCORING: curated electrical/electronics sources often use
+  // product-specific titles that previously scored below threshold 30.
+  [/\b(battery|bms|charger|charging|power supply|converter|dc-dc|ac-dc|grid|smart grid|relay|protection|transformer|substation|switchgear|meter|energy storage|ups)\b/i, 24],
+  [/\b(ic|integrated circuit|analog|mixed-signal|fpga|asic|soc|texas instruments|infineon|nxp|stmicroelectronics|onsemi|renesas|analog devices)\b/i, 20],
   [/\b(deal|coupon|discount|sale|giveaway)\b/i, -45],
   [/\b(game review|gaming deal|best deal)\b/i, -30],
 ];
@@ -3047,12 +3166,12 @@ async function scrapeLinksWithBrowserRun(
           String(attr.name || "").toLowerCase() === "href",
       )?.value || "";
 
-    const title =
+    let title =
       String(anchor.text || "")
         .replace(/\s+/g, " ")
         .trim();
 
-    if (!href || title.length < 12) {
+    if (!href) {
       continue;
     }
 
@@ -3061,6 +3180,14 @@ async function scrapeLinksWithBrowserRun(
     try {
       link = new URL(href, base);
     } catch {
+      continue;
+    }
+
+    if (title.length < 12) {
+      title = fallbackArticleTitleFromUrl(link);
+    }
+
+    if (title.length < 12) {
       continue;
     }
 
@@ -3682,6 +3809,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
   };
   const candidates: Array<{ item: FeedItem; score: number }> = [];
   const sourceErrors: Array<{ source: string; error: string }> = [];
+  const sourceDiagnostics: Array<{source:string;items:number;scanned:number;passed:number;maxScore:number;threshold:number}> = [];
 
   const sourcesForRun =
     await selectSourcesForRunV572(
@@ -3699,13 +3827,24 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
         throw new Error("Không tìm thấy bài phù hợp trong nguồn");
       }
 
-      for (const item of items.slice(0, MAX_ITEMS_PER_SCANNED_SOURCE)) {
+      const scannedItems=items.slice(0, MAX_ITEMS_PER_SCANNED_SOURCE);
+      let passed=0,maxScore=-999;
+      for (const item of scannedItems) {
         const score = scoreItem(item, source.baseScore);
-
+        maxScore=Math.max(maxScore,score);
         if (score >= settings.relevanceThreshold) {
           candidates.push({ item, score });
+          passed++;
         }
       }
+      sourceDiagnostics.push({
+        source:source.name,
+        items:items.length,
+        scanned:scannedItems.length,
+        passed,
+        maxScore:Number.isFinite(maxScore)?maxScore:source.baseScore,
+        threshold:settings.relevanceThreshold
+      });
     } catch (e: any) {
       sourceErrors.push({
         source: source.name,
@@ -4068,6 +4207,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
     existingDraftRepair,
     created,
     sourceErrors,
+    sourceDiagnostics,
     processingErrors,
 
     settings,
@@ -5054,6 +5194,28 @@ export default {
         },
       });
     }
+    if (
+      url.pathname === "/backup-config-internal" &&
+      request.method === "GET"
+    ) {
+      if (!(await verifyInternalBackupRequest(request, env))) {
+        return Response.json(
+          { error: "Forbidden" },
+          {
+            status: 403,
+            headers: { "cache-control": "no-store" },
+          },
+        );
+      }
+
+      return Response.json(
+        await exportTechnologyNewsConfigKv(env),
+        {
+          headers: { "cache-control": "no-store" },
+        },
+      );
+    }
+
     if (url.pathname === "/health") {
       const settings = await getSettings(env);
       return Response.json({

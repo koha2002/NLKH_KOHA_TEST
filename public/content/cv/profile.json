@@ -6,8 +6,8 @@
     "en": "Electrical Engineer"
   },
   "headline": {
-    "vi": "Kỹ sư điện với trải nghiệm từ hiện trường đến thiết kế.",
-    "en": "An electrical engineer experienced from field testing to design."
+    "vi": "Kỹ sư điện.",
+    "en": "An electrical engineer."
   },
   "summary": {
     "vi": "Tốt nghiệp loại Giỏi chuyên ngành Tự động hóa Hệ thống điện, có kinh nghiệm thí nghiệm thiết bị, thiết kế tủ điều khiển - bảo vệ.",
@@ -24,7 +24,7 @@
   "photo": "",
   "photoMediaId": "d37a3228-a5d5-48e8-9d9d-ff7d5f2b5fe8",
   "pdf": "",
-  "pdfAccess": "authenticated",
+  "pdfAccess": "hidden",
   "pdfMediaId": "c4c89dc7-34cf-4365-b3d4-8b3176524a97",
   "theme": {
     "accent": "blue",
@@ -44,8 +44,8 @@
       "en": "Power System Automation"
     },
     "subtitle": {
-      "vi": "Hệ kỹ sư · Tốt nghiệp loại Giỏi",
-      "en": "Engineer's Degree · Graduated with Distinction"
+      "vi": "Kỹ sư",
+      "en": "Engineer's Degree"
     }
   },
   "educations": [
@@ -61,8 +61,8 @@
         "en": "Power System Automation"
       },
       "subtitle": {
-        "vi": "Hệ kỹ sư · Tốt nghiệp loại Giỏi",
-        "en": "Engineer's Degree · Graduated with Distinction"
+        "vi": "Kỹ sư",
+        "en": "Engineer's Degree"
       },
       "description": {
         "vi": "",
@@ -84,6 +84,27 @@
       "subtitle": {
         "vi": "Hệ cử nhân - GPA 3.86",
         "en": "Bachelor's Degree - GPA 3.86"
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "a3652212-e066-4945-b9c7-0f657da1ca85",
+      "period": "2025-2027",
+      "school": {
+        "vi": "Trường đại học Điện Lực",
+        "en": "Electric Power University"
+      },
+      "major": {
+        "vi": "Kỹ thuật năng lượng",
+        "en": "Energy Engineering"
+      },
+      "subtitle": {
+        "vi": "Thạc Sỹ",
+        "en": "Master's Degree"
       },
       "description": {
         "vi": "",

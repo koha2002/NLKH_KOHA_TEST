@@ -50,3 +50,9 @@
   .v53Search{width:100%;flex-basis:auto}
   .v53Grid{grid-template-columns:1fr}
 }
+/* NLKH_NEWS_PAGINATION_V2 */
+.v53Pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:34px;flex-wrap:wrap}
+.v53Pagination>div{display:flex;gap:6px;flex-wrap:wrap}
+.v53Pagination button{min-width:38px;height:38px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:inherit;cursor:pointer;font:700 .82rem inherit}
+.v53Pagination button:hover,.v53Pagination .v53PageActive{border-color:var(--blue-600);color:var(--blue-600)}
+.v53Pagination button:disabled{opacity:.4;cursor:not-allowed}

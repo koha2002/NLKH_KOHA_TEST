@@ -21,6 +21,7 @@
     "orbitAngle": 222,
     "requiresAuth": false,
     "allowedRoles": [],
+    "categoryId": null,
     "toolType": "source",
     "hasInlineHtml": false
   },
@@ -46,6 +47,7 @@
     "orbitAngle": 326,
     "requiresAuth": false,
     "allowedRoles": [],
+    "categoryId": null,
     "toolType": "source",
     "hasInlineHtml": false
   },
@@ -71,6 +73,7 @@
     "orbitAngle": 198,
     "requiresAuth": false,
     "allowedRoles": [],
+    "categoryId": null,
     "toolType": "source",
     "hasInlineHtml": false
   }
