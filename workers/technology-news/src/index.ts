@@ -34,7 +34,7 @@ const V55_SOURCE_PRESET_KEY = "technology-news-v572-source-preset";
 const V55_SOURCE_PRESET_START_VN = "2026-08-13";
 const SOURCE_ROTATION_KEY = "technology-news-source-rotation-v572";
 const MAX_SOURCES_PER_RUN = 4;
-const MAX_ITEMS_PER_SCANNED_SOURCE = 4;
+const MAX_ITEMS_PER_SCANNED_SOURCE = 10;
 
 const DEFAULT_SOURCES: Source[] = [
   // ==========================================================
@@ -272,6 +272,53 @@ function fallbackArticleTitleFromUrl(link: URL): string {
   return "";
 }
 
+// NLKH_V578_HTML_PARSER_REPLACEMENT
+function cleanListingTitleV578(raw: string): string {
+  return String(raw || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/\b(?:aria-label|title|alt)\s*=\s*["']([^"']+)["']/gi, " $1 ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&ndash;|&mdash;/gi, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function titleFromHrefV578(href: string): string {
+  try {
+    const url = new URL(
+      String(href || "").trim(),
+      "https://nlkh.invalid/",
+    );
+
+    const parts =
+      url.pathname
+        .split("/")
+        .filter(Boolean);
+
+    const slug =
+      decodeURIComponent(
+        parts[parts.length - 1] || "",
+      )
+        .replace(/\.(?:html?|aspx?)$/i, "")
+        .replace(/[-_]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (slug.length < 8) return "";
+
+    return slug
+      .replace(/\b[a-z]/g, (c) => c.toUpperCase())
+      .slice(0, 240);
+  } catch {
+    return "";
+  }
+}
+
 function parseHtmlListing(
   html: string,
   source: Source,
@@ -280,6 +327,7 @@ function parseHtmlListing(
   const seen = new Set<string>();
 
   let base: URL;
+  let website: URL;
 
   try {
     base = new URL(
@@ -287,19 +335,22 @@ function parseHtmlListing(
       source.website ||
       "",
     );
+
+    website = new URL(
+      source.website ||
+      base.origin,
+    );
   } catch {
     return [];
   }
 
   const anchorRegex =
-    /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-
-  let match: RegExpExecArray | null;
+    /<a\b([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
 
   const badTitles =
-    /^(home|trang chủ|login|log in|join|đăng nhập|đăng ký|menu|more|xem thêm|read more|latest|news|tin tức|articles|blog)$/i;
+    /^(home|login|log in|join|menu|more|read more|latest|news|articles|blog)$/i;
 
-  const badPaths = [
+  const badPathParts = [
     "/login",
     "/register",
     "/join",
@@ -318,59 +369,33 @@ function parseHtmlListing(
     "/about",
     "/privacy",
     "/terms",
+    "/podcast",
+    "/webinar",
+    "/events",
   ];
+
+  let match: RegExpExecArray | null;
 
   while ((match = anchorRegex.exec(html))) {
     const href =
-      String(match[1] || "").trim();
+      String(match[2] || "").trim();
 
-    const rawText =
-      String(match[2] || "");
-
-    let title =
-      rawText
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
-        .replace(/\s+/g, " ")
-        .trim();
-
-    if (!href) {
-      continue;
-    }
+    if (!href) continue;
 
     let link: URL;
 
     try {
-      link = new URL(
-        href,
-        base,
-      );
+      link = new URL(href, base);
     } catch {
       continue;
     }
 
-    if (title.length < 12) {
-      title = fallbackArticleTitleFromUrl(link);
-    }
-
-    if (title.length < 12 || badTitles.test(title)) {
+    if (!["http:", "https:"].includes(link.protocol)) {
       continue;
     }
 
-    if (
-      link.protocol !== "http:" &&
-      link.protocol !== "https:"
-    ) {
-      continue;
-    }
-
-    const baseHost =
-      base.hostname
+    const rootHost =
+      website.hostname
         .toLowerCase()
         .replace(/^www\./, "");
 
@@ -380,8 +405,8 @@ function parseHtmlListing(
         .replace(/^www\./, "");
 
     if (
-      linkHost !== baseHost &&
-      !linkHost.endsWith("." + baseHost)
+      linkHost !== rootHost &&
+      !linkHost.endsWith("." + rootHost)
     ) {
       continue;
     }
@@ -391,7 +416,7 @@ function parseHtmlListing(
 
     if (
       path === "/" ||
-      badPaths.some(
+      badPathParts.some(
         (part) => path.includes(part),
       )
     ) {
@@ -403,40 +428,63 @@ function parseHtmlListing(
         .split("/")
         .filter(Boolean);
 
-    if (!segments.length) {
-      continue;
-    }
+    if (!segments.length) continue;
 
     const lastSegment =
-      segments[
-        segments.length - 1
-      ] || "";
+      segments[segments.length - 1] || "";
 
-    const looksLikeArticle =
+    const strongArticlePath =
       path.includes("/news/") ||
-      path.includes("/article") ||
+      path.includes("/article/") ||
       path.includes("/articles/") ||
-      path.includes("/technical-") ||
+      path.includes("/technical-articles/") ||
+      path.includes("/technical-article/") ||
       path.includes("/projects/") ||
-      path.includes("/products/") ||
-      path.includes("/tech/") ||
-      path.includes("/hi-tech/") ||
-      lastSegment.length >= 12 ||
+      path.includes("/products/");
+
+    const slugLooksLikeArticle =
+      lastSegment.length >= 18 &&
       segments.length >= 2;
 
-    if (!looksLikeArticle) {
+    if (!strongArticlePath && !slugLooksLikeArticle) {
       continue;
     }
 
+    const rawMarkup =
+      `${match[1] || ""} ${match[3] || ""} ${match[4] || ""}`;
+
+    let title =
+      cleanListingTitleV578(
+        rawMarkup,
+      );
+
+    if (title.length < 12) {
+      title =
+        titleFromHrefV578(
+          link.toString(),
+        );
+    }
+
+    if (title.length < 8) continue;
+    if (badTitles.test(title)) continue;
+
     link.hash = "";
+
+    for (const key of [...link.searchParams.keys()]) {
+      const lower = key.toLowerCase();
+
+      if (
+        lower.startsWith("utm_") ||
+        ["fbclid","gclid","mc_cid","mc_eid"].includes(lower)
+      ) {
+        link.searchParams.delete(key);
+      }
+    }
 
     const canonical =
       link.toString();
 
-    if (seen.has(canonical)) {
-      continue;
-    }
-
+    if (seen.has(canonical)) continue;
     seen.add(canonical);
 
     results.push({
@@ -1543,6 +1591,11 @@ const RULES: Array<[RegExp, number]> = [
   [/\b(phone|smartphone|snapdragon|mediatek|dimensity|iphone|android)\b/i, 18],
   [/\b(power electronics|inverter|mosfet|igbt|sic|gan|gate driver|pmic)\b/i, 28],
   [/\b(electrical|electronics|embedded|microcontroller|mcu|sensor|pcb|rf|wireless)\b/i, 22],
+  // NLKH_V578_ELECTRICAL_RULES
+  [/\b(power supply|power conversion|dc[- ]?dc|buck converter|boost converter|voltage regulator|battery management|bms|energy storage|bess|ups|motor drive|motor control)\b/i, 24],
+  [/\b(power grid|smart grid|transformer|substation|protective relay|protection system|switchgear|circuit breaker|hvdc|power transmission|power distribution|microgrid)\b/i, 28],
+  [/\b(solar|photovoltaic|wind turbine|renewable energy|ev charging|battery monitor|power module|power stage)\b/i, 22],
+  [/\b(emi|emc|isolation|isolated driver|current sensor|voltage sensor)\b/i, 18],
   [/\b(ai accelerator|npu|edge ai|data center|server)\b/i, 16],
   // NLKH_V574_SCORING: curated electrical/electronics sources often use
   // product-specific titles that previously scored below threshold 30.
@@ -3392,21 +3445,30 @@ async function fetchSourceItems(
   env: Env,
 ): Promise<FeedItem[]> {
   if (source.type === "html") {
+    let directError = "";
+    let renderError = "";
+    let scrapeError = "";
+
     try {
-      const response = await fetch(source.feed, {
-        headers: {
-          "User-Agent":
-            "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
-          Accept:
-            "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
-          "Accept-Language":
-            "en-US,en;q=0.9",
-        },
-        redirect: "follow",
-      });
+      const response =
+        await fetch(
+          source.feed,
+          {
+            headers: {
+              "User-Agent":
+                "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
+              Accept:
+                "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+              "Accept-Language":
+                "en-US,en;q=0.9",
+            },
+            redirect: "follow",
+          },
+        );
 
       if (response.ok) {
-        const html = await response.text();
+        const html =
+          await response.text();
 
         const parsed =
           parseHtmlListing(
@@ -3417,18 +3479,61 @@ async function fetchSourceItems(
         if (parsed.length) {
           return parsed;
         }
+      } else {
+        directError =
+          `HTTP ${response.status}`;
       }
-    } catch {
-      // Browser Run fallback below.
+    } catch (error: any) {
+      directError =
+        String(error?.message || error);
     }
 
-    return await scrapeLinksWithBrowserRun(
-      env,
-      source,
+    // NLKH_V578_BROWSER_CONTENT_FIRST
+    // Render the page and parse the real HTML before relying on
+    // Browser Run anchor.text. This fixes image-only article cards.
+    if (env.BROWSER) {
+      try {
+        const rendered =
+          await renderHtmlWithBrowserRun(
+            env,
+            source.feed,
+          );
+
+        const renderedItems =
+          parseHtmlListing(
+            rendered,
+            source,
+          );
+
+        if (renderedItems.length) {
+          return renderedItems;
+        }
+      } catch (error: any) {
+        renderError =
+          String(error?.message || error);
+      }
+
+      try {
+        const browserItems =
+          await scrapeLinksWithBrowserRun(
+            env,
+            source,
+          );
+
+        if (browserItems.length) {
+          return browserItems;
+        }
+      } catch (error: any) {
+        scrapeError =
+          String(error?.message || error);
+      }
+    }
+
+    throw new Error(
+      `HTML source failed: direct=${directError || "0 article"}; rendered=${renderError || "0 article"}; scrape=${scrapeError || "0 article"}`,
     );
   }
-
-  let response: Response | null = null;
+let response: Response | null = null;
   let lastFetchError = "";
 
   for (let attempt = 1; attempt <= 3; attempt++) {
