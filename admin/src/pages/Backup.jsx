@@ -5,6 +5,11 @@ import{invoke}from"../lib/supabase";
 import{notify}from"../lib/notify";
 
 const PAGE=250;
+const BACKUP_API_KEY=String(
+ import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY||
+ import.meta.env.VITE_SUPABASE_ANON_KEY||
+ ""
+);
 const enc=new TextEncoder();
 
 function bytes(v){
@@ -205,27 +210,45 @@ export default function Backup({access}){
   ticketRef.current=r;
   return r;
  }
- async function edgeFetch(params,retry=true){
+ async function edgeFetch(params,retryTicket=true){
+  const op=String(params?.op||"binary");
   const t=await ensureTicket(false);
   const u=new URL(t.endpoint);
   u.searchParams.set("ticket",t.ticket);
   Object.entries(params||{}).forEach(([k,v])=>{
    if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,String(v));
   });
-  let r=await fetch(u.toString(),{cache:"no-store"});
-  if(r.status===403&&retry){
-   await ensureTicket(true);
-   return edgeFetch(params,false);
+
+  let lastError=null;
+  for(let attempt=1;attempt<=3;attempt++){
+   try{
+    const headers=BACKUP_API_KEY?{apikey:BACKUP_API_KEY}:{};
+    const r=await fetch(u.toString(),{
+     cache:"no-store",
+     mode:"cors",
+     credentials:"omit",
+     headers
+    });
+    if(r.status===403&&retryTicket){
+     await ensureTicket(true);
+     return edgeFetch(params,false);
+    }
+    if(!r.ok){
+     const text=await r.text().catch(()=>"");
+     throw new Error(text||`Backup API HTTP ${r.status}`);
+    }
+    return r;
+   }catch(e){
+    lastError=e;
+    if(attempt<3)await new Promise(resolve=>setTimeout(resolve,500*attempt));
+   }
   }
-  if(!r.ok){
-   const text=await r.text().catch(()=>"");
-   throw new Error(text||`Backup API HTTP ${r.status}`);
-  }
-  return r;
+  throw new Error(
+   `Không kết nối được luồng backup (${op}): ${lastError?.message||String(lastError||"Failed to fetch")}`
+  );
  }
  async function edgeJson(params){
-  const r=await edgeFetch(params);
-  const x=await r.json();
+  const x=await invoke("manual-backup",{action:"json-op",...(params||{})});
   if(x?.error)throw new Error(x.error);
   return x;
  }
@@ -280,7 +303,7 @@ export default function Backup({access}){
    });
 
    const rootManifest={
-    format:"NLKH_FULL_DISASTER_BACKUP_V3",
+    format:"NLKH_FULL_DISASTER_BACKUP_V4",
     started_at:startedAt,
     preflight:inv,
     complete_marker:"BACKUP_COMPLETE.json",
@@ -480,7 +503,7 @@ export default function Backup({access}){
 
    const complete={
     ok:true,
-    format:"NLKH_FULL_DISASTER_BACKUP_V3",
+    format:"NLKH_FULL_DISASTER_BACKUP_V4",
     started_at:startedAt,
     completed_at:new Date().toISOString(),
     database_tables:tables.length,
@@ -505,7 +528,7 @@ export default function Backup({access}){
    setMessage(
     `Backup FULL hoàn tất: ${dbRows} dòng DB · ${authSeen} users · ${storageSeen} Storage · ${r2Seen} R2 · ${kvKeys} KV. Hãy mở ZIP và kiểm tra BACKUP_COMPLETE.json.`
    );
-   notify("FULL backup V3 đã hoàn tất.","success",8000);
+   notify("FULL backup V4 đã hoàn tất.","success",8000);
   }catch(e){
    try{await zip?.close?.({preventClose:true})}catch{}
    try{await writable?.abort?.()}catch{}
@@ -528,10 +551,10 @@ export default function Backup({access}){
   <section className="adminSection">
    <div className="sectionTitle">
     <div>
-     <h1>Backup FULL thủ công V3</h1>
+     <h1>Backup FULL thủ công V4</h1>
      <p className="sectionDescription">
-      Một nút tạo ZIP64 và ghi trực tiếp xuống ổ đĩa. Mỗi bảng/file được lấy bằng request nhỏ,
-      tránh giữ một Edge Function chạy xuyên suốt toàn bộ backup.
+      Một nút tạo ZIP64 và ghi trực tiếp xuống ổ đĩa. Metadata đi qua request Admin đã xác thực;
+      file R2/Storage đi qua luồng GET có ticket ngắn hạn và CORS riêng.
      </p>
     </div>
     <button className="primary" disabled={checking||downloading} onClick={check}>

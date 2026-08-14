@@ -6,7 +6,7 @@ import { adminSoftwareCategories,adminSoftwareItems } from "../../data/admin-gen
 import { getMyAccess,invokeEdge } from "../../lib/supabase-browser";
 import styles from "./software.module.css";
 
-const PAGE_SIZE=10;
+const PAGE_SIZE=9;
 
 type AccessState={
   authenticated?:boolean;

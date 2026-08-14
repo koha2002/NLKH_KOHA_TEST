@@ -197,6 +197,57 @@ try {
     hasInlineHtml:(t.tool_type || (String(t.inline_html||"").trim() ? "html" : "source")) === "html" && !!String(t.inline_html||"").trim(),
   }));
   const normalizedRings = rings.map(r=>({id:r.id,size:Number(r.size),duration:Number(r.duration),reverse:!!r.reverse,dashed:!!r.dashed,dotAngle:r.dot_angle,dotTone:r.dot_tone||"blue"}));
+
+  // NLKH_SOFTWARE_ICON_STATIC_V1
+  // Software icons are public catalog assets. Materialize them into the static
+  // frontend at build time so /software stays instant without per-card Edge calls.
+  const softwareIconDir = out("public/software-icons");
+  fs.mkdirSync(softwareIconDir, { recursive:true });
+
+  for (const x of software) {
+    if (!x.icon_media_id) continue;
+    try {
+      const assets = await rest(
+        "media_assets",
+        `select=id,object_key,original_name,mime_type,visibility&id=eq.${encodeURIComponent(x.icon_media_id)}&limit=1`
+      );
+      const asset = assets[0];
+      if (!asset) throw new Error(`missing media asset ${x.icon_media_id}`);
+
+      const mime = String(asset.mime_type || "").toLowerCase();
+      const originalExt = path.extname(String(asset.original_name || "")).toLowerCase();
+      const mimeExt =
+        mime.includes("svg") ? ".svg" :
+        mime.includes("webp") ? ".webp" :
+        mime.includes("jpeg") || mime.includes("jpg") ? ".jpg" :
+        mime.includes("gif") ? ".gif" :
+        mime.includes("avif") ? ".avif" :
+        mime.includes("ico") ? ".ico" :
+        ".png";
+      const allowedExt = new Set([".png",".jpg",".jpeg",".webp",".svg",".gif",".avif",".ico"]);
+      const ext = allowedExt.has(originalExt) ? originalExt : mimeExt;
+      const baseName = safeSlug(x.slug || x.name || String(x.id)) || "software";
+      const fileName = `${baseName}-${String(x.id).slice(0,8)}${ext}`;
+      const rel = `/software-icons/${fileName}`;
+      const target = out(`public/software-icons/${fileName}`);
+
+      const signed = await edge("r2-file", {
+        action:"presign-download",
+        media_id:asset.id,
+        object_key:asset.object_key
+      });
+      if (!signed?.url) throw new Error("missing signed icon URL");
+
+      const ir = await fetch(signed.url);
+      if (!ir.ok) throw new Error(`icon HTTP ${ir.status}`);
+      fs.writeFileSync(target, Buffer.from(await ir.arrayBuffer()));
+      x.icon_url = rel;
+      console.log(`[CMS] Software icon -> ${rel}`);
+    } catch (err) {
+      console.warn(`[CMS] Software icon failed for ${x.slug || x.id}:`, err?.message || err);
+    }
+  }
+
   // Public catalog snapshot: never serialize actual protected download targets.
   // Download URL/R2 target is resolved only by the authenticated Edge action.
   const normalizedSoftware = software.map(x=>({

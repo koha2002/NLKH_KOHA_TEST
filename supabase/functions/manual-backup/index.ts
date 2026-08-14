@@ -98,11 +98,19 @@ async function accessibleR2Buckets(){
 }
 function responseHeaders(req:Request,contentType?:string){
   const h=new Headers(corsHeaders(req));
+  // Ticket GETs are authenticated by a short-lived HMAC token, not cookies.
+  // Make CORS explicit because Admin is hosted on a different origin.
+  h.set("Access-Control-Allow-Origin","*");
+  h.set("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+  h.set(
+    "Access-Control-Allow-Headers",
+    "authorization, x-client-info, apikey, content-type"
+  );
   h.set("Cache-Control","no-store");
   h.set("X-Content-Type-Options","nosniff");
   h.set(
     "Access-Control-Expose-Headers",
-    "Content-Type,Content-Length,ETag,Last-Modified,Cache-Control,Content-Disposition,Content-Encoding,Content-Language,X-NLKH-Object-Meta"
+    "Content-Type,ETag,Last-Modified,Cache-Control,Content-Disposition,Content-Language,X-NLKH-Object-Meta"
   );
   if(contentType)h.set("Content-Type",contentType);
   return h;
@@ -230,7 +238,7 @@ async function inventory(admin:any){
   return{
     ok:true,
     ready:true,
-    format:"NLKH_MANUAL_FULL_BACKUP_V3",
+    format:"NLKH_MANUAL_FULL_BACKUP_V4",
     checked_at:new Date().toISOString(),
     database:{
       tables,
@@ -321,14 +329,14 @@ async function getStorageFile(admin:any,u:URL,req:Request){
   if(error||!signed?.signedUrl){
     throw new Error(error?.message||"Cannot create Storage signed URL.");
   }
-  const upstream=await fetch(signed.signedUrl,{redirect:"follow"});
+  const upstream=await fetch(signed.signedUrl,{redirect:"follow",headers:{"Accept-Encoding":"identity"}});
   if(!upstream.ok||!upstream.body){
     throw new Error(`Storage HTTP ${upstream.status}: ${bucket}/${name}`);
   }
   const h=responseHeaders(req,upstream.headers.get("Content-Type")||"application/octet-stream");
   for(const key of [
-    "Content-Length","ETag","Last-Modified","Cache-Control",
-    "Content-Disposition","Content-Encoding","Content-Language"
+    "ETag","Last-Modified","Cache-Control",
+    "Content-Disposition","Content-Language"
   ]){
     const v=upstream.headers.get(key);
     if(v)h.set(key,v);
@@ -351,12 +359,13 @@ async function getR2File(u:URL,req:Request){
   const stream=typeof raw?.transformToWebStream==="function"
     ?raw.transformToWebStream():raw;
   const h=responseHeaders(req,String(obj.ContentType||"application/octet-stream"));
-  if(obj.ContentLength!==undefined)h.set("Content-Length",String(obj.ContentLength));
+  // Do not forward Content-Length/Content-Encoding through the proxy.
+  // The Edge/browser transport may decode or re-chunk a streamed response;
+  // stale length/encoding headers can make fetch fail before ZipWriter sees it.
   if(obj.ETag)h.set("ETag",String(obj.ETag));
   if(obj.LastModified)h.set("Last-Modified",obj.LastModified.toUTCString());
   if(obj.CacheControl)h.set("Cache-Control",String(obj.CacheControl));
   if(obj.ContentDisposition)h.set("Content-Disposition",String(obj.ContentDisposition));
-  if(obj.ContentEncoding)h.set("Content-Encoding",String(obj.ContentEncoding));
   if(obj.ContentLanguage)h.set("Content-Language",String(obj.ContentLanguage));
   h.set("X-NLKH-Object-Meta",objectMetaHeader({
     provider:"cloudflare-r2",
@@ -378,7 +387,7 @@ Deno.serve(async req=>{
   const u=new URL(req.url);
 
   if(req.method==="OPTIONS"){
-    return new Response("ok",{headers:corsHeaders(req)});
+    return new Response("ok",{headers:responseHeaders(req,"text/plain; charset=utf-8")});
   }
 
   if(req.method==="GET"){
@@ -444,6 +453,52 @@ Deno.serve(async req=>{
     const body=await req.json().catch(()=>({}));
     const action=String(body?.action||"inventory");
     const admin=adminClient();
+
+    if(action==="json-op"){
+      const op=String(body?.op||"");
+      const v=new URL(req.url);
+      for(const[k,val]of Object.entries(body||{})){
+        if(k==="action"||k==="op"||val===undefined||val===null||val==="")continue;
+        v.searchParams.set(k,String(val));
+      }
+
+      if(op==="table-page")return await getTablePage(admin,v,req);
+      if(op==="auth-page")return await getAuthPage(admin,v,req);
+      if(op==="storage-list-page")return await getStorageListPage(admin,v,req);
+      if(op==="r2-list-page")return await getR2ListPage(v,req);
+      if(op==="technology-news-kv"){
+        return json(req,await technologyNewsKvBackup());
+      }
+      if(op==="schema"){
+        const{data,error}=await admin.rpc("manual_backup_schema_metadata");
+        if(error)throw error;
+        return json(req,{schema:data||{}});
+      }
+      if(op==="meta"){
+        const buckets=await storageBuckets(admin);
+        const r2=r2Config();
+        const secretNames=[
+          "SUPABASE_SERVICE_ROLE_KEY","INTEGRATION_SECRETS_KEY","SCHEDULER_SECRET",
+          "R2_ACCESS_KEY_ID","R2_SECRET_ACCESS_KEY","CLOUDFLARE_API_TOKEN"
+        ];
+        return json(req,{
+          generated_at:new Date().toISOString(),
+          safe_runtime:{
+            supabase_url:Deno.env.get("SUPABASE_URL")||"",
+            r2_account_id:r2.account,
+            r2_bucket_name:r2.bucket,
+            technology_news_url:Deno.env.get("TECHNOLOGY_NEWS_URL")||
+              "https://automation.nguyenlekhanhhoa.com",
+            edge_region:Deno.env.get("SB_REGION")||""
+          },
+          secret_presence_only:Object.fromEntries(
+            secretNames.map(k=>[k,{present:!!Deno.env.get(k)}])
+          ),
+          supabase_storage_buckets:buckets
+        });
+      }
+      return json(req,{error:"Unknown JSON backup operation"},400);
+    }
 
     if(action==="inventory"){
       return json(req,await inventory(admin));
