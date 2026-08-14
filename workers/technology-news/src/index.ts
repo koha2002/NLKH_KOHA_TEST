@@ -1687,6 +1687,7 @@ async function getIngestRecord(
   return rows[0] as IngestRecord;
 }
 
+
 function ingestAlreadyHasDraft(
   record: IngestRecord | null,
 ) {
@@ -1697,6 +1698,72 @@ function ingestAlreadyHasDraft(
       record.state === "draft_created"
     )
   );
+}
+
+// NLKH_V576_CREATED_URL_HISTORY
+// technology_news_ingest is the permanent successful-source-URL ledger.
+// Only state=draft_created is treated as permanently completed.
+function canonicalCreatedUrl(value: string): string {
+  try {
+    const url = new URL(String(value || "").trim());
+    url.hash = "";
+
+    const trackingKeys = [
+      "fbclid",
+      "gclid",
+      "mc_cid",
+      "mc_eid",
+      "ref",
+    ];
+
+    for (const key of [...url.searchParams.keys()]) {
+      const lower = key.toLowerCase();
+
+      if (
+        lower.startsWith("utm_") ||
+        trackingKeys.includes(lower)
+      ) {
+        url.searchParams.delete(key);
+      }
+    }
+
+    if (url.pathname.length > 1) {
+      url.pathname =
+        url.pathname.replace(/\/+$/, "");
+    }
+
+    url.searchParams.sort();
+
+    return url.toString();
+  } catch {
+    return String(value || "").trim();
+  }
+}
+
+async function loadCreatedUrlHistory(
+  env: Env,
+): Promise<Set<string>> {
+  try {
+    const rows: any =
+      await sb(
+        env,
+        "technology_news_ingest?select=source_url&state=eq.draft_created&limit=5000",
+      );
+
+    return new Set(
+      (Array.isArray(rows) ? rows : [])
+        .map((row: any) =>
+          canonicalCreatedUrl(
+            String(row?.source_url || ""),
+          ),
+        )
+        .filter(Boolean),
+    );
+  } catch {
+    // Do not kill the whole run if the preload fails.
+    // The per-candidate ingest lookup still prevents duplicates.
+    return new Set<string>();
+  }
 }
 
 
@@ -3809,6 +3876,12 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
   };
   const candidates: Array<{ item: FeedItem; score: number }> = [];
   const sourceErrors: Array<{ source: string; error: string }> = [];
+
+  const createdUrlHistory =
+    await loadCreatedUrlHistory(env);
+  const createdUrlHistoryCount =
+    createdUrlHistory.size;
+  let createdUrlsSkippedBeforeScoring = 0;
   const sourceDiagnostics: Array<{source:string;items:number;scanned:number;passed:number;maxScore:number;threshold:number}> = [];
 
   const sourcesForRun =
@@ -3830,6 +3903,14 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
       const scannedItems=items.slice(0, MAX_ITEMS_PER_SCANNED_SOURCE);
       let passed=0,maxScore=-999;
       for (const item of scannedItems) {
+        const createdUrlKey =
+          canonicalCreatedUrl(item.link);
+
+        if (createdUrlHistory.has(createdUrlKey)) {
+          createdUrlsSkippedBeforeScoring++;
+          continue;
+        }
+
         const score = scoreItem(item, source.baseScore);
         maxScore=Math.max(maxScore,score);
         if (score >= settings.relevanceThreshold) {
@@ -4139,6 +4220,13 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
         },
       );
 
+      createdUrlHistory.add(
+
+        canonicalCreatedUrl(candidate.item.link),
+
+      );
+
+
       created.push({
         source: candidate.item.source,
         score: candidate.score,
@@ -4194,6 +4282,9 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
     candidates:
       candidates.length,
 
+
+    createdUrlHistoryCount,
+    createdUrlsSkippedBeforeScoring,
     duplicateDraftsSkipped,
     retryingPreviousFailures,
     newItemsStarted,
