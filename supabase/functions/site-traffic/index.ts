@@ -12,432 +12,288 @@ import {
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function bearer(
-  req: Request,
-): string {
+function bearer(req: Request): string {
   const raw =
-    req.headers.get(
-      "Authorization",
-    ) || "";
+    req.headers.get("Authorization") || "";
 
-  const match =
-    raw.match(
-      /^Bearer\s+(.+)$/i,
-    );
-
-  return match?.[1]?.trim() || "";
+  return raw.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
 }
 
 async function optionalProfileId(
   req: Request,
 ): Promise<string | null> {
-  const token =
-    bearer(req);
+  const token = bearer(req);
 
-  if (!token) {
-    return null;
-  }
+  if (!token) return null;
 
   try {
-    const admin =
-      adminClient();
+    const admin = adminClient();
 
     const {
       data: { user },
       error,
-    } =
-      await admin.auth.getUser(
-        token,
-      );
+    } = await admin.auth.getUser(token);
 
-    if (
-      error ||
-      !user?.id
-    ) {
-      return null;
-    }
+    if (error || !user?.id) return null;
 
-    const {
-      data: profile,
-    } =
+    const { data } =
       await admin
         .from("profiles")
         .select("id")
         .eq("id", user.id)
         .maybeSingle();
 
-    return profile?.id || null;
+    return data?.id || null;
   } catch {
     return null;
   }
 }
 
-async function ping(
-  req: Request,
-  body: any,
+async function touch(
+  visitorId: string,
+  pagePath: string,
+  userId: string | null,
 ) {
-  const visitorId =
-    String(
-      body?.visitor_id || "",
-    ).trim();
-
-  if (
-    !UUID.test(
-      visitorId,
-    )
-  ) {
-    return json(
-      req,
-      {
-        error:
-          "visitor_id không hợp lệ",
-      },
-      400,
-    );
+  if (!UUID.test(visitorId)) {
+    throw new Error("visitor_id không hợp lệ");
   }
 
-  const pagePath =
-    String(
-      body?.path || "/",
-    )
+  const path =
+    String(pagePath || "/")
       .trim()
-      .slice(0, 300) ||
-    "/";
+      .slice(0, 300) || "/";
 
-  const now =
-    new Date().toISOString();
+  const admin = adminClient();
 
-  const admin =
-    adminClient();
-
-  const profileId =
-    await optionalProfileId(
-      req,
-    );
-
-  const {
-    data: existing,
-    error: readError,
-  } =
+  const { data: existing, error: readError } =
     await admin
       .from("site_presence")
       .select(
-        "visitor_id,first_seen_at,page_views,user_id",
+        "visitor_id,user_id,first_seen_at,last_seen_at,current_path,page_views",
       )
-      .eq(
-        "visitor_id",
-        visitorId,
-      )
+      .eq("visitor_id", visitorId)
       .maybeSingle();
 
-  if (readError) {
-    throw readError;
+  if (readError) throw readError;
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  let bump = 1;
+
+  if (existing?.last_seen_at) {
+    const age =
+      now.getTime() -
+      new Date(existing.last_seen_at).getTime();
+
+    bump =
+      age > 10000 ||
+      String(existing.current_path || "/") !== path
+        ? 1
+        : 0;
   }
 
   const payload = {
-    visitor_id:
-      visitorId,
+    visitor_id: visitorId,
     user_id:
-      profileId ||
+      userId ||
       existing?.user_id ||
       null,
     first_seen_at:
       existing?.first_seen_at ||
-      now,
-    last_seen_at:
-      now,
-    current_path:
-      pagePath,
+      nowIso,
+    last_seen_at: nowIso,
+    current_path: path,
     page_views:
-      Number(
-        existing?.page_views ||
-        0,
-      ) + 1,
-    updated_at:
-      now,
+      Number(existing?.page_views || 0) +
+      bump,
+    updated_at: nowIso,
   };
 
-  const {
-    error: writeError,
-  } =
+  const { error: writeError } =
     await admin
       .from("site_presence")
-      .upsert(
-        payload,
-        {
-          onConflict:
-            "visitor_id",
-        },
-      );
+      .upsert(payload, {
+        onConflict: "visitor_id",
+      });
 
-  if (writeError) {
-    throw writeError;
-  }
+  if (writeError) throw writeError;
 
-  return json(
-    req,
-    {
-      ok: true,
-      source:
-        "edge-service-role",
-      visitor_id:
-        visitorId,
-      user_id:
-        payload.user_id,
-      path:
-        pagePath,
-      server_time:
-        now,
-    },
-  );
+  return {
+    visitor_id: visitorId,
+    user_id: payload.user_id,
+    path,
+    server_time: nowIso,
+  };
 }
 
-async function requireUsersManage(
-  req: Request,
-) {
-  const ctx =
-    await caller(req);
+async function adminSummary(req: Request) {
+  const ctx = await caller(req);
 
-  if (
-    !hasPermission(
-      ctx,
-      "users.manage",
-    )
-  ) {
-    return null;
+  if (!hasPermission(ctx, "users.manage")) {
+    return json(req, { error: "Forbidden" }, 403);
   }
 
-  return ctx;
-}
+  const admin = adminClient();
 
-async function summary(
-  req: Request,
-) {
-  const ctx =
-    await requireUsersManage(
-      req,
-    );
-
-  if (!ctx) {
-    return json(
-      req,
-      {
-        error:
-          "Forbidden",
-      },
-      403,
-    );
-  }
-
-  const admin =
-    adminClient();
-
-  const {
-    data,
-    error,
-  } =
+  const { data, error } =
     await admin
       .from("site_presence")
       .select(
         "visitor_id,user_id,first_seen_at,last_seen_at,current_path,page_views,profiles(email,display_name,status,role_id)",
       )
-      .order(
-        "last_seen_at",
-        {
-          ascending: false,
-        },
-      )
+      .order("last_seen_at", { ascending: false })
       .limit(300);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
-  const rows =
-    data || [];
+  const rows = data || [];
+  const now = Date.now();
 
-  const now =
-    Date.now();
-
-  const online =
-    rows.filter(
-      (row: any) =>
-        now -
-          new Date(
-            row.last_seen_at,
-          ).getTime() <=
-        90000,
-    ).length;
-
-  return json(
-    req,
-    {
-      ok: true,
-      source:
-        "edge-service-role",
-      checked_at:
-        new Date().toISOString(),
-      online,
-      rows,
-    },
-  );
+  return json(req, {
+    ok: true,
+    version: "presence-v5-pixel",
+    checked_at: new Date().toISOString(),
+    online:
+      rows.filter(
+        (row: any) =>
+          now -
+            new Date(row.last_seen_at).getTime()
+          <= 90000,
+      ).length,
+    rows,
+  });
 }
 
-async function cleanup(
-  req: Request,
-  body: any,
-) {
-  const ctx =
-    await requireUsersManage(
-      req,
-    );
+async function cleanup(req: Request, body: any) {
+  const ctx = await caller(req);
 
-  if (!ctx) {
-    return json(
-      req,
-      {
-        error:
-          "Forbidden",
-      },
-      403,
-    );
+  if (!hasPermission(ctx, "users.manage")) {
+    return json(req, { error: "Forbidden" }, 403);
   }
 
   const days =
     Math.min(
       365,
-      Math.max(
-        1,
-        Number(
-          body?.days || 30,
-        ),
-      ),
+      Math.max(1, Number(body?.days || 30)),
     );
 
   const cut =
     new Date(
       Date.now() -
-      days *
-        86400000,
+      days * 86400000,
     ).toISOString();
 
-  const admin =
-    adminClient();
+  const admin = adminClient();
 
-  const {
-    error,
-  } =
+  const { error } =
     await admin
       .from("site_presence")
       .delete()
-      .lt(
-        "last_seen_at",
-        cut,
-      );
+      .lt("last_seen_at", cut);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
-  return json(
-    req,
-    {
-      ok: true,
-      deleted_before:
-        cut,
-    },
-  );
+  return json(req, {
+    ok: true,
+    deleted_before: cut,
+  });
 }
 
-// NLKH_SITE_TRAFFIC_V4_EDGE_SERVICE_ROLE
-Deno.serve(
-  async (
-    req: Request,
-  ) => {
-    if (
-      req.method ===
-      "OPTIONS"
-    ) {
-      return new Response(
-        "ok",
-        {
-          headers:
-            corsHeaders(req),
-        },
-      );
+// NLKH_SITE_TRAFFIC_V5_PIXEL
+Deno.serve(async (req: Request) => {
+  try {
+    if (req.method === "OPTIONS") {
+      return new Response("ok", {
+        headers: corsHeaders(req),
+      });
     }
 
-    if (
-      req.method !==
-      "POST"
-    ) {
+    // Public no-CORS heartbeat. This is intentionally a GET endpoint:
+    // <img>/fetch no-cors can hit it even when JS CORS/auth fails.
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+
+      if (url.searchParams.get("action") !== "ping") {
+        return new Response(null, { status: 404 });
+      }
+
+      const visitorId =
+        String(url.searchParams.get("visitor_id") || "");
+
+      const pagePath =
+        String(url.searchParams.get("path") || "/");
+
+      await touch(
+        visitorId,
+        pagePath,
+        null,
+      );
+
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Cache-Control":
+            "no-store, max-age=0",
+          "Access-Control-Allow-Origin":
+            "*",
+        },
+      });
+    }
+
+    if (req.method !== "POST") {
       return json(
         req,
-        {
-          error:
-            "Method not allowed",
-        },
+        { error: "Method not allowed" },
         405,
       );
     }
 
-    try {
-      const body =
-        await req.json();
+    const body = await req.json();
+    const action = String(body?.action || "");
 
-      const action =
-        String(
-          body?.action || "",
+    if (action === "ping") {
+      const userId =
+        await optionalProfileId(req);
+
+      const result =
+        await touch(
+          String(body?.visitor_id || ""),
+          String(body?.path || "/"),
+          userId,
         );
 
-      if (
-        action ===
-        "ping"
-      ) {
-        return await ping(
-          req,
-          body,
-        );
-      }
-
-      if (
-        action ===
-        "summary"
-      ) {
-        return await summary(
-          req,
-        );
-      }
-
-      if (
-        action ===
-        "cleanup"
-      ) {
-        return await cleanup(
-          req,
-          body,
-        );
-      }
-
-      return json(
-        req,
-        {
-          error:
-            "Unsupported action",
-        },
-        400,
-      );
-    } catch (error) {
-      return json(
-        req,
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : String(error),
-        },
-        500,
-      );
+      return json(req, {
+        ok: true,
+        version: "presence-v5-pixel",
+        source: "edge-service-role",
+        ...result,
+      });
     }
-  },
-);
+
+    if (action === "summary") {
+      return await adminSummary(req);
+    }
+
+    if (action === "cleanup") {
+      return await cleanup(req, body);
+    }
+
+    return json(
+      req,
+      { error: "Unsupported action" },
+      400,
+    );
+  } catch (error) {
+    return json(
+      req,
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+      500,
+    );
+  }
+});

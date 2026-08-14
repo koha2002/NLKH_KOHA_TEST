@@ -1118,66 +1118,130 @@ function isAllowedFeedUrl(value: string) {
 }
 
 function normalizeSettings(input: any): Settings {
-  const maxDrafts = Number(input?.maxDraftsPerRun);
-  const threshold = Number(input?.relevanceThreshold);
+  const maxDrafts =
+    Number(input?.maxDraftsPerRun);
 
-  const rawSources = Array.isArray(input?.sources)
-    ? input.sources
-    : DEFAULT_SOURCES;
+  const threshold =
+    Number(input?.relevanceThreshold);
 
-  const sources = rawSources
-    .map((source: any) => ({
-      name: String(source?.name || "").trim(),
-      website: (() => {
-        const raw = String(
-          source?.website ||
-          source?.feed ||
-          "",
-        ).trim();
+  const rawSources =
+    Array.isArray(input?.sources)
+      ? input.sources
+      : DEFAULT_SOURCES;
 
-        try {
-          return new URL(raw).origin;
-        } catch {
-          return raw;
-        }
-      })(),
+  const normalizeFeedV580 =
+    (value: unknown) => {
+      const feed =
+        String(value || "").trim();
 
-      feed: String(
-        source?.feed ||
-        source?.website ||
-        "",
-      ).trim(),
-      baseScore: Math.min(
-        100,
-        Math.max(-100, Math.round(Number(source?.baseScore) || 0)),
-      ),
-      type: source?.type === "html" ? "html" : "rss",
-      enabled: source?.enabled !== false,
-    }))
-    .filter(
-      (source: Source) =>
-        Boolean(source.name) &&
-        isAllowedFeedUrl(source.feed),
-    )
-    .slice(0, 50);
+      // NLKH_V580_AAC_CURRENT_ROUTES
+      // These /latest category pages are current and more useful than
+      // the older /news/category pages for mixed article discovery.
+      if (
+        feed ===
+        "https://www.allaboutcircuits.com/news/category/power/"
+      ) {
+        return "https://www.allaboutcircuits.com/latest/power/";
+      }
+
+      if (
+        feed ===
+        "https://www.allaboutcircuits.com/news/category/smart-grid-energy/"
+      ) {
+        return "https://www.allaboutcircuits.com/latest/smart-grid-energy/";
+      }
+
+      return feed;
+    };
+
+  const sources =
+    rawSources
+      .map((source: any) => ({
+        name:
+          String(source?.name || "").trim(),
+
+        website: (() => {
+          const raw =
+            String(
+              source?.website ||
+              source?.feed ||
+              "",
+            ).trim();
+
+          try {
+            return new URL(raw).origin;
+          } catch {
+            return raw;
+          }
+        })(),
+
+        feed:
+          normalizeFeedV580(
+            source?.feed ||
+            source?.website ||
+            "",
+          ),
+
+        baseScore:
+          Math.min(
+            100,
+            Math.max(
+              -100,
+              Math.round(
+                Number(source?.baseScore) || 0,
+              ),
+            ),
+          ),
+
+        type:
+          source?.type === "html"
+            ? "html"
+            : "rss",
+
+        enabled:
+          source?.enabled !== false,
+      }))
+      .filter(
+        (source: Source) =>
+          Boolean(source.name) &&
+          isAllowedFeedUrl(source.feed),
+      )
+      .slice(0, 50);
 
   return {
     maxDraftsPerRun:
       Number.isFinite(maxDrafts)
-        ? Math.min(20, Math.max(1, Math.round(maxDrafts)))
+        ? Math.min(
+            20,
+            Math.max(
+              1,
+              Math.round(maxDrafts),
+            ),
+          )
         : DEFAULT_SETTINGS.maxDraftsPerRun,
+
     relevanceThreshold:
       Number.isFinite(threshold)
-        ? Math.min(100, Math.max(0, Math.round(threshold)))
+        ? Math.min(
+            100,
+            Math.max(
+              0,
+              Math.round(threshold),
+            ),
+          )
         : DEFAULT_SETTINGS.relevanceThreshold,
+
     automationEnabled:
       typeof input?.automationEnabled === "boolean"
         ? input.automationEnabled
         : DEFAULT_SETTINGS.automationEnabled,
-    sources: sources.length ? sources : DEFAULT_SOURCES,
+
+    sources:
+      sources.length
+        ? sources
+        : DEFAULT_SOURCES,
   };
 }
-
 async function maybeApplyV55SourcePreset(
   env: Env,
   settings: Settings,
@@ -2017,321 +2081,287 @@ async function findSourceImageCandidates(
   env: Env,
   item: FeedItem,
 ): Promise<SourceImageCandidate[]> {
-  // NLKH_V579_IMAGE_DIVERSITY
+  // NLKH_V580_IMAGE_RENDERED_RECOVERY
   const found: SourceImageCandidate[] = [];
-  const normalized = new Set<string>();
+  const seen = new Set<string>();
 
-  const decode = (raw: string) =>
-    String(raw || "")
-      .replace(/\\u002F/gi, "/")
-      .replace(/\\\//g, "/")
-      .replace(/&amp;/g, "&")
-      .replace(/&#x2F;/gi, "/")
-      .replace(/&#47;/g, "/")
-      .trim();
+  const decode =
+    (raw: string) =>
+      String(raw || "")
+        .replace(/\\u002F/gi, "/")
+        .replace(/\\\//g, "/")
+        .replace(/&amp;/g, "&")
+        .replace(/&#x2F;/gi, "/")
+        .replace(/&#47;/g, "/")
+        .trim();
 
-  const cleanHint = (raw: string) =>
-    String(raw || "")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 320);
+  const cleanHint =
+    (raw: string) =>
+      String(raw || "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 320);
 
-  const push = (
-    raw: string | undefined,
-    hint: string,
-    baseUrl: string,
-  ) => {
-    if (!raw) return;
+  const add =
+    (
+      raw: string | undefined,
+      hint: string,
+      baseUrl: string,
+    ) => {
+      if (!raw) return;
 
-    try {
-      const decoded = decode(raw);
-      if (!decoded || /^data:/i.test(decoded)) return;
+      try {
+        const value = decode(raw);
 
-      const url = new URL(decoded, baseUrl);
-      if (!["http:", "https:"].includes(url.protocol)) return;
+        if (
+          !value ||
+          /^data:/i.test(value)
+        ) return;
 
-      const text = url.toString();
+        const url =
+          new URL(
+            value,
+            baseUrl,
+          );
 
-      if (
-        /logo|icon|avatar|badge|sprite|emoji|tracking|pixel|author|profile|newsletter|advert|adsystem|favicon/i.test(
-          text,
-        )
-      ) return;
+        if (
+          !["http:", "https:"].includes(url.protocol)
+        ) return;
 
-      if (
-        /\.(?:svg|gif)(?:$|\?)/i.test(text)
-      ) return;
+        const text =
+          url.toString();
 
-      // Ignore crop/resize query differences for diversity/dedupe.
-      const pathKey =
-        `${url.origin}${url.pathname}`
-          .replace(
-            /[-_]\d{2,4}x\d{2,4}(?=\.[a-z0-9]+$)/i,
-            "",
+        if (
+          /logo|icon|avatar|badge|sprite|emoji|tracking|pixel|author|profile|newsletter|advert|adsystem|favicon/i.test(
+            text,
           )
-          .replace(
-            /\/(?:resize|width|height)\/\d+/ig,
-            "",
-          )
-          .toLowerCase();
+        ) return;
 
-      if (normalized.has(pathKey)) return;
-      normalized.add(pathKey);
+        if (
+          /\.(?:svg|gif)(?:$|\?)/i.test(text)
+        ) return;
 
-      found.push({
-        url: text,
-        hint: cleanHint(hint),
-      });
-    } catch {}
-  };
+        const key =
+          `${url.origin}${url.pathname}`
+            .replace(
+              /[-_]\d{2,4}x\d{2,4}(?=\.[a-z0-9]+$)/i,
+              "",
+            )
+            .toLowerCase();
 
-  const pushSrcset = (
-    raw: string | undefined,
-    hint: string,
-    baseUrl: string,
-  ) => {
-    if (!raw) return;
+        if (seen.has(key)) return;
+        seen.add(key);
 
-    const candidates =
-      decode(raw)
-        .split(",")
-        .map((part) => {
-          const bits =
-            part
-              .trim()
-              .split(/\s+/);
+        found.push({
+          url: text,
+          hint:
+            cleanHint(hint),
+        });
+      } catch {}
+    };
 
-          const descriptor =
-            bits[1] || "";
+  const addSrcset =
+    (
+      raw: string | undefined,
+      hint: string,
+      baseUrl: string,
+    ) => {
+      if (!raw) return;
 
-          const numeric =
-            parseInt(
-              descriptor,
-              10,
-            ) || 0;
+      const best =
+        decode(raw)
+          .split(",")
+          .map((part) => {
+            const bits =
+              part.trim().split(/\s+/);
 
-          return {
-            url:
-              bits[0] || "",
-            numeric,
-          };
-        })
-        .filter((x) => x.url)
-        .sort(
-          (a,b) =>
-            b.numeric -
-            a.numeric,
-        );
+            return {
+              url: bits[0] || "",
+              n:
+                parseInt(
+                  bits[1] || "0",
+                  10,
+                ) || 0,
+            };
+          })
+          .filter((x) => x.url)
+          .sort((a,b) => b.n-a.n)[0];
 
-    if (candidates[0]) {
-      push(
-        candidates[0].url,
-        hint,
-        baseUrl,
-      );
-    }
-  };
-
-  const extract = (
-    html: string,
-    baseUrl: string,
-  ) => {
-    if (!html) return;
-
-    // Cover/social image stays first.
-    const metaPatterns = [
-      /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
-      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/ig,
-      /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
-      /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/ig,
-    ];
-
-    for (const pattern of metaPatterns) {
-      for (const match of html.matchAll(pattern)) {
-        push(
-          match[1],
-          item.title,
-          baseUrl,
-        );
-      }
-    }
-
-    const articleHtml =
-      html.match(
-        /<article\b[\s\S]*?<\/article>/i,
-      )?.[0] ||
-      html.match(
-        /<main\b[\s\S]*?<\/main>/i,
-      )?.[0] ||
-      html;
-
-    // Semantic figure blocks first because captions improve placement.
-    for (
-      const figure of
-      articleHtml.matchAll(
-        /<figure\b[\s\S]*?<\/figure>/ig,
-      )
-    ) {
-      const block =
-        figure[0];
-
-      const img =
-        block.match(
-          /<img\b[^>]*>/i,
-        )?.[0] || "";
-
-      if (!img) continue;
-
-      const alt =
-        img.match(
-          /\balt=["']([^"']*)["']/i,
-        )?.[1] || "";
-
-      const title =
-        img.match(
-          /\btitle=["']([^"']*)["']/i,
-        )?.[1] || "";
-
-      const caption =
-        block.match(
-          /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i,
-        )?.[1] || "";
-
-      const hint =
-        [alt,title,caption]
-          .filter(Boolean)
-          .join(" | ");
-
-      const srcset =
-        img.match(
-          /\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i,
-        )?.[1];
-
-      if (srcset) {
-        pushSrcset(
-          srcset,
-          hint,
-          baseUrl,
-        );
-      } else {
-        const src =
-          img.match(
-            /\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url)=["']([^"']+)["']/i,
-          )?.[1];
-
-        push(
-          src,
+      if (best) {
+        add(
+          best.url,
           hint,
           baseUrl,
         );
       }
+    };
 
-      if (found.length >= 18) break;
-    }
+  const extract =
+    (
+      html: string,
+      baseUrl: string,
+    ) => {
+      if (!html) return;
 
-    // picture/source tags often contain the real high-res source.
-    if (found.length < 16) {
-      for (
-        const tag of
-        articleHtml.matchAll(
-          /<source\b[^>]*>/ig,
-        )
-      ) {
-        const rawTag =
-          tag[0];
+      const socialPatterns = [
+        /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
+        /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/ig,
+        /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/ig,
+        /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/ig,
+      ];
 
-        const srcset =
-          rawTag.match(
-            /\b(?:srcset|data-srcset)=["']([^"']+)["']/i,
-          )?.[1];
-
-        pushSrcset(
-          srcset,
-          "",
-          baseUrl,
-        );
-
-        if (found.length >= 18) break;
+      for (const pattern of socialPatterns) {
+        for (const match of html.matchAll(pattern)) {
+          add(
+            match[1],
+            item.title,
+            baseUrl,
+          );
+        }
       }
-    }
 
-    // Remaining image tags, including common lazy-load attributes.
-    if (found.length < 16) {
+      const body =
+        html.match(
+          /<article\b[\s\S]*?<\/article>/i,
+        )?.[0] ||
+        html.match(
+          /<main\b[\s\S]*?<\/main>/i,
+        )?.[0] ||
+        html;
+
       for (
-        const tag of
-        articleHtml.matchAll(
-          /<img\b[^>]*>/ig,
+        const figure of
+        body.matchAll(
+          /<figure\b[\s\S]*?<\/figure>/ig,
         )
       ) {
-        const rawTag =
-          tag[0];
+        const block =
+          figure[0];
 
-        const alt =
-          rawTag.match(
-            /\balt=["']([^"']*)["']/i,
-          )?.[1] || "";
+        const img =
+          block.match(
+            /<img\b[^>]*>/i,
+          )?.[0] || "";
 
-        const title =
-          rawTag.match(
-            /\btitle=["']([^"']*)["']/i,
-          )?.[1] || "";
+        if (!img) continue;
 
         const hint =
-          [alt,title]
+          [
+            img.match(/\balt=["']([^"']*)["']/i)?.[1] || "",
+            img.match(/\btitle=["']([^"']*)["']/i)?.[1] || "",
+            block.match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i)?.[1] || "",
+          ]
             .filter(Boolean)
             .join(" | ");
 
         const srcset =
-          rawTag.match(
+          img.match(
             /\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i,
           )?.[1];
 
         if (srcset) {
-          pushSrcset(
+          addSrcset(
             srcset,
             hint,
             baseUrl,
           );
         } else {
-          const src =
-            rawTag.match(
+          add(
+            img.match(
               /\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url|data-flickity-lazyload)=["']([^"']+)["']/i,
-            )?.[1];
-
-          push(
-            src,
+            )?.[1],
             hint,
             baseUrl,
           );
         }
 
-        if (found.length >= 18) break;
+        if (found.length >= 20) break;
       }
-    }
 
-    // JSON-LD / hydrated application state can carry images not present as img src.
-    if (found.length < 16) {
-      for (
-        const match of
-        html.matchAll(
-          /"(?:image|contentUrl|thumbnailUrl)"\s*:\s*"([^"]+)"/ig,
-        )
-      ) {
-        push(
-          match[1],
-          item.title,
-          baseUrl,
-        );
+      if (found.length < 18) {
+        for (
+          const imgMatch of
+          body.matchAll(
+            /<img\b[^>]*>/ig,
+          )
+        ) {
+          const tag =
+            imgMatch[0];
 
-        if (found.length >= 18) break;
+          const hint =
+            [
+              tag.match(/\balt=["']([^"']*)["']/i)?.[1] || "",
+              tag.match(/\btitle=["']([^"']*)["']/i)?.[1] || "",
+            ]
+              .filter(Boolean)
+              .join(" | ");
+
+          const srcset =
+            tag.match(
+              /\b(?:srcset|data-srcset|data-lazy-srcset)=["']([^"']+)["']/i,
+            )?.[1];
+
+          if (srcset) {
+            addSrcset(
+              srcset,
+              hint,
+              baseUrl,
+            );
+          } else {
+            add(
+              tag.match(
+                /\b(?:src|data-src|data-lazy-src|data-original|data-image|data-url|data-flickity-lazyload)=["']([^"']+)["']/i,
+              )?.[1],
+              hint,
+              baseUrl,
+            );
+          }
+
+          if (found.length >= 20) break;
+        }
       }
-    }
-  };
 
-  let directBase =
+      if (found.length < 18) {
+        for (
+          const source of
+          body.matchAll(
+            /<source\b[^>]*>/ig,
+          )
+        ) {
+          addSrcset(
+            source[0].match(
+              /\b(?:srcset|data-srcset)=["']([^"']+)["']/i,
+            )?.[1],
+            "",
+            baseUrl,
+          );
+
+          if (found.length >= 20) break;
+        }
+      }
+
+      if (found.length < 18) {
+        for (
+          const match of
+          html.matchAll(
+            /"(?:image|contentUrl|thumbnailUrl)"\s*:\s*"([^"]+)"/ig,
+          )
+        ) {
+          add(
+            match[1],
+            item.title,
+            baseUrl,
+          );
+
+          if (found.length >= 20) break;
+        }
+      }
+    };
+
+  let baseUrl =
     item.link;
 
   try {
@@ -2341,82 +2371,49 @@ async function findSourceImageCandidates(
         {
           headers: {
             "User-Agent":
-              "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36",
             Accept:
               "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+            "Accept-Language":
+              "en-US,en;q=0.9",
           },
-          redirect:
-            "follow",
+          redirect: "follow",
         },
       );
 
     if (response.ok) {
-      directBase =
+      baseUrl =
         response.url ||
         item.link;
 
-      const html =
-        await response.text();
-
       extract(
-        html,
-        directBase,
+        await response.text(),
+        baseUrl,
       );
     }
-  } catch {
-    // Browser fallback below.
-  }
+  } catch {}
 
-  // Static HTML often exposes only og:image while the real body images
-  // are lazy-rendered. Ask Browser Run for rendered content when needed.
+  // Correct V5.8.0 Browser fallback.
+  // renderHtmlWithBrowserRun() decodes the Quick Action Response.
   if (
-    found.length < 6 &&
+    found.length < 8 &&
     env.BROWSER
   ) {
     try {
-      const rendered =
-        await browserQuickActionWithRetry(
+      const renderedHtml =
+        await renderHtmlWithBrowserRun(
           env,
-          "content",
-          {
-            url:
-              item.link,
-          },
+          item.link,
         );
-
-      let renderedHtml =
-        "";
-
-      if (
-        typeof rendered ===
-        "string"
-      ) {
-        renderedHtml =
-          rendered;
-      } else if (
-        typeof rendered?.content ===
-        "string"
-      ) {
-        renderedHtml =
-          rendered.content;
-      } else if (
-        typeof rendered?.result ===
-        "string"
-      ) {
-        renderedHtml =
-          rendered.result;
-      }
 
       extract(
         renderedHtml,
-        directBase,
+        baseUrl,
       );
-    } catch {
-      // Do not fail the article because image discovery failed.
-    }
+    } catch {}
   }
 
-  return found.slice(0, 16);
+  return found.slice(0, 18);
 }
 async function ingestNewsMedia(
   env: Env,
@@ -2964,78 +2961,192 @@ async function fetchArticleText(
   env: Env,
   item: FeedItem,
 ): Promise<string> {
-  let html = "";
+  // NLKH_V580_ARTICLE_CONTENT_RECOVERY
+  const diagnostics: string[] = [];
+  let directHtml = "";
 
   try {
-    const res = await fetch(item.link, {
-      headers: {
-        "User-Agent":
-          "NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
-        Accept:
-          "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
-      },
-      redirect: "follow",
-    });
+    const sourceUrl =
+      new URL(item.link);
 
-    if (res.ok) {
-      html = await res.text();
+    const response =
+      await fetch(
+        item.link,
+        {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36",
+            Accept:
+              "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+            "Accept-Language":
+              "en-US,en;q=0.9",
+            Referer:
+              sourceUrl.origin + "/",
+          },
+          redirect: "follow",
+        },
+      );
+
+    diagnostics.push(
+      `direct=${response.status}`,
+    );
+
+    if (response.ok) {
+      directHtml =
+        await response.text();
     }
-  } catch {
-    // Browser Run fallback bên dưới.
+  } catch (error: any) {
+    diagnostics.push(
+      `direct-error=${String(error?.message || error).slice(0,160)}`,
+    );
   }
 
   let articleText =
-    htmlToArticleText(html);
+    htmlToArticleText(
+      directHtml,
+    );
 
-  // Nếu fetch thường bị anti-bot hoặc nội dung quá ít,
-  // thử Browser Run đã có sẵn trong Worker.
+  // JSON-LD often contains articleBody even when the visible HTML shell
+  // is anti-bot/lazy-rendered.
+  if (
+    articleText.length < 1200 &&
+    directHtml
+  ) {
+    try {
+      const bodies: string[] = [];
+
+      for (
+        const script of
+        directHtml.matchAll(
+          /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+        )
+      ) {
+        try {
+          const parsed =
+            JSON.parse(
+              script[1],
+            );
+
+          const queue =
+            Array.isArray(parsed)
+              ? [...parsed]
+              : [parsed];
+
+          while (queue.length) {
+            const node =
+              queue.shift();
+
+            if (!node || typeof node !== "object") continue;
+
+            if (
+              typeof node.articleBody === "string"
+            ) {
+              bodies.push(
+                node.articleBody,
+              );
+            }
+
+            if (Array.isArray(node["@graph"])) {
+              queue.push(...node["@graph"]);
+            }
+          }
+        } catch {}
+      }
+
+      const jsonLdText =
+        bodies
+          .join("\n\n")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      if (
+        jsonLdText.length >
+        articleText.length
+      ) {
+        articleText =
+          jsonLdText;
+
+        diagnostics.push(
+          `jsonld=${jsonLdText.length}`,
+        );
+      }
+    } catch {}
+  }
+
+  // IMPORTANT V5.8.0:
+  // browserQuickActionWithRetry returns a Response object.
+  // renderHtmlWithBrowserRun is the function that correctly calls
+  // response.json() and returns data.result.
   if (
     articleText.length < 1200 &&
     env.BROWSER
   ) {
     try {
-      const rendered =
-        await browserQuickActionWithRetry(
+      const renderedHtml =
+        await renderHtmlWithBrowserRun(
           env,
-          "content",
-          {
-            url: item.link,
-          },
+          item.link,
         );
 
-      let renderedHtml = "";
-
-      if (typeof rendered === "string") {
-        renderedHtml = rendered;
-      } else if (
-        typeof rendered?.content === "string"
-      ) {
-        renderedHtml = rendered.content;
-      } else if (
-        typeof rendered?.result === "string"
-      ) {
-        renderedHtml = rendered.result;
-      }
-
       const browserText =
-        htmlToArticleText(renderedHtml);
+        htmlToArticleText(
+          renderedHtml,
+        );
+
+      diagnostics.push(
+        `browser=${browserText.length}`,
+      );
 
       if (
         browserText.length >
         articleText.length
       ) {
-        articleText = browserText;
+        articleText =
+          browserText;
       }
-    } catch {
-      // Không làm hỏng pipeline.
+    } catch (error: any) {
+      diagnostics.push(
+        `browser-error=${String(error?.message || error).slice(0,180)}`,
+      );
     }
   }
 
-  // RSS summary vẫn là fallback cuối cùng.
-  if (articleText.length < 300) {
-    articleText =
+  if (
+    articleText.length < 300
+  ) {
+    const summary =
       String(item.summary || "").trim();
+
+    if (
+      summary.length >
+      articleText.length
+    ) {
+      articleText =
+        summary;
+    }
   }
+
+  if (
+    articleText.length >
+    26000
+  ) {
+    articleText =
+      articleText.slice(
+        0,
+        26000,
+      );
+  }
+
+  if (
+    articleText.length < 300
+  ) {
+    console.warn(
+      "[NLKH source content]",
+      item.link,
+      diagnostics.join("; "),
+    );
+  }
+
   return articleText;
 }
 const AI_DAILY_FREE_NEURONS = 10000;
@@ -4903,6 +5014,21 @@ async function repairLowImageArticlesV579(
         );
       }
 
+      // NLKH_V580_REPAIR_RESULT_TRUTH
+      if (
+        afterVi <= beforeVi &&
+        afterEn <= beforeEn
+      ) {
+        failed.push({
+          id: row.id,
+          slug: row.slug,
+          stage: "no_image_gain",
+          error:
+            `Không tăng được ảnh inline: VI ${beforeVi}->${afterVi}, EN ${beforeEn}->${afterEn}`,
+        });
+
+        continue;
+      }
       repaired.push({
         id:
           row.id,
