@@ -252,6 +252,52 @@ export default function Backup({access}){
   if(x?.error)throw new Error(x.error);
   return x;
  }
+ const R2_CHUNK_BYTES=2*1024*1024;
+ function r2ChunkStream(bucket,key,size,onFirstMeta,onProgress){
+  let offset=0;
+  let closed=false;
+  return new ReadableStream({
+   async pull(controller){
+    if(closed)return;
+    if(offset>=size){
+     closed=true;
+     controller.close();
+     return;
+    }
+    try{
+     const wanted=Math.min(R2_CHUNK_BYTES,size-offset);
+     const res=await edgeFetch({
+      op:"r2-file",bucket,key,start:offset,length:wanted
+     });
+     const buffer=new Uint8Array(await res.arrayBuffer());
+     if(buffer.byteLength<=0){
+      throw new Error(`R2 chunk rỗng tại byte ${offset}: ${bucket}/${key}`);
+     }
+     if(offset===0){
+      onFirstMeta?.({
+       content_type:res.headers.get("Content-Type"),
+       etag:res.headers.get("ETag"),
+       last_modified:res.headers.get("Last-Modified"),
+       cache_control:res.headers.get("Cache-Control"),
+       content_disposition:res.headers.get("Content-Disposition"),
+       content_language:res.headers.get("Content-Language"),
+       proxy_meta:decodeMeta(res.headers.get("X-NLKH-Object-Meta"))
+      });
+     }
+     controller.enqueue(buffer);
+     offset+=buffer.byteLength;
+     onProgress?.(offset,size);
+     if(offset>=size){
+      closed=true;
+      controller.close();
+     }
+    }catch(e){
+     closed=true;
+     controller.error(e);
+    }
+   }
+  });
+ }
  async function addText(zip,name,text){
   await zip.add(name,new TextReader(String(text)),{level:0});
  }
@@ -303,7 +349,7 @@ export default function Backup({access}){
    });
 
    const rootManifest={
-    format:"NLKH_FULL_DISASTER_BACKUP_V4_1",
+    format:"NLKH_FULL_DISASTER_BACKUP_V4_2",
     started_at:startedAt,
     preflight:inv,
     complete_marker:"BACKUP_COMPLETE.json",
@@ -453,25 +499,32 @@ export default function Backup({access}){
        phase:"Cloudflare R2",current:r2Seen,total:r2Expected,
        detail:`${bucket}/${key}`
       });
-      const res=await edgeFetch({op:"r2-file",bucket,key});
-      if(!res.body)throw new Error(`R2 response rỗng: ${bucket}/${key}`);
+       const size=Math.max(0,Number(obj.size||0));
       const zipPath=safeZipPath(`r2/buckets/${safePart(bucket)}/files`,key);
-      const fullMeta=decodeMeta(res.headers.get("X-NLKH-Object-Meta"));
-      await zip.add(zipPath,res.body,{level:0,zip64:true});
+      let firstMeta={};
+      const stream=size>0
+       ?r2ChunkStream(
+         bucket,key,size,
+         meta=>{firstMeta=meta||{}},
+         (done,total)=>{
+          const mb=(done/1048576).toFixed(1);
+          const totalMb=(total/1048576).toFixed(1);
+          setProgress({
+           phase:"Cloudflare R2",
+           current:r2Seen,
+           total:r2Expected,
+           detail:`${bucket}/${key} · ${mb}/${totalMb} MB`
+          });
+         }
+        )
+       :new Blob([]).stream();
+
+      await zip.add(zipPath,stream,{level:0,zip64:true});
       r2Seen++;bucketSeen++;
       pageMeta.push({
        ...obj,bucket,zip_path:zipPath,
-       response:{
-        content_type:res.headers.get("Content-Type"),
-        content_length:res.headers.get("Content-Length"),
-        etag:res.headers.get("ETag"),
-        last_modified:res.headers.get("Last-Modified"),
-        cache_control:res.headers.get("Cache-Control"),
-        content_disposition:res.headers.get("Content-Disposition"),
-        content_encoding:res.headers.get("Content-Encoding"),
-        content_language:res.headers.get("Content-Language")
-       },
-       r2_metadata:fullMeta
+       response:firstMeta,
+       r2_metadata:firstMeta?.proxy_meta||{}
       });
      }
      await addText(
@@ -503,7 +556,7 @@ export default function Backup({access}){
 
    const complete={
     ok:true,
-    format:"NLKH_FULL_DISASTER_BACKUP_V4_1",
+    format:"NLKH_FULL_DISASTER_BACKUP_V4_2",
     started_at:startedAt,
     completed_at:new Date().toISOString(),
     database_tables:tables.length,
@@ -528,7 +581,7 @@ export default function Backup({access}){
    setMessage(
     `Backup FULL hoàn tất: ${dbRows} dòng DB · ${authSeen} users · ${storageSeen} Storage · ${r2Seen} R2 · ${kvKeys} KV. Hãy mở ZIP và kiểm tra BACKUP_COMPLETE.json.`
    );
-   notify("FULL backup V4.1 đã hoàn tất.","success",8000);
+   notify("FULL backup V4.2 đã hoàn tất.","success",8000);
   }catch(e){
    try{await zip?.close?.({preventClose:true})}catch{}
    try{await writable?.abort?.()}catch{}
@@ -551,7 +604,7 @@ export default function Backup({access}){
   <section className="adminSection">
    <div className="sectionTitle">
     <div>
-     <h1>Backup FULL thủ công V4.1</h1>
+     <h1>Backup FULL thủ công V4.2</h1>
      <p className="sectionDescription">
       Một nút tạo ZIP64 và ghi trực tiếp xuống ổ đĩa. Metadata đi qua request Admin đã xác thực;
       file R2/Storage đi qua luồng GET có ticket ngắn hạn và CORS riêng.

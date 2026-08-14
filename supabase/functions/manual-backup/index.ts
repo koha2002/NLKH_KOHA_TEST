@@ -110,7 +110,7 @@ function responseHeaders(req:Request,contentType?:string){
   h.set("X-Content-Type-Options","nosniff");
   h.set(
     "Access-Control-Expose-Headers",
-    "Content-Type,ETag,Last-Modified,Cache-Control,Content-Disposition,Content-Language,X-NLKH-Object-Meta"
+    "Content-Type,ETag,Last-Modified,Cache-Control,Content-Disposition,Content-Language,X-NLKH-Object-Meta,X-NLKH-Chunk-Start,X-NLKH-Chunk-Bytes,X-NLKH-Content-Range"
   );
   if(contentType)h.set("Content-Type",contentType);
   return h;
@@ -238,7 +238,7 @@ async function inventory(admin:any){
   return{
     ok:true,
     ready:true,
-    format:"NLKH_MANUAL_FULL_BACKUP_V4_1",
+    format:"NLKH_MANUAL_FULL_BACKUP_V4_2",
     checked_at:new Date().toISOString(),
     database:{
       tables,
@@ -346,22 +346,48 @@ async function getStorageFile(admin:any,u:URL,req:Request){
   }));
   return new Response(upstream.body,{status:200,headers:h});
 }
+async function bodyToBytes(raw:any){
+  if(typeof raw?.transformToByteArray==="function"){
+    return new Uint8Array(await raw.transformToByteArray());
+  }
+  if(typeof raw?.transformToWebStream==="function"){
+    return new Uint8Array(
+      await new Response(raw.transformToWebStream()).arrayBuffer()
+    );
+  }
+  return new Uint8Array(await new Response(raw).arrayBuffer());
+}
 async function getR2File(u:URL,req:Request){
   const bucket=String(u.searchParams.get("bucket")||"");
   const key=String(u.searchParams.get("key")||"");
   if(!bucket||!key)throw new Error("Missing R2 bucket/object key.");
+
+  const start=Math.max(0,Math.floor(Number(u.searchParams.get("start")||0)));
+  const requested=Math.max(1,Math.floor(Number(u.searchParams.get("length")||2097152)));
+  const length=Math.min(4*1024*1024,requested);
+  const end=start+length-1;
+
   const{s3}=r2Config();
   const allowed=await accessibleR2Buckets();
   if(!allowed.names.includes(bucket))throw new Error("R2 bucket is not accessible.");
-  const obj=await s3.send(new GetObjectCommand({Bucket:bucket,Key:key}));
+
+  // NLKH_BACKUP_V42_R2_CHUNKS:
+  // Do NOT relay the AWS SDK body stream through Supabase Edge. The relay can
+  // remain open and make ZipWriter appear stuck at 0/N. Read only a small byte
+  // range into memory, return a finite response, and let the browser request
+  // the next chunk. This also works for large objects without one long Edge run.
+  const obj=await s3.send(new GetObjectCommand({
+    Bucket:bucket,
+    Key:key,
+    Range:`bytes=${start}-${end}`
+  }));
   if(!obj.Body)throw new Error(`R2 object has no body: ${key}`);
-  const raw:any=obj.Body;
-  const stream=typeof raw?.transformToWebStream==="function"
-    ?raw.transformToWebStream():raw;
+
+  const bytes=await bodyToBytes(obj.Body);
   const h=responseHeaders(req,String(obj.ContentType||"application/octet-stream"));
-  // Do not forward Content-Length/Content-Encoding through the proxy.
-  // The Edge/browser transport may decode or re-chunk a streamed response;
-  // stale length/encoding headers can make fetch fail before ZipWriter sees it.
+  h.set("X-NLKH-Chunk-Start",String(start));
+  h.set("X-NLKH-Chunk-Bytes",String(bytes.byteLength));
+  if(obj.ContentRange)h.set("X-NLKH-Content-Range",String(obj.ContentRange));
   if(obj.ETag)h.set("ETag",String(obj.ETag));
   if(obj.LastModified)h.set("Last-Modified",obj.LastModified.toUTCString());
   if(obj.CacheControl)h.set("Cache-Control",String(obj.CacheControl));
@@ -378,9 +404,10 @@ async function getR2File(u:URL,req:Request){
     expires:obj.Expires?obj.Expires.toISOString():null,
     metadata:obj.Metadata||{},
     etag:obj.ETag||null,
-    last_modified:obj.LastModified?obj.LastModified.toISOString():null
+    last_modified:obj.LastModified?obj.LastModified.toISOString():null,
+    content_range:obj.ContentRange||null
   }));
-  return new Response(stream,{status:200,headers:h});
+  return new Response(bytes,{status:200,headers:h});
 }
 
 Deno.serve(async req=>{
