@@ -423,292 +423,54 @@ export default function CvPage() {
         className={`container ${styles.summary}`}
       >
         <aside className={styles.sidebar}>
-          {showContact ? (
-            <section>
-              <h2>{cv.personal}</h2>
-              <dl>
-                {profile.born ? (
-                  <div>
-                    <dt>{cv.born}</dt>
-                    <dd>{profile.born}</dd>
-                  </div>
-                ) : null}
+          {showContact ? <section>
+            <h2>{cv.personal}</h2>
+            <dl>
+              {profile.born ? <div><dt>{cv.born}</dt><dd>{profile.born}</dd></div> : null}
+              {profile.address?.[language] ? <div><dt>{cv.address}</dt><dd>{profile.address[language]}</dd></div> : null}
+              {profile.phone ? <div><dt>{cv.phone}</dt><dd><a href={`tel:${profile.phoneHref}`}>{profile.phone}</a></dd></div> : null}
+              {profile.email ? <div><dt>Email</dt><dd><a href={`mailto:${profile.email}`}>{profile.email}</a></dd></div> : null}
+            </dl>
+          </section> : null}
 
-                {profile.address?.[language] ? (
-                  <div>
-                    <dt>{cv.address}</dt>
-                    <dd>
-                      {
-                        profile.address[
-                          language
-                        ]
-                      }
-                    </dd>
-                  </div>
-                ) : null}
+          {((profile.educations?.length ? profile.educations : [profile.education]).filter(Boolean) as Education[]).some(x=>x?.school?.[language] || x?.major?.[language]) ? <section>
+            <h2>{cv.education}</h2>
+            {(profile.educations?.length ? profile.educations : [profile.education]).filter(Boolean).map((edu:Education,index:number)=>
+              (edu.school?.[language] || edu.major?.[language]) ? <div key={edu.id || `${edu.period}-${index}`} style={{marginBottom:index===((profile.educations?.length||1)-1)?"0":"22px"}}>
+                {edu.period ? <p className={styles.year}>{edu.period}</p> : null}
+                {edu.school?.[language] ? <h3>{edu.url ? <a href={edu.url} target="_blank" rel="noreferrer">{edu.school[language]}</a> : edu.school[language]}</h3> : null}
+                {edu.major?.[language] ? <p>{edu.major[language]}</p> : null}
+                {edu.subtitle?.[language] ? <p>{edu.subtitle[language]}</p> : null}
+                {edu.description?.[language] ? <p>{edu.description[language]}</p> : null}
+              </div> : null
+            )}
+          </section> : null}
 
-                {profile.phone ? (
-                  <div>
-                    <dt>{cv.phone}</dt>
-                    <dd>
-                      <a
-                        href={`tel:${profile.phoneHref}`}
-                      >
-                        {profile.phone}
-                      </a>
-                    </dd>
-                  </div>
-                ) : null}
+          {(profile.certificateItems?.length || profile.certificates?.[language]?.length) ? <section>
+            <h2>{cv.certificates}</h2>
+            {profile.certificateItems?.length
+              ? <ul>{profile.certificateItems.map((item,index)=><li key={item.id||index}>
+                  {item.title?.[language] ? (item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title[language]}</a> : item.title[language]) : ""}
+                  {item.period ? <span> ┬╖ {item.period}</span> : null}
+                  {item.organization?.[language] ? <span> ┬╖ {item.organization[language]}</span> : null}
+                  {item.subtitle?.[language] ? <span> ┬╖ {item.subtitle[language]}</span> : null}
+                  {item.description?.[language] ? <span> ┬╖ {item.description[language]}</span> : null}
+                </li>)}</ul>
+              : <ul>{profile.certificates[language].map((cert) => <li key={cert}>{cert}</li>)}</ul>}
+          </section> : null}
 
-                {profile.email ? (
-                  <div>
-                    <dt>Email</dt>
-                    <dd>
-                      <a
-                        href={`mailto:${profile.email}`}
-                      >
-                        {profile.email}
-                      </a>
-                    </dd>
-                  </div>
-                ) : null}
-              </dl>
-            </section>
-          ) : null}
-
-          {educations.some(
-            (item) =>
-              item?.school?.[language] ||
-              item?.major?.[language],
-          ) ? (
-            <section>
-              <h2>{cv.education}</h2>
-
-              {educations.map(
-                (education, index) =>
-                  education?.school?.[
-                    language
-                  ] ||
-                  education?.major?.[
-                    language
-                  ] ? (
-                    <div
-                      className={
-                        styles.sideRecord
-                      }
-                      key={
-                        education.id ||
-                        `${education.period}-${index}`
-                      }
-                    >
-                      {education.period ? (
-                        <p
-                          className={
-                            styles.year
-                          }
-                        >
-                          {
-                            education.period
-                          }
-                        </p>
-                      ) : null}
-
-                      {education.school?.[
-                        language
-                      ] ? (
-                        <h3>
-                          {education.url ? (
-                            <a
-                              href={
-                                education.url
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {
-                                education
-                                  .school[
-                                  language
-                                ]
-                              }
-                            </a>
-                          ) : (
-                            education.school[
-                              language
-                            ]
-                          )}
-                        </h3>
-                      ) : null}
-
-                      {education.major?.[
-                        language
-                      ] ? (
-                        <p>
-                          {
-                            education.major[
-                              language
-                            ]
-                          }
-                        </p>
-                      ) : null}
-
-                      {education.subtitle?.[
-                        language
-                      ] ? (
-                        <p
-                          className={
-                            styles.sideNote
-                          }
-                        >
-                          {
-                            education
-                              .subtitle[
-                              language
-                            ]
-                          }
-                        </p>
-                      ) : null}
-
-                      <DetailText
-                        text={
-                          education
-                            .description?.[
-                            language
-                          ]
-                        }
-                      />
-                    </div>
-                  ) : null,
-              )}
-            </section>
-          ) : null}
-
-          {(profile.certificateItems
-            ?.length ||
-            profile.certificates?.[
-              language
-            ]?.length) ? (
-            <section>
-              <h2>{cv.certificates}</h2>
-
-              {profile.certificateItems
-                ?.length ? (
-                <div
-                  className={
-                    styles.compactList
-                  }
-                >
-                  {profile.certificateItems.map(
-                    (item, index) => (
-                      <div
-                        key={
-                          item.id || index
-                        }
-                        className={
-                          styles.compactItem
-                        }
-                      >
-                        {item.period ? (
-                          <p
-                            className={
-                              styles.year
-                            }
-                          >
-                            {item.period}
-                          </p>
-                        ) : null}
-
-                        {item.title?.[
-                          language
-                        ] ? (
-                          <strong>
-                            {item.url ? (
-                              <a
-                                href={
-                                  item.url
-                                }
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {
-                                  item.title[
-                                    language
-                                  ]
-                                }
-                              </a>
-                            ) : (
-                              item.title[
-                                language
-                              ]
-                            )}
-                          </strong>
-                        ) : null}
-
-                        {item.organization?.[
-                          language
-                        ] ? (
-                          <p>
-                            {
-                              item
-                                .organization[
-                                language
-                              ]
-                            }
-                          </p>
-                        ) : null}
-
-                        <DetailText
-                          text={
-                            item.description?.[
-                              language
-                            ]
-                          }
-                        />
-                      </div>
-                    ),
-                  )}
-                </div>
-              ) : (
-                <ul>
-                  {profile.certificates[
-                    language
-                  ].map((certificate) => (
-                    <li key={certificate}>
-                      {certificate}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ) : null}
-
-          {(profile.skillItems?.length ||
-            profile.skills?.[language]
-              ?.length) ? (
-            <section>
-              <h2>{cv.skills}</h2>
-              <div className={styles.skills}>
-                {(profile.skillItems
-                  ?.length
-                  ? profile.skillItems
-                      .map(
-                        (item) =>
-                          item.title?.[
-                            language
-                          ],
-                      )
-                      .filter(Boolean)
-                  : profile.skills[
-                      language
-                    ]
-                ).map((skill) => (
-                  <span key={skill}>
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </section>
-          ) : null}
+          {(profile.skillItems?.length || profile.skills?.[language]?.length) ? <section>
+            <h2>{cv.skills}</h2>
+            {profile.skillItems?.length
+              ? <div className={styles.skills}>{profile.skillItems.map((item,index)=><span key={item.id||index} title={[
+                  item.subtitle?.[language],
+                  item.organization?.[language],
+                  item.description?.[language]
+                ].filter(Boolean).join(" ┬╖ ") || undefined}>
+                  {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title?.[language] || ""}</a> : (item.title?.[language] || "")}
+                </span>)}</div>
+              : <div className={styles.skills}>{profile.skills[language].map((skill) => <span key={skill}>{skill}</span>)}</div>}
+          </section> : null}
         </aside>
 
         <div className={styles.experience}>

@@ -15,12 +15,12 @@
   },
   "born": "15/05/2002",
   "address": {
-    "vi": "Hà Nội, Việt Nam",
-    "en": "Hanoi, Vietnam"
+    "vi": "Thanh Xu├ón, H├á Nß╗Öi",
+    "en": "Thanh Xuan, Hanoi"
   },
-  "phone": "+84 343 43 45 84",
-  "phoneHref": "+84343434584",
-  "email": "Khanhhoa2002.hh@gmail.com",
+  "phone": "0343 434 584",
+  "phoneHref": "0343434584",
+  "email": "khanhhoa2002.hh@gmail.com",
   "photo": "",
   "photoMediaId": "d37a3228-a5d5-48e8-9d9d-ff7d5f2b5fe8",
   "pdf": "",
@@ -34,35 +34,77 @@
     "show_download_pdf": true
   },
   "education": {
-    "period": "2020 – 2025",
+    "period": "2020ΓÇö2025",
     "school": {
-      "vi": "Trường Đại học Điện lực",
+      "vi": "Tr╞░ß╗¥ng ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c",
       "en": "Electric Power University"
     },
     "major": {
-      "vi": "Tự động hóa Hệ thống điện",
+      "vi": "Tß╗▒ ─æß╗Öng h├│a Hß╗ç thß╗æng ─æiß╗çn",
       "en": "Power System Automation"
     },
     "subtitle": {
-      "vi": "Tốt nghiệp loại Giỏi",
-      "en": "Graduated with Good honors"
+      "vi": "Kß╗╣ s╞░",
+      "en": "Engineer's Degree"
     }
   },
   "educations": [
     {
-      "id": "6a27ee5b-3988-4e25-8846-6a39897790f8",
-      "period": "2020 – 2025",
+      "id": "2434425f-4290-4059-a441-972468bc97fc",
+      "period": "2020ΓÇö2025",
       "school": {
-        "vi": "Trường Đại học Điện lực",
+        "vi": "Tr╞░ß╗¥ng ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c",
         "en": "Electric Power University"
       },
       "major": {
-        "vi": "Tự động hóa Hệ thống điện",
+        "vi": "Tß╗▒ ─æß╗Öng h├│a Hß╗ç thß╗æng ─æiß╗çn",
         "en": "Power System Automation"
       },
       "subtitle": {
-        "vi": "Tốt nghiệp loại Giỏi",
-        "en": "Graduated with Good honors"
+        "vi": "Kß╗╣ s╞░",
+        "en": "Engineer's Degree"
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "61862003-d2a8-4c82-8942-0510ead5d826",
+      "period": "2025-2028",
+      "school": {
+        "vi": "─Éß║íi hß╗ìc Th╞░╞íng Mß║íi",
+        "en": "Thuongmai University"
+      },
+      "major": {
+        "vi": "Quß║ún trß╗ï kinh doanh",
+        "en": "Business Administration"
+      },
+      "subtitle": {
+        "vi": "Hß╗ç cß╗¡ nh├ón - GPA 3.86",
+        "en": "Bachelor's Degree - GPA 3.86"
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "b2408c20-da64-4013-8370-17f5275a946f",
+      "period": "2025-2027",
+      "school": {
+        "vi": "Tr╞░ß╗¥ng ─æß║íi hß╗ìc ─Éiß╗çn Lß╗▒c",
+        "en": "Electric Power University"
+      },
+      "major": {
+        "vi": "Kß╗╣ thuß║¡t n─âng l╞░ß╗úng",
+        "en": "Energy Engineering"
+      },
+      "subtitle": {
+        "vi": "Thß║íc Sß╗╣",
+        "en": "Master's Degree"
       },
       "description": {
         "vi": "",
@@ -73,25 +115,27 @@
   ],
   "certificates": {
     "vi": [
-      "Giấy phép lái xe A1, B2",
-      "Chứng chỉ Tin học văn phòng ICDL"
+      "Tiß║┐ng Anh B1 - ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c (2023)",
+      "ICDL 5 kß╗╣ n─âng (2025)",
+      "Giß║Ñy ph├⌐p l├íi xe hß║íng B2"
     ],
     "en": [
-      "A1, B2 Driving Licenses",
-      "ICDL Office Computing Certificate"
+      "B1 English - Electric Power University (2023)",
+      "ICDL 5 modules (2025)",
+      "B2 driving license"
     ]
   },
   "certificateItems": [
     {
-      "id": "b6778628-9097-4eb1-9be1-769d327a13a7",
-      "period": "2020",
+      "id": "2986551c-e83a-4a87-abcd-1b277b695ccb",
+      "period": "",
       "title": {
-        "vi": "Giấy phép lái xe A1, B2",
-        "en": "A1, B2 Driving Licenses"
+        "vi": "Tiß║┐ng Anh B1 - ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c (2023)",
+        "en": "B1 English - Electric Power University (2023)"
       },
       "subtitle": {
-        "vi": "Do Bộ Giao thông Vận tải cấp",
-        "en": "Issued by the transport authority"
+        "vi": "",
+        "en": ""
       },
       "organization": {
         "vi": "",
@@ -104,19 +148,40 @@
       "url": ""
     },
     {
-      "id": "492e4040-1409-43a8-8713-47446b51939c",
-      "period": "2025",
+      "id": "6ee570e9-a089-48cd-92a7-e02a51cb2305",
+      "period": "",
       "title": {
-        "vi": "Chứng chỉ Tin học văn phòng ICDL",
-        "en": "ICDL Office Computing Certificate"
+        "vi": "ICDL 5 kß╗╣ n─âng (2025)",
+        "en": "ICDL 5 modules (2025)"
       },
       "subtitle": {
-        "vi": "International Certification of Digital Literacy",
-        "en": "International Certification of Digital Literacy"
+        "vi": "",
+        "en": ""
       },
       "organization": {
-        "vi": "ICDL",
-        "en": "ICDL"
+        "vi": "",
+        "en": ""
+      },
+      "description": {
+        "vi": "",
+        "en": ""
+      },
+      "url": ""
+    },
+    {
+      "id": "fe2f2f72-5260-41f2-8356-249acafe5454",
+      "period": "",
+      "title": {
+        "vi": "Giß║Ñy ph├⌐p l├íi xe hß║íng B2",
+        "en": "B2 driving license"
+      },
+      "subtitle": {
+        "vi": "",
+        "en": ""
+      },
+      "organization": {
+        "vi": "",
+        "en": ""
       },
       "description": {
         "vi": "",
@@ -127,29 +192,29 @@
   ],
   "skills": {
     "vi": [
-      "Thí nghiệm & kiểm định thiết bị điện",
-      "Thiết kế bảo vệ & tủ bảng điện",
-      "Hệ thống nhị thứ TBA 110–500kV",
-      "Bóc tách khối lượng & quản lý vật tư",
-      "Hồ sơ dự thầu, nghiệm thu & CBDA",
-      "Website & thương mại điện tử"
+      "AutoCAD",
+      "EPLAN",
+      "Microsoft Excel",
+      "Microsoft Word",
+      "─Éß╗ìc t├ái liß╗çu kß╗╣ thuß║¡t",
+      "Tiß║┐ng Anh B1"
     ],
     "en": [
-      "Electrical Testing & Inspection",
-      "Protection & Control Panel Design",
-      "110–500kV Substation Secondary Systems",
-      "Quantity Take-off & Material Management",
-      "Tendering, Acceptance & Project Preparation",
-      "Website & E-commerce Operations"
+      "AutoCAD",
+      "EPLAN",
+      "Microsoft Excel",
+      "Microsoft Word",
+      "Technical documentation",
+      "B1 English"
     ]
   },
   "skillItems": [
     {
-      "id": "5e9a8f0d-76dc-4e2a-abfc-93e09e4efac0",
+      "id": "4a93553f-f0a4-4f99-b11c-ba712ec99c14",
       "period": "",
       "title": {
-        "vi": "Thí nghiệm & kiểm định thiết bị điện",
-        "en": "Electrical Testing & Inspection"
+        "vi": "AutoCAD",
+        "en": "AutoCAD"
       },
       "subtitle": {
         "vi": "",
@@ -166,11 +231,11 @@
       "url": ""
     },
     {
-      "id": "27f3bb64-87fe-4c17-a9c0-ccf7e3ff2d6d",
+      "id": "84ee8302-0592-41f4-b791-8efa42de3768",
       "period": "",
       "title": {
-        "vi": "Thiết kế bảo vệ & tủ bảng điện",
-        "en": "Protection & Control Panel Design"
+        "vi": "EPLAN",
+        "en": "EPLAN"
       },
       "subtitle": {
         "vi": "",
@@ -187,11 +252,11 @@
       "url": ""
     },
     {
-      "id": "e5ca154b-4570-4454-af25-268f7ed2abea",
+      "id": "43fa3d39-a5d8-4d19-bd88-59883872057e",
       "period": "",
       "title": {
-        "vi": "Hệ thống nhị thứ TBA 110–500kV",
-        "en": "110–500kV Substation Secondary Systems"
+        "vi": "Microsoft Excel",
+        "en": "Microsoft Excel"
       },
       "subtitle": {
         "vi": "",
@@ -208,11 +273,11 @@
       "url": ""
     },
     {
-      "id": "fbcb7e6f-28cd-4bd0-b7e7-44fe4b4c22c1",
+      "id": "752c3e17-503d-4904-938c-a586f25686d1",
       "period": "",
       "title": {
-        "vi": "Bóc tách khối lượng & quản lý vật tư",
-        "en": "Quantity Take-off & Material Management"
+        "vi": "Microsoft Word",
+        "en": "Microsoft Word"
       },
       "subtitle": {
         "vi": "",
@@ -229,11 +294,11 @@
       "url": ""
     },
     {
-      "id": "1d321418-664d-4598-9e5b-8b32b1d2f798",
+      "id": "f727f61b-b323-41cd-b6a8-4778b4c74df4",
       "period": "",
       "title": {
-        "vi": "Hồ sơ dự thầu, nghiệm thu & CBDA",
-        "en": "Tendering, Acceptance & Project Preparation"
+        "vi": "─Éß╗ìc t├ái liß╗çu kß╗╣ thuß║¡t",
+        "en": "Technical documentation"
       },
       "subtitle": {
         "vi": "",
@@ -250,11 +315,11 @@
       "url": ""
     },
     {
-      "id": "0669a019-6947-45c6-b468-6f2cee1cab30",
+      "id": "5dddb96f-de73-470b-a0f9-7e6e467d9a7d",
       "period": "",
       "title": {
-        "vi": "Website & thương mại điện tử",
-        "en": "Website & E-commerce Operations"
+        "vi": "Tiß║┐ng Anh B1",
+        "en": "B1 English"
       },
       "subtitle": {
         "vi": "",
