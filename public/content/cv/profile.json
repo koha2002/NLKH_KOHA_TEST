@@ -2,25 +2,25 @@
   "visible": true,
   "name": "Nguyễn Lê Khánh Hòa",
   "role": {
-    "vi": "Kỹ sư điện",
-    "en": "Electrical Engineer"
+    "vi": "Kỹ sư điện · Tự động hóa hệ thống điện",
+    "en": "Electrical Engineer · Power System Automation"
   },
   "headline": {
-    "vi": "Kỹ sư điện.",
-    "en": "An electrical engineer."
+    "vi": "Kỹ sư điện • Tự động hóa hệ thống điện",
+    "en": "Electrical Engineer • Power System Automation"
   },
   "summary": {
-    "vi": "Tốt nghiệp loại Giỏi chuyên ngành Tự động hóa Hệ thống điện, có kinh nghiệm thí nghiệm thiết bị, thiết kế tủ điều khiển - bảo vệ.",
-    "en": "Graduated with distinction in Power System Automation, with experience in equipment testing, protection and control panel design."
+    "vi": "Kỹ sư điện có nền tảng Tự động hóa Hệ thống điện, kinh nghiệm từ thí nghiệm – bảo dưỡng thiết bị điện, thiết kế hệ thống bảo vệ/tủ bảng đến chuẩn bị dự án, bóc tách khối lượng, mua sắm vật tư và nghiệm thu. Đồng thời có kinh nghiệm vận hành website, thương mại điện tử và quản lý kỹ thuật.",
+    "en": "Electrical engineer with a Power System Automation background and hands-on experience spanning electrical testing and maintenance, protection and control panel design, project preparation, quantity take-off, procurement and acceptance documentation. Also experienced in website operations, e-commerce and technical management."
   },
   "born": "15/05/2002",
   "address": {
-    "vi": "Thanh Xuân, Hà Nội",
-    "en": "Thanh Xuan, Hanoi"
+    "vi": "Hà Nội, Việt Nam",
+    "en": "Hanoi, Vietnam"
   },
-  "phone": "0343 434 584",
-  "phoneHref": "0343434584",
-  "email": "khanhhoa2002.hh@gmail.com",
+  "phone": "+84 343 43 45 84",
+  "phoneHref": "+84343434584",
+  "email": "Khanhhoa2002.hh@gmail.com",
   "photo": "",
   "photoMediaId": "d37a3228-a5d5-48e8-9d9d-ff7d5f2b5fe8",
   "pdf": "",
@@ -34,7 +34,7 @@
     "show_download_pdf": true
   },
   "education": {
-    "period": "2020—2025",
+    "period": "2020 – 2025",
     "school": {
       "vi": "Trường Đại học Điện lực",
       "en": "Electric Power University"
@@ -44,14 +44,14 @@
       "en": "Power System Automation"
     },
     "subtitle": {
-      "vi": "Kỹ sư",
-      "en": "Engineer's Degree"
+      "vi": "Tốt nghiệp loại Giỏi",
+      "en": "Graduated with Good honors"
     }
   },
   "educations": [
     {
-      "id": "357a8d2d-9aca-411b-8ba2-02f56f711e67",
-      "period": "2020—2025",
+      "id": "6a27ee5b-3988-4e25-8846-6a39897790f8",
+      "period": "2020 – 2025",
       "school": {
         "vi": "Trường Đại học Điện lực",
         "en": "Electric Power University"
@@ -61,50 +61,8 @@
         "en": "Power System Automation"
       },
       "subtitle": {
-        "vi": "Kỹ sư",
-        "en": "Engineer's Degree"
-      },
-      "description": {
-        "vi": "",
-        "en": ""
-      },
-      "url": ""
-    },
-    {
-      "id": "1453bb8b-ef9c-4a1b-a419-efa886365702",
-      "period": "2025-2028",
-      "school": {
-        "vi": "Đại học Thương Mại",
-        "en": "Thuongmai University"
-      },
-      "major": {
-        "vi": "Quản trị kinh doanh",
-        "en": "Business Administration"
-      },
-      "subtitle": {
-        "vi": "Hệ cử nhân - GPA 3.86",
-        "en": "Bachelor's Degree - GPA 3.86"
-      },
-      "description": {
-        "vi": "",
-        "en": ""
-      },
-      "url": ""
-    },
-    {
-      "id": "a3652212-e066-4945-b9c7-0f657da1ca85",
-      "period": "2025-2027",
-      "school": {
-        "vi": "Trường đại học Điện Lực",
-        "en": "Electric Power University"
-      },
-      "major": {
-        "vi": "Kỹ thuật năng lượng",
-        "en": "Energy Engineering"
-      },
-      "subtitle": {
-        "vi": "Thạc Sỹ",
-        "en": "Master's Degree"
+        "vi": "Tốt nghiệp loại Giỏi",
+        "en": "Graduated with Good honors"
       },
       "description": {
         "vi": "",
@@ -115,27 +73,25 @@
   ],
   "certificates": {
     "vi": [
-      "Tiếng Anh B1 - Đại học Điện lực (2023)",
-      "ICDL 5 kỹ năng (2025)",
-      "Giấy phép lái xe hạng B2"
+      "Giấy phép lái xe A1, B2",
+      "Chứng chỉ Tin học văn phòng ICDL"
     ],
     "en": [
-      "B1 English - Electric Power University (2023)",
-      "ICDL 5 modules (2025)",
-      "B2 driving license"
+      "A1, B2 Driving Licenses",
+      "ICDL Office Computing Certificate"
     ]
   },
   "certificateItems": [
     {
-      "id": "dc9635a2-39c4-46d1-9790-8d3f7289953f",
-      "period": "",
+      "id": "b6778628-9097-4eb1-9be1-769d327a13a7",
+      "period": "2020",
       "title": {
-        "vi": "Tiếng Anh B1 - Đại học Điện lực (2023)",
-        "en": "B1 English - Electric Power University (2023)"
+        "vi": "Giấy phép lái xe A1, B2",
+        "en": "A1, B2 Driving Licenses"
       },
       "subtitle": {
-        "vi": "",
-        "en": ""
+        "vi": "Do Bộ Giao thông Vận tải cấp",
+        "en": "Issued by the transport authority"
       },
       "organization": {
         "vi": "",
@@ -148,40 +104,19 @@
       "url": ""
     },
     {
-      "id": "970e1271-ab6b-4e7e-a8c4-4284851bb170",
-      "period": "",
+      "id": "492e4040-1409-43a8-8713-47446b51939c",
+      "period": "2025",
       "title": {
-        "vi": "ICDL 5 kỹ năng (2025)",
-        "en": "ICDL 5 modules (2025)"
+        "vi": "Chứng chỉ Tin học văn phòng ICDL",
+        "en": "ICDL Office Computing Certificate"
       },
       "subtitle": {
-        "vi": "",
-        "en": ""
+        "vi": "International Certification of Digital Literacy",
+        "en": "International Certification of Digital Literacy"
       },
       "organization": {
-        "vi": "",
-        "en": ""
-      },
-      "description": {
-        "vi": "",
-        "en": ""
-      },
-      "url": ""
-    },
-    {
-      "id": "e640ee1a-7e01-4e80-ae01-f363634a4d27",
-      "period": "",
-      "title": {
-        "vi": "Giấy phép lái xe hạng B2",
-        "en": "B2 driving license"
-      },
-      "subtitle": {
-        "vi": "",
-        "en": ""
-      },
-      "organization": {
-        "vi": "",
-        "en": ""
+        "vi": "ICDL",
+        "en": "ICDL"
       },
       "description": {
         "vi": "",
@@ -192,29 +127,29 @@
   ],
   "skills": {
     "vi": [
-      "AutoCAD",
-      "EPLAN",
-      "Microsoft Excel",
-      "Microsoft Word",
-      "Đọc tài liệu kỹ thuật",
-      "Tiếng Anh B1"
+      "Thí nghiệm & kiểm định thiết bị điện",
+      "Thiết kế bảo vệ & tủ bảng điện",
+      "Hệ thống nhị thứ TBA 110–500kV",
+      "Bóc tách khối lượng & quản lý vật tư",
+      "Hồ sơ dự thầu, nghiệm thu & CBDA",
+      "Website & thương mại điện tử"
     ],
     "en": [
-      "AutoCAD",
-      "EPLAN",
-      "Microsoft Excel",
-      "Microsoft Word",
-      "Technical documentation",
-      "B1 English"
+      "Electrical Testing & Inspection",
+      "Protection & Control Panel Design",
+      "110–500kV Substation Secondary Systems",
+      "Quantity Take-off & Material Management",
+      "Tendering, Acceptance & Project Preparation",
+      "Website & E-commerce Operations"
     ]
   },
   "skillItems": [
     {
-      "id": "c169c820-21af-4cdc-b8d0-52ccb8844478",
+      "id": "5e9a8f0d-76dc-4e2a-abfc-93e09e4efac0",
       "period": "",
       "title": {
-        "vi": "AutoCAD",
-        "en": "AutoCAD"
+        "vi": "Thí nghiệm & kiểm định thiết bị điện",
+        "en": "Electrical Testing & Inspection"
       },
       "subtitle": {
         "vi": "",
@@ -231,11 +166,11 @@
       "url": ""
     },
     {
-      "id": "33176fd9-87eb-4df7-990c-768bb558d5bd",
+      "id": "27f3bb64-87fe-4c17-a9c0-ccf7e3ff2d6d",
       "period": "",
       "title": {
-        "vi": "EPLAN",
-        "en": "EPLAN"
+        "vi": "Thiết kế bảo vệ & tủ bảng điện",
+        "en": "Protection & Control Panel Design"
       },
       "subtitle": {
         "vi": "",
@@ -252,11 +187,11 @@
       "url": ""
     },
     {
-      "id": "a7346a10-620f-4926-a5bb-5a0532479f95",
+      "id": "e5ca154b-4570-4454-af25-268f7ed2abea",
       "period": "",
       "title": {
-        "vi": "Microsoft Excel",
-        "en": "Microsoft Excel"
+        "vi": "Hệ thống nhị thứ TBA 110–500kV",
+        "en": "110–500kV Substation Secondary Systems"
       },
       "subtitle": {
         "vi": "",
@@ -273,11 +208,11 @@
       "url": ""
     },
     {
-      "id": "830fb9b6-d00e-4540-950b-eac4ebb12aeb",
+      "id": "fbcb7e6f-28cd-4bd0-b7e7-44fe4b4c22c1",
       "period": "",
       "title": {
-        "vi": "Microsoft Word",
-        "en": "Microsoft Word"
+        "vi": "Bóc tách khối lượng & quản lý vật tư",
+        "en": "Quantity Take-off & Material Management"
       },
       "subtitle": {
         "vi": "",
@@ -294,11 +229,11 @@
       "url": ""
     },
     {
-      "id": "9d23cfcf-e271-4841-93fd-284a0a359451",
+      "id": "1d321418-664d-4598-9e5b-8b32b1d2f798",
       "period": "",
       "title": {
-        "vi": "Đọc tài liệu kỹ thuật",
-        "en": "Technical documentation"
+        "vi": "Hồ sơ dự thầu, nghiệm thu & CBDA",
+        "en": "Tendering, Acceptance & Project Preparation"
       },
       "subtitle": {
         "vi": "",
@@ -315,11 +250,11 @@
       "url": ""
     },
     {
-      "id": "b3b2632e-f89f-4078-b307-8d824a4870dc",
+      "id": "0669a019-6947-45c6-b468-6f2cee1cab30",
       "period": "",
       "title": {
-        "vi": "Tiếng Anh B1",
-        "en": "B1 English"
+        "vi": "Website & thương mại điện tử",
+        "en": "Website & E-commerce Operations"
       },
       "subtitle": {
         "vi": "",
@@ -339,77 +274,95 @@
   "jobs": {
     "vi": [
       {
-        "id": "f12bda47-d6bf-45d0-95fa-ba74fe93d250",
-        "time": "11/2025 - nay",
+        "id": "1fbe63ba-cb15-44e3-9865-c2afc1d7356b",
+        "time": "11/2025 – Nay",
         "company": "Công ty TNHH Công nghệ Việt",
-        "role": "Kỹ sư điện - Phòng chuẩn bị dự án",
-        "subtitle": "",
-        "description": "Kiểm tra thông số thiết bị, hỗ trợ mua sắm và rà soát bảng đáp ứng yêu cầu kỹ thuật.",
+        "role": "Kỹ sư điện phòng CBDA",
+        "subtitle": "Chuẩn bị dự án · Vật tư · Nhị thứ · Nghiệm thu",
+        "description": "\n• Lên khối lượng vật tư phục vụ thi công, lắp đặt các hệ thống điện: solar, hệ thống nhị thứ, công tơ và các hạng mục liên quan.\n• Thi công, lắp đặt hệ thống nhị thứ cho trạm biến áp 110kV.\n• Hỗ trợ giám sát và hướng dẫn đội thí nghiệm thầu phụ bên ngoài công ty.\n• Phối hợp khảo giá thực tế để xây dựng giá cho hồ sơ dự thầu.\n• Lập danh sách thiết bị cho các trạm biến áp 500kV triển khai mới.\n• Hỗ trợ mua sắm thiết bị, vật tư và theo dõi các đầu việc phục vụ triển khai.\n• Thực hiện thủ tục và hồ sơ nghiệm thu cho dự án.\n## Công trình đã tham gia\n◦ Nhà máy Điện mặt trời Issyk-Kul – Giai đoạn 1.\n◦ Trạm biến áp 110kV cho Nhà máy Điện mặt trời Issyk-Kul – Giai đoạn 1.\n◦ Trạm biến áp 220kV Yên Dũng – Bắc Giang.\n◦ Trạm biến áp 110kV Bảo Thạnh.\n",
         "url": ""
       },
       {
-        "id": "bca24cb6-c66b-4dbf-9dc3-a5d4d36d97e6",
-        "time": "06/2025 - 11/2025",
-        "company": "Công ty CP Entec Kỹ thuật Năng lượng",
+        "id": "b2d6c786-3c95-4048-8e7d-973cc71ac8ec",
+        "time": "06/2025 – 11/2025",
+        "company": "Công ty Cổ phần Entec Kỹ thuật Năng lượng",
         "role": "Kỹ sư thiết kế",
-        "subtitle": "",
-        "description": "Thiết kế tủ điều khiển - bảo vệ cho trạm biến áp từ 110 kV và kiểm thử tủ sau sản xuất.",
+        "subtitle": "Thiết kế bảo vệ · Tủ bảng · Hồ sơ kỹ thuật",
+        "description": "\n• Kiểm tra phần đáp ứng kỹ thuật của thiết bị trong hồ sơ thầu do phòng kinh doanh lập.\n• Lập khối lượng vật tư dự trù cho dự án trước giai đoạn triển khai.\n• Thiết kế tủ bảo vệ và hệ thống bảo vệ cho trạm biến áp 110kV.\n• Phối hợp cùng bộ phận KCS test tủ bảng điện trước khi bàn giao thiết bị cho chủ đầu tư.\n## Công trình đã tham gia\n◦ Thiết kế trạm biến áp 110kV Đông Triều – ngăn lộ mở rộng đi đường dây Tràng Bạch – Thủy Nguyên.\n◦ Thiết kế hệ thống tủ SC cho trạm biến áp 110kV Gia Nghĩa.\n",
         "url": ""
       },
       {
-        "id": "b2af8ed4-3583-445c-8438-7ba3528bd2d4",
-        "time": "05/2024 - 06/2025",
+        "id": "e0e8f019-dedb-48c1-a1fa-946ad60f981e",
+        "time": "05/2024 – 06/2025",
         "company": "Công ty TNHH MTV Đo lường Thí nghiệm điện miền Bắc",
-        "role": "Kỹ sư thí nghiệm điện",
-        "subtitle": "",
-        "description": "Kiểm định thiết bị trạm biến áp, thí nghiệm định kỳ và hoàn thiện hồ sơ công trình.",
+        "role": "Thí nghiệm viên",
+        "subtitle": "Thí nghiệm · Bảo dưỡng · Thi công điện",
+        "description": "\n• Kiểm định máy biến áp, máy cắt, dao tiếp địa và điện trở tiếp địa tại các trạm biến áp.\n• Thí nghiệm định kỳ máy biến áp 110kV và các thiết bị trong sân trạm.\n• Thi công cáp ngầm, đấu nối thiết bị điện và phối hợp quản lý công việc tại công trình.\n• Thực hiện hồ sơ nghiệm thu theo quy trình cho công trình thuộc GENCO2 – Nhiệt điện Hải Phòng.\n## Công trình thí nghiệm / bảo dưỡng tiêu biểu\n◦ Thí nghiệm máy biến áp khô lắp mới trước khi vận hành tại Công ty Tonly; vệ sinh, kiểm tra TI và máy cắt sau bão 09/2024 tại Quảng Ninh.\n◦ Thí nghiệm máy biến áp AT4 Nhiệt điện Cẩm Phả trước và sau bảo dưỡng.\n◦ Thí nghiệm định kỳ và bảo dưỡng 13 trạm biến áp turbine điện gió Phương Mai.\n◦ Bảo dưỡng định kỳ sân trạm 220kV Điện mặt trời Thiên Thiên Tân 1.4 và 14 trạm kiosk.\n◦ Thí nghiệm định kỳ sân trạm 110kV Phước Hữu – Duyên Hải 1 và 9 trạm turbine.\n◦ Thi công lắp đặt, thí nghiệm trạm 110kV Cộng Hòa 2 – Hải Dương.\n◦ Thí nghiệm định kỳ tổ máy 2 T2/TD92 Nhiệt điện Đông Triều.\n◦ Thay mới, thí nghiệm phòng DC1 và DC2 Nhiệt điện Đông Triều.\n◦ Thí nghiệm, bảo dưỡng định kỳ tổ máy 1 và các ngăn kéo 6,6kV Nhiệt điện Uông Bí.\n◦ Thí nghiệm, bảo dưỡng định kỳ toàn bộ tổ máy số 2 Nhiệt điện Hải Phòng; thực hiện hồ sơ lĩnh vật tư, quản lý tồn kho và hồ sơ nghiệm thu kỹ thuật – tài chính cho gói sửa chữa lớn năm 2024.\n## Thiết bị đã sử dụng\n◦ Kyoritsu 3125A – đo điện trở cách điện (thành thạo).\n◦ ZC302 và HYHL-200A – đo điện trở tiếp xúc (thành thạo).\n◦ Kvtester PCT 386I Analyzer – hợp bộ Analyzer (thành thạo).\n◦ HYBC-901 – cầu đo tỉ số biến (thành thạo).\n◦ HZ-3320D – cầu đo điện trở một chiều (thành thạo).\n◦ ZC221 – cầu đo tang; ZC-300B – hợp bộ chụp sóng máy cắt (đã sử dụng).\n◦ YDJZ-50/70 và TC-YDJ-YDJZ 200kV – hợp bộ thử cao áp (đã sử dụng).\n",
         "url": ""
       },
       {
-        "id": "ddca1d17-b183-4331-a9c9-02ba5b98b639",
-        "time": "06/2023 - 10/2025",
+        "id": "5e011a66-9c15-4842-8937-84ba4782c05c",
+        "time": "06/2023 – 10/2025",
         "company": "Hoàng Mai Mobile",
-        "role": "Kỹ thuật viên · Quản lý từ xa",
-        "subtitle": "",
-        "description": "Hỗ trợ kỹ thuật và quản lý hoạt động vận hành từ xa.",
+        "role": "Kỹ thuật viên – Quản lý (remote)",
+        "subtitle": "Kỹ thuật · Website · TMĐT · Vận hành",
+        "description": "\n• Tiếp nhận bảo hành sản phẩm, thiết bị và vật tư; kiểm tra tình trạng hỏng hóc.\n• Sửa chữa bo mạch và đấu nối lại các đường mạch bị đứt đoạn.\n• Kiểm soát quỹ cửa hàng và lập bảng lương nhân viên cuối tháng.\n• Thiết kế website bán hàng hoangmaimobile.vn, xây dựng dữ liệu sao lưu, kiểm tra chức năng và xử lý lỗi tồn đọng.\n• Tích hợp vận hành giữa Meta/Facebook và Shopee Seller; quản lý Zalo OA và các chức năng liên quan.\n• Viết nội dung quảng cáo sản phẩm mới, lên lịch và phối hợp chạy chiến dịch.\n• Quản lý dữ liệu sản phẩm và bán hàng trên Shopee, Lazada, Tiki và TikTok.\n• Theo dõi tồn kho, tính thời điểm nhập hàng để duy trì khả năng cung ứng.\n• Theo dõi giá thị trường, điều chỉnh giá bán để tăng khả năng cạnh tranh.\n• Làm việc trực tiếp với nhà cung cấp về vấn đề kỹ thuật, số lượng và hàng hóa.\n",
+        "url": "https://hoangmaimobile.vn"
+      },
+      {
+        "id": "83c4936a-156d-4ecf-8c2a-e276e1f2ae80",
+        "time": "09/2021 – 06/2023",
+        "company": "Công ty Cổ phần Xây dựng và Đầu tư Thương mại Hoàng Hà",
+        "role": "Kỹ thuật viên",
+        "subtitle": "Thiết bị di động · Laptop · Bán hàng kỹ thuật",
+        "description": "\n• Tiếp nhận bảo hành sản phẩm.\n• Xử lý các lỗi cơ bản về phần mềm và phần cứng.\n• Thay pin iPhone, vệ sinh và sửa chữa các lỗi nhẹ của linh kiện bên trong điện thoại.\n• Cài đặt, kiểm tra và sửa chữa laptop.\n• Tìm hiểu chức năng của các sản phẩm công nghệ mới để hỗ trợ tư vấn khách hàng.\n• Tư vấn bán hàng thiết bị điện tử.\n• Kiểm kê hàng hóa và kiểm quỹ cửa hàng.\n",
         "url": ""
       }
     ],
     "en": [
       {
-        "id": "f12bda47-d6bf-45d0-95fa-ba74fe93d250",
-        "time": "11/2025 - nay",
+        "id": "1fbe63ba-cb15-44e3-9865-c2afc1d7356b",
+        "time": "11/2025 – Nay",
         "company": "Viet Technology Co., Ltd.",
-        "role": "Electrical Engineer - Project Preparation",
-        "subtitle": "",
-        "description": "Equipment specification reviews, procurement support and technical compliance checks.",
+        "role": "Electrical Engineer – Project Preparation Department",
+        "subtitle": "Project preparation · Procurement · Secondary systems · Acceptance",
+        "description": "\n• Prepare material quantity take-offs for electrical installation scopes including solar, secondary systems, metering and related packages.\n• Install secondary systems for 110kV substations.\n• Support supervision and technical guidance for external testing subcontractors.\n• Coordinate market-price research for tender cost preparation.\n• Prepare equipment lists for newly developed 500kV substations.\n• Support equipment/material procurement and deployment activities.\n• Prepare project acceptance procedures and documentation.\n## Selected projects\n◦ Issyk-Kul Solar Power Plant – Phase 1.\n◦ 110kV substation for Issyk-Kul Solar Power Plant – Phase 1.\n◦ 220kV Yen Dung Substation – Bac Giang.\n◦ 110kV Bao Thanh Substation.\n",
         "url": ""
       },
       {
-        "id": "bca24cb6-c66b-4dbf-9dc3-a5d4d36d97e6",
-        "time": "06/2025 - 11/2025",
+        "id": "b2d6c786-3c95-4048-8e7d-973cc71ac8ec",
+        "time": "06/2025 – 11/2025",
         "company": "Entec Energy Engineering JSC",
         "role": "Design Engineer",
-        "subtitle": "",
-        "description": "Protection and control panel design for 110 kV substations and factory acceptance testing.",
+        "subtitle": "Protection design · Panels · Technical documentation",
+        "description": "\n• Review equipment technical-compliance sections in tender documentation prepared by the sales team.\n• Prepare preliminary material quantities before project execution.\n• Design protection panels and protection systems for 110kV substations.\n• Coordinate with QC/KCS to test electrical panels before delivery to the investor.\n## Selected projects\n◦ 110kV Dong Trieu Substation – extension bay for the Trang Bach – Thuy Nguyen line.\n◦ SC panel system for 110kV Gia Nghia Substation.\n",
         "url": ""
       },
       {
-        "id": "b2af8ed4-3583-445c-8438-7ba3528bd2d4",
-        "time": "05/2024 - 06/2025",
-        "company": "Northern Electrical Testing Co., Ltd.",
+        "id": "e0e8f019-dedb-48c1-a1fa-946ad60f981e",
+        "time": "05/2024 – 06/2025",
+        "company": "Northern Electrical Measurement & Testing Co., Ltd.",
         "role": "Electrical Testing Engineer",
-        "subtitle": "",
-        "description": "Substation equipment testing, periodic inspections and project documentation.",
+        "subtitle": "Testing · Maintenance · Electrical installation",
+        "description": "\n• Inspect transformers, circuit breakers, earthing switches and grounding resistance at substations.\n• Perform periodic testing of 110kV transformers and switchyard equipment.\n• Install underground cables, connect electrical equipment and coordinate site work.\n• Prepare acceptance documentation for GENCO2 projects at Hai Phong Thermal Power Plant.\n## Selected testing / maintenance projects\n◦ Commissioning tests for a newly installed dry transformer at Tonly; post-storm inspection of CTs and circuit breakers in Quang Ninh (09/2024).\n◦ Pre- and post-maintenance testing of AT4 transformer at Cam Pha Thermal Power Plant.\n◦ Periodic testing and maintenance for 13 transformer stations at Phuong Mai Wind Farm.\n◦ Periodic maintenance of the 220kV switchyard at Thien Thien Tan 1.4 Solar Plant and 14 kiosk substations.\n◦ Periodic testing at 110kV Phuoc Huu – Duyen Hai 1 switchyard and 9 turbine substations.\n◦ Installation and testing for 110kV Cong Hoa 2 Substation – Hai Duong.\n◦ Periodic testing of Unit 2 T2/TD92 at Dong Trieu Thermal Power Plant.\n◦ Replacement and testing of DC1 and DC2 rooms at Dong Trieu Thermal Power Plant.\n◦ Periodic testing and maintenance of Unit 1 and 6.6kV drawers at Uong Bi Thermal Power Plant.\n◦ Periodic testing and maintenance of Unit 2 at Hai Phong Thermal Power Plant, including material issue records, inventory management, and technical/financial acceptance documentation for the 2024 major-overhaul package.\n## Test equipment used\n◦ Kyoritsu 3125A insulation resistance tester – proficient.\n◦ ZC302 and HYHL-200A contact resistance testers – proficient.\n◦ Kvtester PCT 386I Analyzer – proficient.\n◦ HYBC-901 transformer ratio tester – proficient.\n◦ HZ-3320D DC resistance tester – proficient.\n◦ ZC221 tan-delta tester and ZC-300B circuit-breaker timing/waveform set – working experience.\n◦ YDJZ-50/70 and TC-YDJ-YDJZ 200kV high-voltage test sets – working experience.\n",
         "url": ""
       },
       {
-        "id": "ddca1d17-b183-4331-a9c9-02ba5b98b639",
-        "time": "06/2023 - 10/2025",
+        "id": "5e011a66-9c15-4842-8937-84ba4782c05c",
+        "time": "06/2023 – 10/2025",
         "company": "Hoang Mai Mobile",
-        "role": "Technician · Remote Manager",
-        "subtitle": "",
-        "description": "Technical support and remote operations management.",
+        "role": "Technician – Remote Operations Manager",
+        "subtitle": "Technical service · Website · E-commerce · Operations",
+        "description": "\n• Handle product/equipment warranty intake and fault inspection.\n• Repair circuit boards and reconnect damaged PCB traces.\n• Control store cash flow and prepare monthly payroll.\n• Design and operate hoangmaimobile.vn, maintain backups, test website functions and resolve outstanding issues.\n• Integrate Meta/Facebook workflows with Shopee Seller and manage Zalo OA.\n• Write advertising content for new products and schedule campaign activities.\n• Manage product data and sales across Shopee, Lazada, Tiki and TikTok.\n• Monitor inventory and determine replenishment timing to maintain availability.\n• Monitor market prices and adjust selling prices for competitiveness.\n• Work directly with suppliers on technical issues, quantities and merchandise.\n",
+        "url": "https://hoangmaimobile.vn"
+      },
+      {
+        "id": "83c4936a-156d-4ecf-8c2a-e276e1f2ae80",
+        "time": "09/2021 – 06/2023",
+        "company": "Hoang Ha Construction & Trading Investment JSC",
+        "role": "Technician",
+        "subtitle": "Mobile devices · Laptops · Technical sales",
+        "description": "\n• Handle product warranty intake.\n• Troubleshoot common software and hardware issues.\n• Replace iPhone batteries, clean devices and repair minor internal component faults.\n• Install, inspect and repair laptops.\n• Study new technology products to support customer consultation.\n• Provide technical sales consultation for electronic devices.\n• Perform inventory checks and store cash reconciliation.\n",
         "url": ""
       }
     ]

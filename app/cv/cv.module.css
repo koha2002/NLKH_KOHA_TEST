@@ -56,3 +56,106 @@
   .sidebar { grid-template-columns: 1fr; }
 }
 .loading { min-height: 70vh; display: grid; place-items: center; color: var(--muted); }
+
+/* NLKH_DETAILED_WEB_CV_V1
+   Detailed web CV: preserve the existing layout, improve long-form readability. */
+.detailText {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.detailText > p {
+  margin: 0;
+  line-height: 1.72;
+}
+
+.detailLead {
+  margin-top: 16px !important;
+  color: var(--text);
+  font-weight: 800;
+  letter-spacing: -.01em;
+}
+
+.detailBullet {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.detailBullet > span {
+  color: var(--blue);
+  font-weight: 900;
+  line-height: 1.7;
+}
+
+.detailBullet > p {
+  margin: 0;
+  line-height: 1.72;
+}
+
+.detailNested {
+  margin-left: 18px;
+}
+
+.detailNested > span {
+  color: var(--muted);
+}
+
+.jobSubtitle {
+  margin-top: 6px !important;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.sideRecord + .sideRecord {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.sideNote {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.compactList {
+  display: grid;
+  gap: 13px;
+}
+
+.compactItem {
+  display: grid;
+  gap: 4px;
+}
+
+.compactItem strong {
+  line-height: 1.45;
+}
+
+.timeline article h3 a,
+.sideRecord h3 a,
+.compactItem strong a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.timeline article h3 a:hover,
+.sideRecord h3 a:hover,
+.compactItem strong a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 760px) {
+  .detailNested {
+    margin-left: 10px;
+  }
+
+  .detailText,
+  .detailBullet > p {
+    line-height: 1.65;
+  }
+}
