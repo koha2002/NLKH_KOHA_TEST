@@ -15,7 +15,7 @@
   },
   "born": "15/05/2002",
   "address": {
-    "vi": "Thanh Xu├ón, H├á Nß╗Öi",
+    "vi": "Thanh Xuân, Hà Nội",
     "en": "Thanh Xuan, Hanoi"
   },
   "phone": "0343 434 584",
@@ -34,34 +34,34 @@
     "show_download_pdf": true
   },
   "education": {
-    "period": "2020ΓÇö2025",
+    "period": "2020—2025",
     "school": {
-      "vi": "Tr╞░ß╗¥ng ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c",
+      "vi": "Trường Đại học Điện lực",
       "en": "Electric Power University"
     },
     "major": {
-      "vi": "Tß╗▒ ─æß╗Öng h├│a Hß╗ç thß╗æng ─æiß╗çn",
+      "vi": "Tự động hóa Hệ thống điện",
       "en": "Power System Automation"
     },
     "subtitle": {
-      "vi": "Kß╗╣ s╞░",
+      "vi": "Kỹ sư",
       "en": "Engineer's Degree"
     }
   },
   "educations": [
     {
-      "id": "2434425f-4290-4059-a441-972468bc97fc",
-      "period": "2020ΓÇö2025",
+      "id": "ae6820a8-a00a-48c7-b965-52feb5cc4b0b",
+      "period": "2020—2025",
       "school": {
-        "vi": "Tr╞░ß╗¥ng ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c",
+        "vi": "Trường Đại học Điện lực",
         "en": "Electric Power University"
       },
       "major": {
-        "vi": "Tß╗▒ ─æß╗Öng h├│a Hß╗ç thß╗æng ─æiß╗çn",
+        "vi": "Tự động hóa Hệ thống điện",
         "en": "Power System Automation"
       },
       "subtitle": {
-        "vi": "Kß╗╣ s╞░",
+        "vi": "Kỹ sư",
         "en": "Engineer's Degree"
       },
       "description": {
@@ -71,18 +71,18 @@
       "url": ""
     },
     {
-      "id": "61862003-d2a8-4c82-8942-0510ead5d826",
+      "id": "c7b98c85-4588-4ce7-93c1-649a252b9c6f",
       "period": "2025-2028",
       "school": {
-        "vi": "─Éß║íi hß╗ìc Th╞░╞íng Mß║íi",
+        "vi": "Đại học Thương Mại",
         "en": "Thuongmai University"
       },
       "major": {
-        "vi": "Quß║ún trß╗ï kinh doanh",
+        "vi": "Quản trị kinh doanh",
         "en": "Business Administration"
       },
       "subtitle": {
-        "vi": "Hß╗ç cß╗¡ nh├ón - GPA 3.86",
+        "vi": "Hệ cử nhân - GPA 3.86",
         "en": "Bachelor's Degree - GPA 3.86"
       },
       "description": {
@@ -92,18 +92,18 @@
       "url": ""
     },
     {
-      "id": "b2408c20-da64-4013-8370-17f5275a946f",
+      "id": "faed223b-846c-4174-b993-2c3f13ef2576",
       "period": "2025-2027",
       "school": {
-        "vi": "Tr╞░ß╗¥ng ─æß║íi hß╗ìc ─Éiß╗çn Lß╗▒c",
+        "vi": "Trường đại học Điện Lực",
         "en": "Electric Power University"
       },
       "major": {
-        "vi": "Kß╗╣ thuß║¡t n─âng l╞░ß╗úng",
+        "vi": "Kỹ thuật năng lượng",
         "en": "Energy Engineering"
       },
       "subtitle": {
-        "vi": "Thß║íc Sß╗╣",
+        "vi": "Thạc Sỹ",
         "en": "Master's Degree"
       },
       "description": {
@@ -115,9 +115,9 @@
   ],
   "certificates": {
     "vi": [
-      "Tiß║┐ng Anh B1 - ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c (2023)",
-      "ICDL 5 kß╗╣ n─âng (2025)",
-      "Giß║Ñy ph├⌐p l├íi xe hß║íng B2"
+      "Tiếng Anh B1 - Đại học Điện lực (2023)",
+      "ICDL 5 kỹ năng (2025)",
+      "Giấy phép lái xe hạng B2"
     ],
     "en": [
       "B1 English - Electric Power University (2023)",
@@ -127,10 +127,10 @@
   },
   "certificateItems": [
     {
-      "id": "2986551c-e83a-4a87-abcd-1b277b695ccb",
+      "id": "269bdb1b-c607-4543-9f47-7df7409ae38a",
       "period": "",
       "title": {
-        "vi": "Tiß║┐ng Anh B1 - ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c (2023)",
+        "vi": "Tiếng Anh B1 - Đại học Điện lực (2023)",
         "en": "B1 English - Electric Power University (2023)"
       },
       "subtitle": {
@@ -148,10 +148,10 @@
       "url": ""
     },
     {
-      "id": "6ee570e9-a089-48cd-92a7-e02a51cb2305",
+      "id": "e6747bca-7448-40a0-8d26-730223a4156e",
       "period": "",
       "title": {
-        "vi": "ICDL 5 kß╗╣ n─âng (2025)",
+        "vi": "ICDL 5 kỹ năng (2025)",
         "en": "ICDL 5 modules (2025)"
       },
       "subtitle": {
@@ -169,10 +169,10 @@
       "url": ""
     },
     {
-      "id": "fe2f2f72-5260-41f2-8356-249acafe5454",
+      "id": "7bb1e86b-d17a-4c41-9e63-aef7fc4749a4",
       "period": "",
       "title": {
-        "vi": "Giß║Ñy ph├⌐p l├íi xe hß║íng B2",
+        "vi": "Giấy phép lái xe hạng B2",
         "en": "B2 driving license"
       },
       "subtitle": {
@@ -196,8 +196,8 @@
       "EPLAN",
       "Microsoft Excel",
       "Microsoft Word",
-      "─Éß╗ìc t├ái liß╗çu kß╗╣ thuß║¡t",
-      "Tiß║┐ng Anh B1"
+      "Đọc tài liệu kỹ thuật",
+      "Tiếng Anh B1"
     ],
     "en": [
       "AutoCAD",
@@ -210,7 +210,7 @@
   },
   "skillItems": [
     {
-      "id": "4a93553f-f0a4-4f99-b11c-ba712ec99c14",
+      "id": "2c9a843a-dcdf-4d7f-89df-19ee79ab8f38",
       "period": "",
       "title": {
         "vi": "AutoCAD",
@@ -231,7 +231,7 @@
       "url": ""
     },
     {
-      "id": "84ee8302-0592-41f4-b791-8efa42de3768",
+      "id": "da7465c0-8d88-4b4f-90df-7cc4961ae689",
       "period": "",
       "title": {
         "vi": "EPLAN",
@@ -252,7 +252,7 @@
       "url": ""
     },
     {
-      "id": "43fa3d39-a5d8-4d19-bd88-59883872057e",
+      "id": "28b73c33-99e9-49b1-a9ba-ce988551ca4a",
       "period": "",
       "title": {
         "vi": "Microsoft Excel",
@@ -273,7 +273,7 @@
       "url": ""
     },
     {
-      "id": "752c3e17-503d-4904-938c-a586f25686d1",
+      "id": "e5569b3e-493a-44e8-8bd7-c7561ae16c48",
       "period": "",
       "title": {
         "vi": "Microsoft Word",
@@ -294,10 +294,10 @@
       "url": ""
     },
     {
-      "id": "f727f61b-b323-41cd-b6a8-4778b4c74df4",
+      "id": "02cb5bc6-5d0e-4d39-b400-54049feed6e9",
       "period": "",
       "title": {
-        "vi": "─Éß╗ìc t├ái liß╗çu kß╗╣ thuß║¡t",
+        "vi": "Đọc tài liệu kỹ thuật",
         "en": "Technical documentation"
       },
       "subtitle": {
@@ -315,10 +315,10 @@
       "url": ""
     },
     {
-      "id": "5dddb96f-de73-470b-a0f9-7e6e467d9a7d",
+      "id": "a0b48a06-4111-4865-9bb9-57df8bc40cf3",
       "period": "",
       "title": {
-        "vi": "Tiß║┐ng Anh B1",
+        "vi": "Tiếng Anh B1",
         "en": "B1 English"
       },
       "subtitle": {

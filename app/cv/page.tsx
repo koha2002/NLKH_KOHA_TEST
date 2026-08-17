@@ -451,10 +451,10 @@ export default function CvPage() {
             {profile.certificateItems?.length
               ? <ul>{profile.certificateItems.map((item,index)=><li key={item.id||index}>
                   {item.title?.[language] ? (item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title[language]}</a> : item.title[language]) : ""}
-                  {item.period ? <span> ┬╖ {item.period}</span> : null}
-                  {item.organization?.[language] ? <span> ┬╖ {item.organization[language]}</span> : null}
-                  {item.subtitle?.[language] ? <span> ┬╖ {item.subtitle[language]}</span> : null}
-                  {item.description?.[language] ? <span> ┬╖ {item.description[language]}</span> : null}
+                  {item.period ? <span> · {item.period}</span> : null}
+                  {item.organization?.[language] ? <span> · {item.organization[language]}</span> : null}
+                  {item.subtitle?.[language] ? <span> · {item.subtitle[language]}</span> : null}
+                  {item.description?.[language] ? <span> · {item.description[language]}</span> : null}
                 </li>)}</ul>
               : <ul>{profile.certificates[language].map((cert) => <li key={cert}>{cert}</li>)}</ul>}
           </section> : null}
@@ -466,7 +466,7 @@ export default function CvPage() {
                   item.subtitle?.[language],
                   item.organization?.[language],
                   item.description?.[language]
-                ].filter(Boolean).join(" ┬╖ ") || undefined}>
+                ].filter(Boolean).join(" · ") || undefined}>
                   {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title?.[language] || ""}</a> : (item.title?.[language] || "")}
                 </span>)}</div>
               : <div className={styles.skills}>{profile.skills[language].map((skill) => <span key={skill}>{skill}</span>)}</div>}
