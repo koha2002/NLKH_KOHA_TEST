@@ -882,6 +882,8 @@
     { kind: "metadata-clean", value: CUSTOM + "metadata-clean", label: "Clean metadata / Xóa metadata", badge: "LOCAL" },
   ];
 
+  const NLKH_V261_RECURSION_FIX = true;
+
   const ONLINE_DISCOVERY_DEFS = [
     { value: "extract", label: "Trích xuất trang PDF / Extract PDF pages" },
     { value: "htmlpdf", label: "HTML → PDF / HTML to PDF" },
@@ -896,7 +898,16 @@
   ];
 
   function mainPdfGroup(select) {
-    const group = mainPdfGroup(select);
+    if (!select) return null;
+    const groups = Array.from(select.querySelectorAll("optgroup"));
+    let group = groups.find((g) => /pdf/.test(clean(g.label)) && !/image|hinh anh/.test(clean(g.label)));
+    if (!group) {
+      group = document.createElement("optgroup");
+      group.label = "PDF tools";
+      const imageGroup = groups.find((g) => /image|hinh anh/.test(clean(g.label)));
+      if (imageGroup) select.insertBefore(group, imageGroup);
+      else select.appendChild(group);
+    }
     return group;
   }
 
