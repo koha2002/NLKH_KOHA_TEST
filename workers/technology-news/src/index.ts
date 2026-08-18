@@ -29,6 +29,7 @@ const MAX_ITEMS_PER_SOURCE = 15;
 
 const SETTINGS_KEY = "technology-news-settings";
 const LAST_RUN_KEY = "technology-news-last-run";
+const IMAGE_REVIEW_KEY_V582 = "technology-news-image-review-v582";
 const V55_DRAFT_REPAIR_KEY = "technology-news-v55-draft-repair";
 const V55_SOURCE_PRESET_KEY = "technology-news-v572-source-preset";
 const V55_SOURCE_PRESET_START_VN = "2026-08-13";
@@ -2072,11 +2073,24 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
 
 
 
+type ImageReviewV582 = {
+  url: string;
+  accepted: boolean;
+  score: number;
+  kind: string;
+  visualDescription: string;
+  sourceHint: string;
+  captionVi: string;
+  captionEn: string;
+  reason: string;
+  checkedAt: string;
+};
+
 type SourceImageCandidate = {
   url: string;
   hint: string;
+  review?: ImageReviewV582;
 };
-
 async function findSourceImageCandidates(
   env: Env,
   item: FeedItem,
@@ -2413,7 +2427,655 @@ async function findSourceImageCandidates(
     } catch {}
   }
 
-  return found.slice(0, 18);
+  const validation =
+    await validateImageCandidatesV582(
+      env,
+      item,
+      found.slice(0,18),
+    );
+
+  return validation.accepted;
+}
+async function putImageReviewV582(
+  env: Env,
+  report: any,
+) {
+  try {
+    await env.CONFIG.put(
+      IMAGE_REVIEW_KEY_V582,
+      JSON.stringify(report),
+      { expirationTtl: 172800 },
+    );
+  } catch {}
+}
+
+async function getImageReviewV582(
+  env: Env,
+) {
+  try {
+    return await env.CONFIG.get(
+      IMAGE_REVIEW_KEY_V582,
+      { type: "json" },
+    );
+  } catch {
+    return null;
+  }
+}
+
+function imageReviewFieldV582(
+  text: string,
+  label: string,
+): string {
+  const match =
+    String(text || "").match(
+      new RegExp(
+        `^${label}:\\s*(.*)$`,
+        "mi",
+      ),
+    );
+
+  return String(
+    match?.[1] || "",
+  ).trim();
+}
+
+function reviewedHintV582(
+  review: ImageReviewV582,
+): string {
+  return (
+    `[[VI]]${review.captionVi}` +
+    `[[EN]]${review.captionEn}` +
+    `[[VISION]]${review.visualDescription}`
+  );
+}
+
+function captionFromReviewedHintV582(
+  hint: string,
+  language: "vi" | "en",
+): string {
+  const value =
+    String(hint || "");
+
+  const vi =
+    value.match(
+      /\[\[VI\]\]([\s\S]*?)(?=\[\[EN\]\]|\[\[VISION\]\]|$)/,
+    )?.[1]?.trim() || "";
+
+  const en =
+    value.match(
+      /\[\[EN\]\]([\s\S]*?)(?=\[\[VISION\]\]|$)/,
+    )?.[1]?.trim() || "";
+
+  const selected =
+    language === "vi"
+      ? vi
+      : en;
+
+  return selected
+    .replace(/[\[\]\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+}
+
+function sanitizeImageCaptionsV582(
+  markdown: string,
+  images: PlacedNewsImage[],
+  language: "vi" | "en",
+): string {
+  let out =
+    String(markdown || "");
+
+  images.forEach(
+    (image,index) => {
+      const caption =
+        captionFromReviewedHintV582(
+          image.hint,
+          language,
+        ) ||
+        safeImageCaption(
+          image,
+          language,
+          index,
+        );
+
+      if (!caption) return;
+
+      const escaped =
+        image.url.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        );
+
+      out =
+        out.replace(
+          new RegExp(
+            `!\\[[^\\]]*\\]\\(${escaped}\\)`,
+            "g",
+          ),
+          `![${caption}](${image.url})`,
+        );
+    },
+  );
+
+  return out;
+}
+
+async function describeImagePixelsV582(
+  env: Env,
+  url: string,
+): Promise<string> {
+  const response =
+    await fetch(
+      url,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36",
+          Accept:
+            "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        },
+        redirect: "follow",
+        signal:
+          AbortSignal.timeout(
+            9000,
+          ),
+      },
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `image HTTP ${response.status}`,
+    );
+  }
+
+  const contentType =
+    String(
+      response.headers.get(
+        "content-type",
+      ) || "",
+    )
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+
+  if (
+    !contentType.startsWith(
+      "image/",
+    )
+  ) {
+    throw new Error(
+      `not image: ${contentType || "unknown"}`,
+    );
+  }
+
+  const declared =
+    Number(
+      response.headers.get(
+        "content-length",
+      ) || 0,
+    );
+
+  if (
+    declared >
+    7_000_000
+  ) {
+    throw new Error(
+      `image too large: ${declared}`,
+    );
+  }
+
+  const bytes =
+    await response.arrayBuffer();
+
+  if (
+    bytes.byteLength <
+    2500
+  ) {
+    throw new Error(
+      "image too small",
+    );
+  }
+
+  if (
+    bytes.byteLength >
+    7_000_000
+  ) {
+    throw new Error(
+      `image too large: ${bytes.byteLength}`,
+    );
+  }
+
+  const ext =
+    contentType.includes("png")
+      ? "png"
+      : contentType.includes("webp")
+        ? "webp"
+        : contentType.includes("gif")
+          ? "gif"
+          : contentType.includes("bmp")
+            ? "bmp"
+            : "jpg";
+
+  const result: any =
+    await env.AI.toMarkdown(
+      {
+        name:
+          `news-image.${ext}`,
+        blob:
+          new Blob(
+            [bytes],
+            {
+              type:
+                contentType,
+            },
+          ),
+      },
+      {
+        conversionOptions: {
+          output: {
+            format: "text",
+          },
+          image: {
+            descriptionLanguage:
+              "en",
+          },
+        },
+      },
+    );
+
+  const row =
+    Array.isArray(result)
+      ? result[0]
+      : result;
+
+  if (
+    row?.format === "error"
+  ) {
+    throw new Error(
+      String(
+        row?.error ||
+        "vision conversion failed",
+      ),
+    );
+  }
+
+  const description =
+    String(
+      row?.data ||
+      row?.text ||
+      "",
+    )
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 1400);
+
+  if (
+    description.length <
+    12
+  ) {
+    throw new Error(
+      "vision returned no useful description",
+    );
+  }
+
+  return description;
+}
+
+// NLKH_V582_PIXEL_IMAGE_GATE
+async function reviewRemoteImageV582(
+  env: Env,
+  item: FeedItem,
+  candidate: SourceImageCandidate,
+): Promise<ImageReviewV582> {
+  const checkedAt =
+    new Date().toISOString();
+
+  let visualDescription =
+    "";
+
+  try {
+    visualDescription =
+      await describeImagePixelsV582(
+        env,
+        candidate.url,
+      );
+  } catch (error: any) {
+    return {
+      url:
+        candidate.url,
+      accepted:
+        false,
+      score:
+        0,
+      kind:
+        "unverified",
+      visualDescription:
+        "",
+      sourceHint:
+        String(
+          candidate.hint || "",
+        ).slice(0, 320),
+      captionVi:
+        "",
+      captionEn:
+        "",
+      reason:
+        `Không xác minh được pixel ảnh: ${String(error?.message || error).slice(0,280)}`,
+      checkedAt,
+    };
+  }
+
+  const prompt = `
+Bạn là bộ kiểm duyệt ẢNH cho Automation tin công nghệ.
+
+DỮ LIỆU:
+- Tiêu đề bài: ${item.title}
+- Nguồn: ${item.source}
+- URL bài: ${item.link}
+- Tóm tắt nguồn: ${String(item.summary || "").slice(0,900)}
+- Gợi ý HTML/alt/caption (KHÔNG ĐƯỢC TIN TUYỆT ĐỐI): ${String(candidate.hint || "").slice(0,500)}
+- MÔ TẢ PIXEL do hệ thống vision nhìn trực tiếp: ${visualDescription}
+
+QUY TẮC BẮT BUỘC:
+1. Quyết định dựa chủ yếu vào MÔ TẢ PIXEL, không dựa mù quáng vào alt/caption.
+2. Ảnh người/portrait/headshot/tác giả phải REJECT nếu bài đang nói về PC, CPU, GPU, bo mạch, tản nhiệt, thiết bị điện hoặc sản phẩm và người đó không phải chủ thể chính.
+3. Logo, avatar, quảng cáo, banner điều hướng, ảnh review-user phải REJECT.
+4. Không được suy diễn từ tên sản phẩm. Ví dụ chữ "Aqua" trong tên model KHÔNG chứng minh đó là tản nhiệt nước.
+5. Caption chỉ được mô tả thứ nhìn thấy và thông tin chắc chắn liên quan; không được bịa tên linh kiện/model nếu pixel không xác nhận.
+6. Nếu không chắc, REJECT.
+
+Trả đúng 7 dòng:
+RELEVANT: YES hoặc NO
+SCORE: 0-100
+KIND: product|component|chart|diagram|screenshot|person|logo|advert|other
+DESCRIPTION: mô tả ngắn đúng thứ nhìn thấy
+CAPTION_VI: caption tiếng Việt ngắn, chính xác
+CAPTION_EN: caption English ngắn, chính xác
+REASON: lý do nhận hoặc loại
+`.trim();
+
+  let verdictText =
+    "";
+
+  try {
+    const response =
+      await runAiTracked(
+        env,
+        {
+          messages: [
+            {
+              role:
+                "system",
+              content:
+                "Kiểm duyệt ảnh nghiêm ngặt. Không bịa. Nếu ảnh không chắc chắn liên quan thì loại.",
+            },
+            {
+              role:
+                "user",
+              content:
+                prompt,
+            },
+          ],
+          temperature:
+            0,
+          max_tokens:
+            500,
+        },
+      );
+
+    verdictText =
+      String(
+        aiResponseText(
+          response,
+        ) || "",
+      );
+  } catch (error: any) {
+    return {
+      url:
+        candidate.url,
+      accepted:
+        false,
+      score:
+        0,
+      kind:
+        "unverified",
+      visualDescription,
+      sourceHint:
+        String(
+          candidate.hint || "",
+        ).slice(0, 320),
+      captionVi:
+        "",
+      captionEn:
+        "",
+      reason:
+        `Không chạy được relevance review: ${String(error?.message || error).slice(0,280)}`,
+      checkedAt,
+    };
+  }
+
+  const relevant =
+    /^yes$/i.test(
+      imageReviewFieldV582(
+        verdictText,
+        "RELEVANT",
+      ),
+    );
+
+  const score =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        Number(
+          imageReviewFieldV582(
+            verdictText,
+            "SCORE",
+          ),
+        ) || 0,
+      ),
+    );
+
+  const kind =
+    imageReviewFieldV582(
+      verdictText,
+      "KIND",
+    )
+      .toLowerCase()
+      .slice(0,40) ||
+    "other";
+
+  const modelDescription =
+    imageReviewFieldV582(
+      verdictText,
+      "DESCRIPTION",
+    )
+      .slice(0,500) ||
+    visualDescription;
+
+  const captionVi =
+    imageReviewFieldV582(
+      verdictText,
+      "CAPTION_VI",
+    )
+      .slice(0,180);
+
+  const captionEn =
+    imageReviewFieldV582(
+      verdictText,
+      "CAPTION_EN",
+    )
+      .slice(0,180);
+
+  let reason =
+    imageReviewFieldV582(
+      verdictText,
+      "REASON",
+    )
+      .slice(0,500);
+
+  let accepted =
+    relevant &&
+    score >= 75 &&
+    Boolean(
+      captionVi &&
+      captionEn,
+    );
+
+  // Deterministic guard for exactly the class of failure seen in production:
+  // product/hardware article + portrait/person image.
+  const hardwareTopic =
+    /\b(gaming|pc|cpu|gpu|rtx|radeon|geforce|processor|motherboard|ssd|ram|cooler|cooling|power supply|transformer|inverter|battery|server|chip|circuit|relay|substation)\b/i
+      .test(
+        `${item.title} ${item.summary || ""}`,
+      );
+
+  const pixelLooksLikePerson =
+    /\b(portrait|headshot|selfie|a man|a woman|a person|human face|wearing glasses|beard|male person|female person)\b/i
+      .test(
+        visualDescription,
+      );
+
+  if (
+    hardwareTopic &&
+    pixelLooksLikePerson
+  ) {
+    accepted =
+      false;
+
+    reason =
+      "Ảnh pixel là người/portrait trong khi bài là sản phẩm hoặc phần cứng; loại bắt buộc.";
+  }
+
+  if (
+    /^(person|logo|advert)$/i.test(
+      kind,
+    ) &&
+    hardwareTopic
+  ) {
+    accepted =
+      false;
+  }
+
+  return {
+    url:
+      candidate.url,
+    accepted,
+    score,
+    kind,
+    visualDescription:
+      modelDescription,
+    sourceHint:
+      String(
+        candidate.hint || "",
+      ).slice(0,320),
+    captionVi:
+      accepted
+        ? captionVi
+        : "",
+    captionEn:
+      accepted
+        ? captionEn
+        : "",
+    reason:
+      reason ||
+      (
+        accepted
+          ? "Ảnh phù hợp với chủ đề."
+          : "Ảnh không đủ độ tin cậy để sử dụng."
+      ),
+    checkedAt,
+  };
+}
+
+async function validateImageCandidatesV582(
+  env: Env,
+  item: FeedItem,
+  candidates: SourceImageCandidate[],
+) {
+  const accepted: SourceImageCandidate[] = [];
+  const reviews: ImageReviewV582[] = [];
+
+  let checked =
+    0;
+
+  for (
+    const candidate of
+    candidates
+  ) {
+    if (
+      checked >= 5 ||
+      accepted.length >= 4
+    ) {
+      break;
+    }
+
+    checked++;
+
+    const review =
+      await reviewRemoteImageV582(
+        env,
+        item,
+        candidate,
+      );
+
+    reviews.push(
+      review,
+    );
+
+    if (
+      review.accepted
+    ) {
+      accepted.push({
+        ...candidate,
+        hint:
+          reviewedHintV582(
+            review,
+          ),
+        review,
+      });
+    }
+  }
+
+  const report = {
+    version:
+      "V5.8.2",
+    mode:
+      "pre-insert-vision-gate",
+    checkedAt:
+      new Date().toISOString(),
+    article: {
+      source:
+        item.source,
+      title:
+        item.title,
+      url:
+        item.link,
+    },
+    checked:
+      reviews.length,
+    accepted:
+      reviews.filter(
+        (x) => x.accepted,
+      ).length,
+    rejected:
+      reviews.filter(
+        (x) => !x.accepted,
+      ).length,
+    reviews,
+  };
+
+  await putImageReviewV582(
+    env,
+    report,
+  );
+
+  return {
+    accepted,
+    reviews,
+    report,
+  };
 }
 async function ingestNewsMedia(
   env: Env,
@@ -2483,36 +3145,25 @@ function safeImageCaption(
   language: "vi" | "en",
   index: number,
 ): string {
-  const hint =
-    String(
-      image.hint || "",
-    )
-      .replace(
-        /[\[\]\r\n]+/g,
-        " ",
-      )
-      .replace(
-        /\s+/g,
-        " ",
-      )
-      .trim()
-      .slice(
-        0,
-        150,
-      );
+  // NLKH_V582_VERIFIED_CAPTION
+  const reviewed =
+    captionFromReviewedHintV582(
+      String(
+        image.hint || "",
+      ),
+      language,
+    );
 
   if (
-    language === "en" &&
-    hint.length >= 8
+    reviewed.length >= 4
   ) {
-    return hint;
+    return reviewed;
   }
 
   return language === "vi"
-    ? `Ảnh minh họa từ nguồn bài viết ${index + 1}`
-    : `Source article illustration ${index + 1}`;
+    ? `Ảnh minh họa đã kiểm tra ${index + 1}`
+    : `Verified source illustration ${index + 1}`;
 }
-
 function ensureInlineImageCoverage(
   markdown: string,
   images: PlacedNewsImage[],
@@ -2730,7 +3381,7 @@ async function placeInlineImagesWithAi(
   images: PlacedNewsImage[],
   language: "vi" | "en",
 ): Promise<string> {
-  // NLKH_V579_IMAGE_PLACEMENT_MINIMUM
+  // NLKH_V582_VERIFIED_IMAGE_PLACEMENT
   const original =
     String(
       markdown || "",
@@ -2761,60 +3412,70 @@ async function placeInlineImagesWithAi(
         (img,index) =>
           `IMAGE_${index+1}
 URL: ${img.url}
-SOURCE_HINT: ${img.hint||"(none)"}`,
+VERIFIED_INFO: ${img.hint||"(none)"}`,
       )
       .join("\n\n");
 
   const vi =
-    language ===
-    "vi";
+    language === "vi";
 
   const prompt =
     vi
       ? `
-Bạn là biên tập viên bố cục cho một bài công nghệ TIẾNG VIỆT.
+Bạn chỉ làm BỐ CỤC ẢNH cho bài công nghệ tiếng Việt.
 
-NHIỆM VỤ DUY NHẤT:
-- Giữ nguyên toàn bộ thông tin và ý nghĩa Markdown gốc.
-- Chèn ảnh R2 vào các phần phù hợp, không dồn ảnh liên tiếp.
-- Dùng mỗi ảnh tối đa một lần.
-- Có ${usable.length} ảnh inline khả dụng; mục tiêu dùng ít nhất ${target} ảnh nếu có đủ ảnh hợp lệ.
-- Không bỏ ảnh chỉ vì muốn bài "gọn"; chỉ bỏ khi ảnh thực sự trùng hoặc không liên quan.
-- Caption phải ngắn, tiếng Việt tự nhiên, dựa trên SOURCE_HINT và ngữ cảnh.
-- Chỉ chèn đúng Markdown: ![caption](URL)
-- Không tạo URL mới.
-- Không đổi tiêu đề, số liệu, bảng, kết luận hay nội dung bài.
+QUY TẮC:
+- Không sửa nội dung bài.
+- Chỉ dùng URL trong danh sách.
+- Các ảnh đã qua kiểm tra pixel trước khi tới đây.
+- Caption PHẢI dùng đúng CAPTION_VI nằm trong VERIFIED_INFO.
+- Tuyệt đối không suy diễn thêm thuộc tính sản phẩm từ tên model/series.
+- Ví dụ: "Aqua" không tự động có nghĩa là "tản nhiệt nước".
+- Không được đổi caption thành nội dung không được VERIFIED_INFO xác nhận.
+- Không dồn ảnh liên tiếp.
+- Mục tiêu dùng ít nhất ${target} ảnh khi bố cục cho phép.
 
-ẢNH CÓ THỂ DÙNG:
+ẢNH ĐÃ XÁC MINH:
 ${mediaList}
 
 MARKDOWN GỐC:
 ${original}
 
-TRẢ VỀ DUY NHẤT MARKDOWN HOÀN CHỈNH SAU KHI CHÈN ẢNH.
+Trả duy nhất Markdown sau khi chèn ảnh.
 `.trim()
       : `
-You are laying out an ENGLISH technology article.
+You only place VERIFIED images in an English technology article.
 
-ONLY TASK:
-- Preserve all facts and meaning of the original Markdown.
-- Place R2 images in relevant sections and never stack them.
-- Use each image at most once.
-- ${usable.length} inline images are available; target at least ${target} images when enough valid images exist.
-- Do not omit an image merely to keep the article visually minimal; omit only a genuinely duplicate or irrelevant image.
-- Keep captions short and natural, based on SOURCE_HINT and context.
-- Insert only: ![caption](URL)
-- Never invent a URL.
-- Do not alter headings, numbers, tables, conclusions or article facts.
+RULES:
+- Do not rewrite article content.
+- Use only listed URLs.
+- Every image has already passed pixel-level review.
+- Caption MUST use CAPTION_EN from VERIFIED_INFO.
+- Never infer product properties from a model/series name.
+- Do not add claims not explicitly supported by VERIFIED_INFO.
+- Do not stack images.
+- Target at least ${target} images when layout allows.
 
-AVAILABLE IMAGES:
+VERIFIED IMAGES:
 ${mediaList}
 
 ORIGINAL MARKDOWN:
 ${original}
 
-RETURN ONLY THE COMPLETE MARKDOWN AFTER IMAGE PLACEMENT.
+Return only the final Markdown.
 `.trim();
+
+  const fallback =
+    () =>
+      sanitizeImageCaptionsV582(
+        ensureInlineImageCoverage(
+          original,
+          usable,
+          language,
+        ),
+        usable,
+        language,
+      );
 
   try {
     const response =
@@ -2827,8 +3488,8 @@ RETURN ONLY THE COMPLETE MARKDOWN AFTER IMAGE PLACEMENT.
                 "system",
               content:
                 vi
-                  ? "Chỉ làm bố cục ảnh cho bài tiếng Việt. Không viết lại bài."
-                  : "Only place images in the English article. Do not rewrite the article.",
+                  ? "Chỉ bố cục ảnh đã xác minh. Không bịa caption, không sửa bài."
+                  : "Only place verified images. Never invent captions and never rewrite the article.",
             },
             {
               role:
@@ -2838,7 +3499,7 @@ RETURN ONLY THE COMPLETE MARKDOWN AFTER IMAGE PLACEMENT.
             },
           ],
           temperature:
-            0.1,
+            0,
           max_tokens:
             8000,
         },
@@ -2864,11 +3525,7 @@ RETURN ONLY THE COMPLETE MARKDOWN AFTER IMAGE PLACEMENT.
           ),
         )
     ) {
-      return ensureInlineImageCoverage(
-        original,
-        usable,
-        language,
-      );
+      return fallback();
     }
 
     const allowed =
@@ -2889,27 +3546,21 @@ RETURN ONLY THE COMPLETE MARKDOWN AFTER IMAGE PLACEMENT.
           match[1],
         )
       ) {
-        return ensureInlineImageCoverage(
-          original,
-          usable,
-          language,
-        );
+        return fallback();
       }
     }
 
-    // AI may legally choose too few images. Enforce a deterministic
-    // minimum afterwards without rewriting the article text.
-    return ensureInlineImageCoverage(
-      placed,
+    return sanitizeImageCaptionsV582(
+      ensureInlineImageCoverage(
+        placed,
+        usable,
+        language,
+      ),
       usable,
       language,
     );
   } catch {
-    return ensureInlineImageCoverage(
-      original,
-      usable,
-      language,
-    );
+    return fallback();
   }
 }
 function htmlToArticleText(html: string): string {
@@ -5092,6 +5743,629 @@ async function repairLowImageArticlesV579(
     failed,
   };
 }
+function markdownImagesV582(
+  value: unknown,
+) {
+  const rows: Array<{
+    full: string;
+    alt: string;
+    url: string;
+  }> = [];
+
+  for (
+    const match of
+    String(value || "").matchAll(
+      /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g,
+    )
+  ) {
+    rows.push({
+      full:
+        match[0],
+      alt:
+        String(
+          match[1] || "",
+        ),
+      url:
+        String(
+          match[2] || "",
+        ),
+    });
+  }
+
+  return rows;
+}
+
+function removeImageUrlV582(
+  markdown: string,
+  url: string,
+): string {
+  const escaped =
+    String(url)
+      .replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      );
+
+  return String(
+    markdown || "",
+  )
+    .replace(
+      new RegExp(
+        `\\n?\\s*!\\[[^\\]]*\\]\\(${escaped}\\)\\s*\\n?`,
+        "g",
+      ),
+      "\n\n",
+    )
+    .replace(
+      /\n{3,}/g,
+      "\n\n",
+    )
+    .trim();
+}
+
+async function resolveAutomationArticleV582(
+  env: Env,
+  input: string,
+) {
+  let articleId =
+    "";
+
+  let slug =
+    "";
+
+  const query =
+    String(
+      input || "",
+    ).trim();
+
+  if (query) {
+    try {
+      const u =
+        new URL(
+          query,
+        );
+
+      slug =
+        decodeURIComponent(
+          u.pathname
+            .split("/")
+            .filter(Boolean)
+            .pop() || "",
+        );
+    } catch {
+      slug =
+        query
+          .replace(
+            /^\/?news\//,
+            "",
+          )
+          .replace(
+            /^\/+|\/+$/g,
+            "",
+          );
+    }
+  }
+
+  let article: any =
+    null;
+
+  if (slug) {
+    const rows: any =
+      await sb(
+        env,
+        `news_articles?select=id,slug,title_vi,title_en,content_vi,content_en,source_name,source_url,status,created_at&slug=eq.${encodeURIComponent(slug)}&limit=1`,
+      );
+
+    article =
+      Array.isArray(rows)
+        ? rows[0]
+        : null;
+  } else {
+    const ingestRows: any =
+      await sb(
+        env,
+        "technology_news_ingest?select=article_id,state,updated_at&state=eq.draft_created&article_id=not.is.null&order=updated_at.desc&limit=1",
+      );
+
+    articleId =
+      String(
+        Array.isArray(ingestRows)
+          ? ingestRows[0]?.article_id || ""
+          : "",
+      );
+
+    if (articleId) {
+      const rows: any =
+        await sb(
+          env,
+          `news_articles?select=id,slug,title_vi,title_en,content_vi,content_en,source_name,source_url,status,created_at&id=eq.${encodeURIComponent(articleId)}&limit=1`,
+        );
+
+      article =
+        Array.isArray(rows)
+          ? rows[0]
+          : null;
+    }
+  }
+
+  if (
+    !article?.id
+  ) {
+    throw new Error(
+      "Không tìm thấy bài cần kiểm tra ảnh.",
+    );
+  }
+
+  const ownership: any =
+    await sb(
+      env,
+      `technology_news_ingest?select=article_id,state&article_id=eq.${encodeURIComponent(String(article.id))}&state=eq.draft_created&limit=1`,
+    );
+
+  if (
+    !Array.isArray(ownership) ||
+    !ownership.length
+  ) {
+    throw new Error(
+      "Bài này không thuộc Automation; hệ thống từ chối tự sửa ảnh.",
+    );
+  }
+
+  if (
+    !article.source_url
+  ) {
+    throw new Error(
+      "Bài Automation thiếu source_url.",
+    );
+  }
+
+  return article;
+}
+
+// NLKH_V582_ARTICLE_IMAGE_AUDIT
+async function auditAutomationArticleImagesV582(
+  env: Env,
+  input: string,
+) {
+  const article =
+    await resolveAutomationArticleV582(
+      env,
+      input,
+    );
+
+  const item: FeedItem = {
+    source:
+      String(
+        article.source_name ||
+        "Nguồn bài viết",
+      ),
+    title:
+      String(
+        article.title_en ||
+        article.title_vi ||
+        "",
+      ),
+    link:
+      String(
+        article.source_url,
+      ),
+    summary:
+      String(
+        article.title_vi ||
+        "",
+      ),
+    publishedAt:
+      article.created_at ||
+      null,
+  };
+
+  let contentVi =
+    String(
+      article.content_vi ||
+      "",
+    );
+
+  let contentEn =
+    String(
+      article.content_en ||
+      "",
+    );
+
+  const existingMap =
+    new Map<
+      string,
+      string
+    >();
+
+  for (
+    const image of
+    [
+      ...markdownImagesV582(
+        contentVi,
+      ),
+      ...markdownImagesV582(
+        contentEn,
+      ),
+    ]
+  ) {
+    if (
+      !existingMap.has(
+        image.url,
+      )
+    ) {
+      existingMap.set(
+        image.url,
+        image.alt,
+      );
+    }
+  }
+
+  const existingReviews: ImageReviewV582[] = [];
+  const removed: string[] = [];
+
+  for (
+    const [url,alt] of
+    Array.from(
+      existingMap.entries(),
+    ).slice(0,7)
+  ) {
+    const review =
+      await reviewRemoteImageV582(
+        env,
+        item,
+        {
+          url,
+          hint:
+            alt,
+        },
+      );
+
+    existingReviews.push(
+      review,
+    );
+
+    if (
+      !review.accepted
+    ) {
+      contentVi =
+        removeImageUrlV582(
+          contentVi,
+          url,
+        );
+
+      contentEn =
+        removeImageUrlV582(
+          contentEn,
+          url,
+        );
+
+      removed.push(
+        url,
+      );
+    }
+  }
+
+  const sourceImages =
+    await findSourceImageCandidates(
+      env,
+      item,
+    );
+
+  const inlineImages: PlacedNewsImage[] = [];
+  const usedMediaIds =
+    new Set<string>();
+
+  const remainingUrls =
+    new Set(
+      [
+        ...markdownImagesV582(
+          contentVi,
+        ),
+        ...markdownImagesV582(
+          contentEn,
+        ),
+      ].map(
+        (x) => x.url,
+      ),
+    );
+
+  for (
+    let index = 0;
+    index < sourceImages.length;
+    index++
+  ) {
+    const candidate =
+      sourceImages[index];
+
+    try {
+      const saved =
+        await ingestNewsMedia(
+          env,
+          String(
+            article.id,
+          ),
+          candidate.url,
+          "inline",
+          50 + index,
+        );
+
+      const mediaId =
+        String(
+          saved?.media_id ||
+          "",
+        );
+
+      const url =
+        String(
+          saved?.url ||
+          "",
+        );
+
+      if (
+        !url ||
+        remainingUrls.has(url) ||
+        (
+          mediaId &&
+          usedMediaIds.has(
+            mediaId,
+          )
+        )
+      ) {
+        continue;
+      }
+
+      if (mediaId) {
+        usedMediaIds.add(
+          mediaId,
+        );
+      }
+
+      remainingUrls.add(
+        url,
+      );
+
+      inlineImages.push({
+        url,
+        hint:
+          candidate.hint,
+        mediaId,
+      });
+    } catch {}
+
+    if (
+      inlineImages.length >=
+      4
+    ) {
+      break;
+    }
+  }
+
+  contentVi =
+    sanitizeImageCaptionsV582(
+      ensureInlineImageCoverage(
+        contentVi,
+        inlineImages,
+        "vi",
+      ),
+      inlineImages,
+      "vi",
+    );
+
+  contentEn =
+    sanitizeImageCaptionsV582(
+      ensureInlineImageCoverage(
+        contentEn,
+        inlineImages,
+        "en",
+      ),
+      inlineImages,
+      "en",
+    );
+
+  const beforeVi =
+    String(
+      article.content_vi ||
+      "",
+    );
+
+  const beforeEn =
+    String(
+      article.content_en ||
+      "",
+    );
+
+  const changed =
+    contentVi !== beforeVi ||
+    contentEn !== beforeEn;
+
+  if (changed) {
+    await sb(
+      env,
+      `news_articles?id=eq.${encodeURIComponent(String(article.id))}`,
+      {
+        method:
+          "PATCH",
+        headers: {
+          Prefer:
+            "return=minimal",
+        },
+        body:
+          JSON.stringify({
+            content_vi:
+              contentVi,
+            content_en:
+              contentEn,
+          }),
+      },
+    );
+  }
+
+  const sourceReviews =
+    sourceImages
+      .map(
+        (x) => x.review,
+      )
+      .filter(Boolean);
+
+  const report = {
+    version:
+      "V5.8.2",
+    mode:
+      "manual-article-audit",
+    checkedAt:
+      new Date().toISOString(),
+    article: {
+      id:
+        article.id,
+      slug:
+        article.slug,
+      status:
+        article.status,
+      title:
+        article.title_vi ||
+        article.title_en,
+      url:
+        `https://nguyenlekhanhhoa.com/news/${article.slug}`,
+      sourceUrl:
+        article.source_url,
+    },
+    existingImages:
+      existingMap.size,
+    removed:
+      removed.length,
+    replacements:
+      inlineImages.length,
+    changed,
+    reviews: [
+      ...existingReviews,
+      ...sourceReviews,
+    ].slice(0,14),
+  };
+
+  await putImageReviewV582(
+    env,
+    report,
+  );
+
+  return report;
+}
+
+function renderImageReviewPanelV582(
+  report: any,
+) {
+  if (
+    !report ||
+    !Array.isArray(
+      report.reviews,
+    )
+  ) {
+    return `
+      <div id="imageReviewPanel" style="margin-top:14px">
+        <p class="help">Chưa có dữ liệu kiểm tra ảnh.</p>
+      </div>
+    `;
+  }
+
+  const article =
+    report.article || {};
+
+  const cards =
+    report.reviews
+      .map(
+        (row: any) => {
+          const ok =
+            row.accepted === true;
+
+          return `
+            <article style="
+              display:grid;
+              grid-template-columns:140px minmax(0,1fr);
+              gap:14px;
+              margin-top:12px;
+              padding:12px;
+              border:1px solid ${ok ? "#244a38" : "#66353a"};
+              border-radius:12px;
+              background:${ok ? "#0f211a" : "#241316"};
+            ">
+              <div>
+                <img
+                  src="${htmlEscape(row.url || "")}"
+                  alt=""
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  style="
+                    width:140px;
+                    height:100px;
+                    object-fit:cover;
+                    border-radius:8px;
+                    background:#111;
+                  "
+                />
+              </div>
+
+              <div style="min-width:0">
+                <div style="font-weight:800;color:${ok ? "#6ee7a8" : "#ff8a93"}">
+                  ${ok ? "✓ CHẤP NHẬN" : "✕ LOẠI"} · ${htmlEscape(row.score ?? 0)}/100 · ${htmlEscape(row.kind || "other")}
+                </div>
+
+                <div style="margin-top:6px">
+                  <strong>Vision nhìn thấy:</strong>
+                  ${htmlEscape(row.visualDescription || "Không có mô tả")}
+                </div>
+
+                <div style="margin-top:6px">
+                  <strong>Lý do:</strong>
+                  ${htmlEscape(row.reason || "")}
+                </div>
+
+                ${ok ? `
+                  <div style="margin-top:6px">
+                    <strong>Caption VI:</strong>
+                    ${htmlEscape(row.captionVi || "")}
+                  </div>
+                  <div>
+                    <strong>Caption EN:</strong>
+                    ${htmlEscape(row.captionEn || "")}
+                  </div>
+                ` : ""}
+
+                <details style="margin-top:6px">
+                  <summary>Thông tin nguồn ảnh</summary>
+                  <div style="margin-top:5px;word-break:break-all">
+                    ${htmlEscape(row.url || "")}
+                  </div>
+                  <div style="margin-top:5px">
+                    <strong>Hint HTML:</strong>
+                    ${htmlEscape(row.sourceHint || "(trống)")}
+                  </div>
+                </details>
+              </div>
+            </article>
+          `;
+        },
+      )
+      .join("");
+
+  return `
+    <div id="imageReviewPanel" style="margin-top:16px">
+      <div style="
+        padding:12px;
+        border:1px solid #26384f;
+        border-radius:12px;
+        background:#0d1622;
+      ">
+        <strong>Kiểm tra ảnh V5.8.2 · pixel + relevance</strong>
+        <div class="help" style="margin-top:5px">
+          Bài: ${htmlEscape(article.title || article.slug || "—")}<br />
+          Chế độ: ${htmlEscape(report.mode || "—")} ·
+          Đã kiểm tra: ${htmlEscape(report.reviews.length)} ·
+          Loại: ${htmlEscape(report.reviews.filter((x:any)=>!x.accepted).length)}
+        </div>
+      </div>
+      ${cards}
+    </div>
+  `;
+}
 async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
   let existingImageRepair: any = {
     attempted: 0,
@@ -5670,6 +6944,7 @@ export default {
     if (url.pathname === "/") {
       const settings = await getSettings(env);
       const lastRun = await getLastRun(env);
+      const imageReview = await getImageReviewV582(env);
 
       const lastRunText = lastRun
         ? htmlEscape(JSON.stringify(lastRun, null, 2))
@@ -5705,6 +6980,8 @@ export default {
           </div>
         `
         : `<p class="help">Chưa có dữ liệu lần chạy gần nhất.</p>`;
+
+      const imageReviewHtml = renderImageReviewPanelV582(imageReview);
 
       const html = `<!doctype html>
 <html lang="en">
@@ -6064,6 +7341,31 @@ export default {
     </p>
   </section>
 
+  <!-- NLKH_V582_IMAGE_REVIEW_UI -->
+  <section class="card">
+    <h2>Kiểm tra ảnh trước khi đưa vào bài</h2>
+
+    <p class="section-help">
+      Automation V5.8.2 nhìn trực tiếp pixel ảnh, đối chiếu với chủ đề bài,
+      loại portrait/avatar/quảng cáo/ảnh không liên quan rồi mới cho phép đưa vào R2 và nội dung.
+      Có thể dán URL hoặc slug của một bài Automation đã tạo để rà lại và tự loại ảnh sai.
+    </p>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px">
+      <input
+        id="imageAuditArticle"
+        placeholder="URL hoặc slug bài Automation; để trống = bài Automation gần nhất"
+      />
+      <button id="imageAudit" type="button">Kiểm tra & sửa ảnh</button>
+    </div>
+
+    <div class="help" style="margin-top:8px">
+      Quy trình: tải pixel → Vision mô tả ảnh → AI chấm liên quan 0–100 →
+      chỉ nhận từ 75 điểm → caption khóa theo kết quả đã xác minh.
+    </div>
+
+    ${imageReviewHtml}
+  </section>
   <section class="card">
     <h2>Lần chạy gần nhất</h2>
 
@@ -6477,6 +7779,64 @@ export default {
     }
   });
 
+    const imageAuditButton = $("imageAudit");
+
+  if (imageAuditButton) {
+    imageAuditButton.addEventListener("click", async () => {
+      const old =
+        imageAuditButton.textContent;
+
+      imageAuditButton.disabled =
+        true;
+
+      imageAuditButton.textContent =
+        "Đang kiểm tra pixel ảnh...";
+
+      message.textContent =
+        "Đang rà ảnh bằng Vision; ảnh không chắc chắn sẽ bị loại.";
+
+      try {
+        const body =
+          await protectedRequest(
+            "/image-audit",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+              body:
+                JSON.stringify({
+                  article:
+                    $("imageAuditArticle")?.value || ""
+                })
+            }
+          );
+
+        message.textContent =
+          "Kiểm tra xong: loại " +
+          String(body.removed ?? 0) +
+          " ảnh, thêm " +
+          String(body.replacements ?? 0) +
+          " ảnh đã xác minh.";
+
+        window.setTimeout(
+          () => location.reload(),
+          700,
+        );
+      } catch (e) {
+        message.textContent =
+          e.message ||
+          String(e);
+      } finally {
+        imageAuditButton.disabled =
+          false;
+
+        imageAuditButton.textContent =
+          old;
+      }
+    });
+  }
   $("run").addEventListener("click", async () => {
     const button = $("run");
 
@@ -6773,6 +8133,45 @@ export default {
       }
     }
 
+    if (url.pathname === "/image-audit" && request.method === "POST") {
+      const identity = await getAutomationIdentity(request, env);
+
+      if (!identity) {
+        return Response.json(
+          { error: "Admin access required" },
+          { status: 403 },
+        );
+      }
+
+      try {
+        const input: any =
+          await request.json();
+
+        const report =
+          await auditAutomationArticleImagesV582(
+            env,
+            String(
+              input?.article || "",
+            ),
+          );
+
+        return Response.json({
+          ok: true,
+          ...report,
+        });
+      } catch (e: any) {
+        return Response.json(
+          {
+            error:
+              String(
+                e?.message ||
+                e,
+              ),
+          },
+          { status: 500 },
+        );
+      }
+    }
     if (url.pathname === "/run" && request.method === "POST") {
       const identity = await getAutomationIdentity(request, env);
 
