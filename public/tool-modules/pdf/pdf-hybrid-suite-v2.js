@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  // NLKH PDF HYBRID SUITE V2.4 · SINGLE TOOL SELECTOR + AUTO/OFFLINE/ONLINE
+  // NLKH PDF HYBRID SUITE V2.5 · FAST SINGLE SELECTOR + AUTO/OFFLINE/ONLINE
   // Scope: augmentation layer for public/tool-modules/pdf only.
   // Existing module.js remains the Online/iLovePDF engine.
   // Existing offline-v2.js remains the legacy Offline engine.
@@ -13,8 +13,14 @@
     result: null,
     resultUrl: "",
     files: new Map(),
-    observer: null,
-    rendering: false,
+    taskSelect: null,
+    autoButton: null,
+    offlineButton: null,
+    onlineButton: null,
+    optionsReady: false,
+    modeReady: false,
+    storageBound: false,
+    booted: false,
   };
 
   const OFFICE_ACCEPT = {
@@ -102,7 +108,7 @@
     try { localStorage.setItem(MODE_PREF_KEY, pref); } catch (_) {}
     syncEffectiveMode();
     renderModeControls();
-    setTimeout(applyUi, 0);
+    applyUi();
   }
 
   function isOffline() { return mode() === "offline"; }
@@ -127,11 +133,13 @@
   }
 
   function taskSelect() {
-    return el("apiTool") || Array.from(document.querySelectorAll("select")).find((select) =>
+    if (state.taskSelect && state.taskSelect.isConnected) return state.taskSelect;
+    state.taskSelect = el("apiTool") || Array.from(document.querySelectorAll("select")).find((select) =>
       Array.from(select.options || []).some((o) =>
         /merge pdf|gop pdf|compress pdf|nen pdf|pdf.*jpg|word.*pdf/.test(clean(o.textContent))
       )
     ) || null;
+    return state.taskSelect;
   }
 
   function fileInput() {
@@ -876,18 +884,25 @@
 
   function ensureOptions() {
     const select = taskSelect();
-    if (!select) return;
+    if (!select) return false;
+    if (state.optionsReady && select.dataset.nlkhHybridOptionsV25 === "1") return true;
 
-    let group = select.querySelector('optgroup[data-nlkh-hybrid="1"]');
+    const groups = Array.from(select.querySelectorAll("optgroup"));
+    let group = groups.find((g) => /pdf/.test(clean(g.label)) && !/image|hinh anh/.test(clean(g.label)));
     if (!group) {
       group = document.createElement("optgroup");
-      group.label = "CONVERT · Chuyển đổi";
-      group.dataset.nlkhHybrid = "1";
-      select.appendChild(group);
+      group.label = "Công cụ PDF / PDF tools";
+      const imageGroup = groups.find((g) => /image|hinh anh/.test(clean(g.label)));
+      if (imageGroup) select.insertBefore(group, imageGroup);
+      else select.appendChild(group);
     }
 
+    // Remove only an older hybrid-only optgroup, if present, after moving its role into the main PDF group.
+    const oldHybrid = select.querySelector('optgroup[data-nlkh-hybrid="1"]');
+    if (oldHybrid && oldHybrid !== group) oldHybrid.remove();
+
     for (const def of TOOL_DEFS) {
-      let option = Array.from(group.options || []).find((o) => o.dataset.nlkhKind === def.kind);
+      let option = Array.from(select.options || []).find((o) => o.dataset.nlkhKind === def.kind);
       if (!option) {
         option = document.createElement("option");
         option.value = def.value;
@@ -895,19 +910,23 @@
         option.dataset.nlkhKind = def.kind;
         if (def.office) option.dataset.nlkhOffice = def.office;
         group.appendChild(option);
+      } else if (option.parentElement !== group) {
+        group.appendChild(option);
       }
     }
+
+    select.dataset.nlkhHybridOptionsV25 = "1";
+    state.optionsReady = true;
+    return true;
   }
 
   function switchTool(kind) {
     const select = taskSelect();
     if (!select) return;
-    ensureOptions();
     const option = Array.from(select.options).find((o) => o.dataset.nlkhKind === kind);
     if (!option) return;
     select.selectedIndex = Array.from(select.options).indexOf(option);
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    setTimeout(applyUi, 0);
   }
 
   function injectConvertBar() {
@@ -923,32 +942,43 @@
   }
 
   function renderModeControls() {
-    const auto = document.getElementById("nlkh-pdf-mode-auto-v24");
-    const offline = modeButtonByText("Offline");
-    const online = modeButtonByText("Online");
+    const auto = state.autoButton && state.autoButton.isConnected ? state.autoButton : document.getElementById("nlkh-pdf-mode-auto-v24");
+    const offline = state.offlineButton && state.offlineButton.isConnected ? state.offlineButton : null;
+    const online = state.onlineButton && state.onlineButton.isConnected ? state.onlineButton : null;
     const pref = modePreference();
 
     [[auto, "auto"], [offline, "offline"], [online, "online"]].forEach(([button, value]) => {
       if (!button) return;
-      button.classList.toggle("active", pref === value);
-      button.setAttribute("aria-pressed", pref === value ? "true" : "false");
+      const active = pref === value;
+      if (button.classList.contains("active") !== active) button.classList.toggle("active", active);
+      if (button.getAttribute("aria-pressed") !== String(active)) button.setAttribute("aria-pressed", String(active));
     });
   }
 
   function ensureModeControls() {
+    if (state.modeReady && state.autoButton?.isConnected && state.offlineButton?.isConnected && state.onlineButton?.isConnected) {
+      renderModeControls();
+      return true;
+    }
+
     const offline = modeButtonByText("Offline");
     const online = modeButtonByText("Online");
-    if (!offline || !online) return;
+    if (!offline || !online) return false;
 
     let auto = document.getElementById("nlkh-pdf-mode-auto-v24");
     if (!auto) {
       auto = offline.cloneNode(true);
       auto.id = "nlkh-pdf-mode-auto-v24";
       auto.textContent = "Auto";
-      auto.setAttribute("title", "Auto: ưu tiên xử lý local; chỉ dùng Online khi tác vụ cần server.");
+      auto.setAttribute("title", "Auto: prefer local processing and use Online only when a task requires server processing.");
       auto.removeAttribute("aria-current");
       offline.parentElement?.insertBefore(auto, offline);
     }
+
+    state.autoButton = auto;
+    state.offlineButton = offline;
+    state.onlineButton = online;
+    state.modeReady = true;
 
     if (!auto.dataset.nlkhModeBound) {
       auto.dataset.nlkhModeBound = "1";
@@ -963,7 +993,9 @@
       offline.dataset.nlkhModePrefBound = "1";
       offline.addEventListener("click", () => {
         try { localStorage.setItem(MODE_PREF_KEY, "offline"); } catch (_) {}
-        setTimeout(() => { syncEffectiveMode(); renderModeControls(); applyUi(); }, 0);
+        syncEffectiveMode();
+        renderModeControls();
+        applyUi();
       }, true);
     }
 
@@ -971,11 +1003,14 @@
       online.dataset.nlkhModePrefBound = "1";
       online.addEventListener("click", () => {
         try { localStorage.setItem(MODE_PREF_KEY, "online"); } catch (_) {}
-        setTimeout(() => { syncEffectiveMode(); renderModeControls(); applyUi(); }, 0);
+        syncEffectiveMode();
+        renderModeControls();
+        applyUi();
       }, true);
     }
 
     renderModeControls();
+    return true;
   }
 
   function field(label, control, hint = "") {
@@ -1064,24 +1099,24 @@
     if (!input) return;
     const option = selectedOption();
 
+    let accept = null;
+    let multiple = null;
+
     if (option?.dataset.nlkhOffice) {
-      input.accept = OFFICE_ACCEPT[option.dataset.nlkhOffice] || "";
-      input.multiple = true;
-      return;
-    }
-
-    if (kind === "image-pdf") {
-      input.accept = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
-      input.multiple = true;
-      return;
-    }
-
-    if (kind || String(taskSelect()?.value || "").toLowerCase().includes("pdf")) {
+      accept = OFFICE_ACCEPT[option.dataset.nlkhOffice] || "";
+      multiple = true;
+    } else if (kind === "image-pdf") {
+      accept = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
+      multiple = true;
+    } else if (kind || String(taskSelect()?.value || "").toLowerCase().includes("pdf")) {
       if (LOCAL_KINDS.has(kind) || LOCAL_EXISTING_KINDS.has(kind)) {
-        input.accept = "application/pdf,.pdf";
-        input.multiple = false;
+        accept = "application/pdf,.pdf";
+        multiple = false;
       }
     }
+
+    if (accept !== null && input.accept !== accept) input.accept = accept;
+    if (multiple !== null && input.multiple !== multiple) input.multiple = multiple;
   }
 
   function bindQuality() {
@@ -1094,24 +1129,16 @@
   }
 
   function applyUi() {
-    ensureOptions();
-    injectConvertBar();
-    ensureModeControls();
     syncEffectiveMode();
+    renderModeControls();
 
     const kind = selectedKind();
     updateInputPolicy(kind);
-
-    if (!kind) {
-      document.querySelectorAll("[data-nlkh-pick]").forEach((b) => b.classList.remove("active"));
-      return;
-    }
-
-    document.querySelectorAll("[data-nlkh-pick]").forEach((b) => b.classList.toggle("active", b.dataset.nlkhPick === kind));
+    if (!kind) return;
 
     const options = el("toolOptions");
     if (options) {
-      const marker = `hybrid-v24:${kind}:${modePreference()}:${mode()}`;
+      const marker = `hybrid-v25:${kind}:${modePreference()}:${mode()}`;
       if (options.dataset.nlkhHybridUi !== marker) {
         options.innerHTML = uiFor(kind);
         options.dataset.nlkhHybridUi = marker;
@@ -1122,7 +1149,8 @@
 
     const processText = el("processButtonText");
     if (processText && !kind.startsWith("office-")) {
-      processText.textContent = bilingual("Xử lý trên thiết bị", "Process locally");
+      const next = bilingual("Xử lý trên thiết bị", "Process locally");
+      if (processText.textContent !== next) processText.textContent = next;
     }
   }
 
@@ -1222,21 +1250,25 @@
   }
 
   function bind() {
-    ensureOptions();
+    if (state.booted) return true;
+
+    const select = taskSelect();
+    if (!select) return false;
+
     injectConvertBar();
+    ensureOptions();
     ensureModeControls();
     syncEffectiveMode();
     applyUi();
     unregisterV1Worker();
 
-    const select = taskSelect();
-    if (select && !select.dataset.nlkhHybridBound) {
+    if (!select.dataset.nlkhHybridBound) {
       select.dataset.nlkhHybridBound = "1";
       select.addEventListener("change", () => {
         clearRememberedFiles();
         revokeResult();
         syncEffectiveMode();
-        setTimeout(applyUi, 0);
+        applyUi();
       });
     }
 
@@ -1258,22 +1290,27 @@
       download.addEventListener("click", downloadResult, true);
     }
 
-    if (!state.observer) {
-      state.observer = new MutationObserver(() => setTimeout(applyUi, 0));
-      state.observer.observe(document.body, { childList: true, subtree: true });
+    if (!state.storageBound) {
+      state.storageBound = true;
+      window.addEventListener("storage", (e) => {
+        if (e.key === "nlkh_pdf_mode" || e.key === MODE_PREF_KEY) {
+          syncEffectiveMode();
+          renderModeControls();
+          applyUi();
+        }
+      });
     }
 
-    window.addEventListener("storage", (e) => {
-      if (e.key === "nlkh_pdf_mode" || e.key === MODE_PREF_KEY) {
-        syncEffectiveMode();
-        setTimeout(() => { ensureModeControls(); applyUi(); }, 0);
-      }
-    });
+    state.booted = true;
+    return true;
   }
 
-  window.addEventListener("load", () => {
-    bind();
-    setTimeout(bind, 250);
-    setTimeout(bind, 1000);
-  });
+  function boot(attempt = 0) {
+    if (bind()) return;
+    if (attempt >= 12) return;
+    setTimeout(() => boot(attempt + 1), 100);
+  }
+
+  window.addEventListener("load", () => setTimeout(() => boot(0), 0), { once: true });
+
 })();
