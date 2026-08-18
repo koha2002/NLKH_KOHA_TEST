@@ -1,0 +1,17 @@
+/* NLKH PDF HYBRID SUITE V2 — isolated styles */
+#nlkh-convert-bar-v2{display:grid;gap:10px;margin:0 0 14px;padding:12px;border:1px solid var(--pdf-line,#334155);border-radius:12px;background:var(--pdf-surface-soft,rgba(15,23,42,.45))}
+.nlkh-convert-v2-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.nlkh-convert-v2-head>div{display:grid;gap:3px}.nlkh-convert-v2-head strong{font-size:12px}.nlkh-convert-v2-head small{font-size:10px;line-height:1.4;color:var(--pdf-muted,#94a3b8)}
+.nlkh-convert-v2-head>span{flex:none;border:1px solid #2563eb;border-radius:999px;padding:4px 7px;font-size:8px;font-weight:800;letter-spacing:.08em;color:#60a5fa}
+.nlkh-convert-v2-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.nlkh-convert-v2-grid button{position:relative;display:grid;gap:1px;min-height:54px;padding:8px 7px;border:1px solid var(--pdf-line,#334155);border-radius:8px;background:var(--pdf-surface,#0f172a);color:var(--pdf-ink,#e2e8f0);cursor:pointer;text-align:left}
+.nlkh-convert-v2-grid button:hover,.nlkh-convert-v2-grid button.active{border-color:#3b82f6;box-shadow:0 0 0 1px rgba(59,130,246,.2)}
+.nlkh-convert-v2-grid b{font-size:10px}.nlkh-convert-v2-grid small{font-size:8px;color:var(--pdf-muted,#94a3b8)}.nlkh-convert-v2-grid em{position:absolute;right:5px;bottom:4px;font-style:normal;font-size:6px;font-weight:800;color:#60a5fa}
+.nlkh-v2-local,.nlkh-v2-online,.nlkh-v2-note{display:grid;gap:4px;margin:0 0 10px;padding:10px 11px;border:1px solid var(--pdf-line,#334155);border-radius:9px}
+.nlkh-v2-local{border-color:#237a57;background:rgba(16,185,129,.08)}.nlkh-v2-online{border-color:#245fb8;background:rgba(59,130,246,.08)}
+.nlkh-v2-local strong,.nlkh-v2-online strong{font-size:10px;letter-spacing:.04em}.nlkh-v2-local small,.nlkh-v2-online small,.nlkh-v2-note{font-size:9px;line-height:1.45;color:var(--pdf-muted,#94a3b8)}
+.nlkh-v2-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.nlkh-v2-field{display:grid;gap:4px;font-size:10px;font-weight:700}
+.nlkh-v2-field input,.nlkh-v2-field select{width:100%;min-height:36px;box-sizing:border-box;border:1px solid var(--pdf-line,#334155);border-radius:7px;padding:7px 8px;background:var(--pdf-surface,#0f172a);color:var(--pdf-ink,#e2e8f0)}
+.nlkh-v2-field small,.nlkh-v2-field output{font-size:8px;font-weight:500;color:var(--pdf-muted,#94a3b8)}
+@media(max-width:900px){.nlkh-convert-v2-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.nlkh-convert-v2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.nlkh-v2-grid{grid-template-columns:1fr}.nlkh-convert-v2-head{display:grid}}
