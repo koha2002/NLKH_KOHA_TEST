@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  // NLKH PDF HYBRID SUITE V2.5 · FAST SINGLE SELECTOR + AUTO/OFFLINE/ONLINE
+  // NLKH PDF HYBRID SUITE V2.6 · RESTORED FULL MENU + FAST SINGLE SELECTOR
   // Scope: augmentation layer for public/tool-modules/pdf only.
   // Existing module.js remains the Online/iLovePDF engine.
   // Existing offline-v2.js remains the legacy Offline engine.
@@ -882,10 +882,54 @@
     { kind: "metadata-clean", value: CUSTOM + "metadata-clean", label: "Clean metadata / Xóa metadata", badge: "LOCAL" },
   ];
 
+  const ONLINE_DISCOVERY_DEFS = [
+    { value: "extract", label: "Trích xuất trang PDF / Extract PDF pages" },
+    { value: "htmlpdf", label: "HTML → PDF / HTML to PDF" },
+    { value: "pdfocr", label: "OCR PDF / OCR PDF" },
+    { value: "repair", label: "Sửa lỗi PDF / Repair PDF" },
+    { value: "protect", label: "Bảo vệ PDF / Protect PDF" },
+    { value: "unlock", label: "Mở khóa PDF / Unlock PDF" },
+    { value: "pdfa", label: "PDF → PDF/A / PDF to PDF/A" },
+    { value: "validatepdfa", label: "Kiểm tra PDF/A / Validate PDF/A" },
+    { value: "editpdf", label: "Chỉnh sửa PDF / Edit PDF" },
+    { value: "splitsmart", label: "Tách PDF thông minh / Smart split PDF" },
+  ];
+
+  function mainPdfGroup(select) {
+    const group = mainPdfGroup(select);
+    return group;
+  }
+
+  async function discoverExistingOnlineTools() {
+    const select = taskSelect();
+    if (!select || select.dataset.nlkhOnlineDiscoveryV26 === "1") return;
+    select.dataset.nlkhOnlineDiscoveryV26 = "1";
+    try {
+      const response = await fetch("./module.js", { cache: "force-cache" });
+      if (!response.ok) return;
+      const source = await response.text();
+      const group = mainPdfGroup(select);
+      for (const def of ONLINE_DISCOVERY_DEFS) {
+        const token = new RegExp(`["']${def.value}["']|\\b${def.value}\\b`, "i");
+        if (!token.test(source)) continue;
+        const exists = Array.from(select.options || []).some((o) =>
+          String(o.value || "").toLowerCase() === def.value ||
+          clean(o.textContent) === clean(def.label)
+        );
+        if (exists) continue;
+        const option = document.createElement("option");
+        option.value = def.value;
+        option.textContent = `${def.label} · ONLINE`;
+        option.dataset.nlkhDiscoveredOnline = "1";
+        group.appendChild(option);
+      }
+    } catch (_) {}
+  }
+
   function ensureOptions() {
     const select = taskSelect();
     if (!select) return false;
-    if (state.optionsReady && select.dataset.nlkhHybridOptionsV25 === "1") return true;
+    if (state.optionsReady && select.dataset.nlkhHybridOptionsV26 === "1") return true;
 
     const groups = Array.from(select.querySelectorAll("optgroup"));
     let group = groups.find((g) => /pdf/.test(clean(g.label)) && !/image|hinh anh/.test(clean(g.label)));
@@ -901,21 +945,40 @@
     const oldHybrid = select.querySelector('optgroup[data-nlkh-hybrid="1"]');
     if (oldHybrid && oldHybrid !== group) oldHybrid.remove();
 
+    const optionMatchesDef = (o, def) => {
+      if (o.dataset.nlkhKind === def.kind) return true;
+      const text = clean(o.textContent);
+      if (def.kind === "office-word-pdf") return /word/.test(text) && /pdf/.test(text) && !/pdf.*word/.test(text);
+      if (def.kind === "office-excel-pdf") return /excel/.test(text) && /pdf/.test(text) && !/pdf.*excel/.test(text);
+      if (def.kind === "office-powerpoint-pdf") return /(powerpoint|ppt)/.test(text) && /pdf/.test(text) && !/pdf.*(powerpoint|ppt)/.test(text);
+      if (def.kind === "pdf-docx") return /pdf/.test(text) && /word/.test(text);
+      if (def.kind === "pdf-xlsx") return /pdf/.test(text) && /excel/.test(text);
+      if (def.kind === "pdf-pptx") return /pdf/.test(text) && /(powerpoint|ppt)/.test(text);
+      if (def.kind === "pdf-png") return /pdf/.test(text) && /png/.test(text);
+      if (def.kind === "pdf-webp") return /pdf/.test(text) && /webp/.test(text);
+      if (def.kind === "pdf-txt") return /pdf/.test(text) && /(txt|text)/.test(text);
+      if (def.kind === "pdf-md") return /pdf/.test(text) && /markdown/.test(text);
+      if (def.kind === "flatten-form") return /(flatten|lam phang)/.test(text) && /(form|bieu mau)/.test(text);
+      if (def.kind === "rasterize") return /(rasterize|raster|lam phang an toan)/.test(text);
+      if (def.kind === "grayscale") return /(grayscale|den trang|thang xam)/.test(text);
+      if (def.kind === "metadata-clean") return /metadata/.test(text) && /(clean|xoa)/.test(text);
+      return false;
+    };
+
     for (const def of TOOL_DEFS) {
-      let option = Array.from(select.options || []).find((o) => o.dataset.nlkhKind === def.kind);
+      let option = Array.from(select.options || []).find((o) => optionMatchesDef(o, def));
       if (!option) {
         option = document.createElement("option");
         option.value = def.value;
         option.textContent = `${def.label} · ${def.badge}`;
-        option.dataset.nlkhKind = def.kind;
-        if (def.office) option.dataset.nlkhOffice = def.office;
-        group.appendChild(option);
-      } else if (option.parentElement !== group) {
         group.appendChild(option);
       }
+      option.dataset.nlkhKind = def.kind;
+      if (def.office) option.dataset.nlkhOffice = def.office;
+      if (option.parentElement !== group) group.appendChild(option);
     }
 
-    select.dataset.nlkhHybridOptionsV25 = "1";
+    select.dataset.nlkhHybridOptionsV26 = "1";
     state.optionsReady = true;
     return true;
   }
@@ -1257,6 +1320,7 @@
 
     injectConvertBar();
     ensureOptions();
+    discoverExistingOnlineTools();
     ensureModeControls();
     syncEffectiveMode();
     applyUi();
@@ -1311,6 +1375,11 @@
     setTimeout(() => boot(attempt + 1), 100);
   }
 
-  window.addEventListener("load", () => setTimeout(() => boot(0), 0), { once: true });
+  function bootAfterLegacyUi() {
+    requestAnimationFrame(() => requestAnimationFrame(() => boot(0)));
+  }
+
+  if (document.readyState === "complete") bootAfterLegacyUi();
+  else window.addEventListener("load", bootAfterLegacyUi, { once: true });
 
 })();
