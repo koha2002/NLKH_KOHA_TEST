@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  // NLKH PDF HYBRID SUITE V2
+  // NLKH PDF HYBRID SUITE V2.4 · SINGLE TOOL SELECTOR + AUTO/OFFLINE/ONLINE
   // Scope: augmentation layer for public/tool-modules/pdf only.
   // Existing module.js remains the Online/iLovePDF engine.
   // Existing offline-v2.js remains the legacy Offline engine.
@@ -56,10 +56,55 @@
       .toLowerCase();
   }
   function bilingual(vi, en) { return `${vi} / ${en}`; }
+  const MODE_PREF_KEY = "nlkh_pdf_mode_pref_v24";
+  const AUTO_ONLINE_VALUES = new Set([
+    "officepdf", "pdfocr", "ocr", "repair", "protect", "unlock",
+    "pdfa", "validatepdfa", "editpdf", "htmlpdf"
+  ]);
+
+  function modePreference() {
+    try {
+      const value = localStorage.getItem(MODE_PREF_KEY);
+      return ["auto", "offline", "online"].includes(value) ? value : "auto";
+    } catch (_) {
+      return "auto";
+    }
+  }
+
   function mode() {
     try { return localStorage.getItem("nlkh_pdf_mode") || "offline"; }
     catch (_) { return "offline"; }
   }
+
+  function effectiveModeForCurrentTask() {
+    const pref = modePreference();
+    if (pref === "offline" || pref === "online") return pref;
+
+    const option = selectedOption();
+    const value = String(taskSelect()?.value || "").toLowerCase();
+    if (option?.dataset?.nlkhOffice) return "online";
+    if (AUTO_ONLINE_VALUES.has(value)) return "online";
+    return "offline";
+  }
+
+  function syncEffectiveMode() {
+    const effective = effectiveModeForCurrentTask();
+    try {
+      if (localStorage.getItem("nlkh_pdf_mode") !== effective) {
+        localStorage.setItem("nlkh_pdf_mode", effective);
+      }
+    } catch (_) {}
+    return effective;
+  }
+
+  function setModePreference(pref) {
+    if (!["auto", "offline", "online"].includes(pref)) return;
+    try { localStorage.setItem(MODE_PREF_KEY, pref); } catch (_) {}
+    syncEffectiveMode();
+    renderModeControls();
+    setTimeout(applyUi, 0);
+  }
+
   function isOffline() { return mode() === "offline"; }
 
   function setStatus(message, type = "info") {
@@ -866,35 +911,71 @@
   }
 
   function injectConvertBar() {
-    if (document.getElementById("nlkh-convert-bar-v2")) return;
-    const select = taskSelect();
-    if (!select) return;
+    const old = document.getElementById("nlkh-convert-bar-v2");
+    if (old) old.remove();
+  }
 
-    const host = select.closest("section,form,div") || select.parentElement;
-    if (!host) return;
+  function modeButtonByText(name) {
+    const wanted = clean(name);
+    return Array.from(document.querySelectorAll("button,[role='button']")).find((button) =>
+      clean(button.textContent) === wanted
+    ) || null;
+  }
 
-    const bar = document.createElement("section");
-    bar.id = "nlkh-convert-bar-v2";
-    bar.className = "nlkh-convert-v2";
-    bar.innerHTML = `
-      <div class="nlkh-convert-v2-head">
-        <div><strong>Chuyển đổi Office & PDF / Office & PDF Converter</strong>
-        <small>Online dùng iLovePDF khi bạn chọn Online; chiều PDF → Office bên dưới chạy local trên thiết bị.</small></div>
-        <span>LOCAL + ONLINE</span>
-      </div>
-      <div class="nlkh-convert-v2-grid"></div>`;
+  function renderModeControls() {
+    const auto = document.getElementById("nlkh-pdf-mode-auto-v24");
+    const offline = modeButtonByText("Offline");
+    const online = modeButtonByText("Online");
+    const pref = modePreference();
 
-    const grid = bar.querySelector(".nlkh-convert-v2-grid");
-    TOOL_DEFS.slice(0, 10).forEach((def) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.nlkhPick = def.kind;
-      button.innerHTML = `<b>${def.label.split(" / ")[0]}</b><small>${def.label.split(" / ")[1] || ""}</small><em>${def.badge}</em>`;
-      button.addEventListener("click", () => switchTool(def.kind));
-      grid.appendChild(button);
+    [[auto, "auto"], [offline, "offline"], [online, "online"]].forEach(([button, value]) => {
+      if (!button) return;
+      button.classList.toggle("active", pref === value);
+      button.setAttribute("aria-pressed", pref === value ? "true" : "false");
     });
+  }
 
-    host.insertBefore(bar, host.firstChild);
+  function ensureModeControls() {
+    const offline = modeButtonByText("Offline");
+    const online = modeButtonByText("Online");
+    if (!offline || !online) return;
+
+    let auto = document.getElementById("nlkh-pdf-mode-auto-v24");
+    if (!auto) {
+      auto = offline.cloneNode(true);
+      auto.id = "nlkh-pdf-mode-auto-v24";
+      auto.textContent = "Auto";
+      auto.setAttribute("title", "Auto: ưu tiên xử lý local; chỉ dùng Online khi tác vụ cần server.");
+      auto.removeAttribute("aria-current");
+      offline.parentElement?.insertBefore(auto, offline);
+    }
+
+    if (!auto.dataset.nlkhModeBound) {
+      auto.dataset.nlkhModeBound = "1";
+      auto.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setModePreference("auto");
+      }, true);
+    }
+
+    if (!offline.dataset.nlkhModePrefBound) {
+      offline.dataset.nlkhModePrefBound = "1";
+      offline.addEventListener("click", () => {
+        try { localStorage.setItem(MODE_PREF_KEY, "offline"); } catch (_) {}
+        setTimeout(() => { syncEffectiveMode(); renderModeControls(); applyUi(); }, 0);
+      }, true);
+    }
+
+    if (!online.dataset.nlkhModePrefBound) {
+      online.dataset.nlkhModePrefBound = "1";
+      online.addEventListener("click", () => {
+        try { localStorage.setItem(MODE_PREF_KEY, "online"); } catch (_) {}
+        setTimeout(() => { syncEffectiveMode(); renderModeControls(); applyUi(); }, 0);
+      }, true);
+    }
+
+    renderModeControls();
   }
 
   function field(label, control, hint = "") {
@@ -1015,6 +1096,8 @@
   function applyUi() {
     ensureOptions();
     injectConvertBar();
+    ensureModeControls();
+    syncEffectiveMode();
 
     const kind = selectedKind();
     updateInputPolicy(kind);
@@ -1028,7 +1111,7 @@
 
     const options = el("toolOptions");
     if (options) {
-      const marker = `hybrid-v2:${kind}:${mode()}`;
+      const marker = `hybrid-v24:${kind}:${modePreference()}:${mode()}`;
       if (options.dataset.nlkhHybridUi !== marker) {
         options.innerHTML = uiFor(kind);
         options.dataset.nlkhHybridUi = marker;
@@ -1074,18 +1157,31 @@
   }
 
   async function processCapture(event) {
+    syncEffectiveMode();
     const kind = selectedKind();
+    const pref = modePreference();
 
     if (isOfficeOnlineSelection()) {
-      if (isOffline()) {
+      if (pref === "offline") {
         event.preventDefault();
         event.stopImmediatePropagation();
         setStatus(bilingual(
-          "Word/Excel/PowerPoint → PDF cần chế độ Online. File chưa được upload. Hãy chuyển sang Online rồi xử lý lại.",
-          "Office → PDF requires Online mode. No file was uploaded. Switch to Online and try again."
+          "Tác vụ Office → PDF cần Online. Chế độ Offline không tải file lên server.",
+          "Office → PDF requires Online. Offline mode never uploads the file."
         ), "error");
       }
-      // Online: do nothing. Existing module.js handles officepdf.
+      // Auto resolves this task to Online; Online stays Online.
+      // Existing module.js handles officepdf.
+      return;
+    }
+
+    if (kind && LOCAL_KINDS.has(kind) && pref === "online") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setStatus(bilingual(
+        "Tác vụ này hiện chỉ có bộ xử lý Local. Hãy chọn Auto hoặc Offline.",
+        "This task currently has a Local engine only. Choose Auto or Offline."
+      ), "error");
       return;
     }
 
@@ -1128,6 +1224,8 @@
   function bind() {
     ensureOptions();
     injectConvertBar();
+    ensureModeControls();
+    syncEffectiveMode();
     applyUi();
     unregisterV1Worker();
 
@@ -1137,6 +1235,7 @@
       select.addEventListener("change", () => {
         clearRememberedFiles();
         revokeResult();
+        syncEffectiveMode();
         setTimeout(applyUi, 0);
       });
     }
@@ -1165,7 +1264,10 @@
     }
 
     window.addEventListener("storage", (e) => {
-      if (e.key === "nlkh_pdf_mode") setTimeout(applyUi, 0);
+      if (e.key === "nlkh_pdf_mode" || e.key === MODE_PREF_KEY) {
+        syncEffectiveMode();
+        setTimeout(() => { ensureModeControls(); applyUi(); }, 0);
+      }
     });
   }
 
