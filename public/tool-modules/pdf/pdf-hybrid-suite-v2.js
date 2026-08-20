@@ -120,7 +120,7 @@
         return;
       }
     } catch (_) {}
-    console[type === "error" ? "error" : "log"]("[NLKH PDF V2]", message);
+    console[type === "error" ? "error" : "log"]("[NLKH PDF V2.8]", message);
   }
 
   function setBusy(on) {
@@ -882,8 +882,6 @@
     { kind: "metadata-clean", value: CUSTOM + "metadata-clean", label: "Clean metadata / Xóa metadata", badge: "LOCAL" },
   ];
 
-  const NLKH_V261_RECURSION_FIX = true;
-
   const ONLINE_DISCOVERY_DEFS = [
     { value: "extract", label: "Trích xuất trang PDF / Extract PDF pages" },
     { value: "htmlpdf", label: "HTML → PDF / HTML to PDF" },
@@ -903,7 +901,7 @@
     let group = groups.find((g) => /pdf/.test(clean(g.label)) && !/image|hinh anh/.test(clean(g.label)));
     if (!group) {
       group = document.createElement("optgroup");
-      group.label = "PDF tools";
+      group.label = "Công cụ PDF / PDF tools";
       const imageGroup = groups.find((g) => /image|hinh anh/.test(clean(g.label)));
       if (imageGroup) select.insertBefore(group, imageGroup);
       else select.appendChild(group);
@@ -913,7 +911,7 @@
 
   async function discoverExistingOnlineTools() {
     const select = taskSelect();
-    if (!select || select.dataset.nlkhOnlineDiscoveryV26 === "1") return;
+    if (!select) return;
     select.dataset.nlkhOnlineDiscoveryV26 = "1";
     try {
       const response = await fetch("./module.js", { cache: "force-cache" });
@@ -940,7 +938,12 @@
   function ensureOptions() {
     const select = taskSelect();
     if (!select) return false;
-    if (state.optionsReady && select.dataset.nlkhHybridOptionsV26 === "1") return true;
+    if (state.optionsReady && select.dataset.nlkhHybridOptionsV26 === "1") {
+      const presentKinds = new Set(Array.from(select.options || []).map((o) => o.dataset.nlkhKind).filter(Boolean));
+      if (TOOL_DEFS.every((def) => presentKinds.has(def.kind))) return true;
+      state.optionsReady = false;
+      delete select.dataset.nlkhHybridOptionsV26;
+    }
 
     const groups = Array.from(select.querySelectorAll("optgroup"));
     let group = groups.find((g) => /pdf/.test(clean(g.label)) && !/image|hinh anh/.test(clean(g.label)));
@@ -962,9 +965,9 @@
       if (def.kind === "office-word-pdf") return /word/.test(text) && /pdf/.test(text) && !/pdf.*word/.test(text);
       if (def.kind === "office-excel-pdf") return /excel/.test(text) && /pdf/.test(text) && !/pdf.*excel/.test(text);
       if (def.kind === "office-powerpoint-pdf") return /(powerpoint|ppt)/.test(text) && /pdf/.test(text) && !/pdf.*(powerpoint|ppt)/.test(text);
-      if (def.kind === "pdf-docx") return /pdf/.test(text) && /word/.test(text);
-      if (def.kind === "pdf-xlsx") return /pdf/.test(text) && /excel/.test(text);
-      if (def.kind === "pdf-pptx") return /pdf/.test(text) && /(powerpoint|ppt)/.test(text);
+      if (def.kind === "pdf-docx") return /\bpdf\b.*\bword\b/.test(text);
+      if (def.kind === "pdf-xlsx") return /\bpdf\b.*\bexcel\b/.test(text);
+      if (def.kind === "pdf-pptx") return /\bpdf\b.*\b(powerpoint|ppt)\b/.test(text);
       if (def.kind === "pdf-png") return /pdf/.test(text) && /png/.test(text);
       if (def.kind === "pdf-webp") return /pdf/.test(text) && /webp/.test(text);
       if (def.kind === "pdf-txt") return /pdf/.test(text) && /(txt|text)/.test(text);
@@ -1323,29 +1326,9 @@
     }).catch(() => {});
   }
 
-  function bind() {
-    if (state.booted) return true;
-
+  function bindElementHandlers() {
     const select = taskSelect();
     if (!select) return false;
-
-    injectConvertBar();
-    ensureOptions();
-    discoverExistingOnlineTools();
-    ensureModeControls();
-    syncEffectiveMode();
-    applyUi();
-    unregisterV1Worker();
-
-    if (!select.dataset.nlkhHybridBound) {
-      select.dataset.nlkhHybridBound = "1";
-      select.addEventListener("change", () => {
-        clearRememberedFiles();
-        revokeResult();
-        syncEffectiveMode();
-        applyUi();
-      });
-    }
 
     const input = fileInput();
     if (input && !input.dataset.nlkhHybridBound) {
@@ -1365,32 +1348,87 @@
       download.addEventListener("click", downloadResult, true);
     }
 
-    if (!state.storageBound) {
-      state.storageBound = true;
-      window.addEventListener("storage", (e) => {
-        if (e.key === "nlkh_pdf_mode" || e.key === MODE_PREF_KEY) {
-          syncEffectiveMode();
-          renderModeControls();
-          applyUi();
-        }
-      });
-    }
-
-    state.booted = true;
     return true;
   }
 
-  function boot(attempt = 0) {
-    if (bind()) return;
-    if (attempt >= 12) return;
-    setTimeout(() => boot(attempt + 1), 100);
+  function reconcileUi() {
+    const select = taskSelect();
+    if (!select) return false;
+    injectConvertBar();
+    ensureOptions();
+    ensureModeControls();
+    syncEffectiveMode();
+    bindElementHandlers();
+    applyUi();
+    discoverExistingOnlineTools();
+    unregisterV1Worker();
+    return true;
   }
 
-  function bootAfterLegacyUi() {
-    requestAnimationFrame(() => requestAnimationFrame(() => boot(0)));
+  function isApiToolTarget(target) {
+    return !!(target && target.id === "apiTool");
   }
 
-  if (document.readyState === "complete") bootAfterLegacyUi();
-  else window.addEventListener("load", bootAfterLegacyUi, { once: true });
+  function isModeTarget(target) {
+    const button = target?.closest?.("button,[role='button']");
+    if (!button) return false;
+    const text = clean(button.textContent);
+    return text === "auto" || text === "offline" || text === "online";
+  }
+
+  function bindDelegatedHandlersOnce() {
+    if (state.delegatedBound) return;
+    state.delegatedBound = true;
+
+    document.addEventListener("pointerdown", (event) => {
+      if (!isApiToolTarget(event.target)) return;
+      state.taskSelect = event.target;
+      state.optionsReady = false;
+      ensureOptions();
+      discoverExistingOnlineTools();
+    }, true);
+
+    document.addEventListener("focusin", (event) => {
+      if (!isApiToolTarget(event.target)) return;
+      state.taskSelect = event.target;
+      state.optionsReady = false;
+      ensureOptions();
+    }, true);
+
+    document.addEventListener("change", (event) => {
+      if (!isApiToolTarget(event.target)) return;
+      state.taskSelect = event.target;
+      clearRememberedFiles();
+      revokeResult();
+      state.optionsReady = false;
+      ensureOptions();
+      syncEffectiveMode();
+      applyUi();
+    }, true);
+
+    document.addEventListener("click", (event) => {
+      if (!isModeTarget(event.target) && !event.target?.closest?.("[data-tool]")) return;
+      setTimeout(reconcileUi, 0);
+      setTimeout(reconcileUi, 60);
+    }, true);
+
+    if (!state.storageBound) {
+      state.storageBound = true;
+      window.addEventListener("storage", (event) => {
+        if (event.key === "nlkh_pdf_mode" || event.key === MODE_PREF_KEY) reconcileUi();
+      });
+    }
+  }
+
+  const NLKH_V28_FINAL_MENU = true;
+  const STARTUP_RECONCILE_MS = [0, 60, 160, 320, 650, 1200, 2000, 3000];
+
+  function bootFinal() {
+    bindDelegatedHandlersOnce();
+    STARTUP_RECONCILE_MS.forEach((delay) => setTimeout(reconcileUi, delay));
+  }
+
+  if (document.readyState === "complete") bootFinal();
+  else window.addEventListener("load", bootFinal, { once: true });
 
 })();
