@@ -1,0 +1,15 @@
+{
+  "tool": "Remove Background",
+  "slug": "remove-background",
+  "route": "/tools/remove-background",
+  "version": "1.2.0",
+  "languages": ["vi", "en"],
+  "language_switch": "internal VI/EN plus same-origin parent/localStorage/html-lang sync",
+  "processing": "browser-local",
+  "uploads_user_images": false,
+  "engine": "@imgly/background-removal 1.7.0",
+  "model": "isnet",
+  "engine_loading": "dynamic CDN import with GPU -> CPU fallback",
+  "exports": ["png", "webp", "jpg"],
+  "license_note": "@imgly/background-removal is AGPL; review licensing for deployment or obtain a commercial license."
+}
