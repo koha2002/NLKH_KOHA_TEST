@@ -190,84 +190,118 @@ export const adminSocial = [
   }
 ];
 export const adminTools = [
-  {
-    "id": "quiz",
-    "slug": "quiz",
-    "href": "/tools/quiz",
-    "code": "QUIZ",
-    "title": {
-      "vi": "Ôn thi & tạo đề",
-      "en": "Quiz & exam practice"
+    {
+        "id":  "quiz",
+        "slug":  "quiz",
+        "href":  "/tools/quiz",
+        "code":  "QUIZ",
+        "title":  {
+                      "vi":  "Ôn thi \u0026 tạo đề",
+                      "en":  "Quiz \u0026 exam practice"
+                  },
+        "description":  {
+                            "vi":  "Tạo, nhập, chỉnh sửa và luyện đề ngay trên trình duyệt.",
+                            "en":  "Create, import, edit and practise quizzes in the browser."
+                        },
+        "status":  "ready",
+        "icon":  "quiz",
+        "accent":  "#06b6d4",
+        "showHome":  true,
+        "showOrbit":  true,
+        "orbitRing":  1,
+        "orbitAngle":  222,
+        "requiresAuth":  false,
+        "allowedRoles":  [
+
+                         ],
+        "categoryId":  null,
+        "toolType":  "source",
+        "hasInlineHtml":  false
     },
-    "description": {
-      "vi": "Tạo, nhập, chỉnh sửa và luyện đề ngay trên trình duyệt.",
-      "en": "Create, import, edit and practise quizzes in the browser."
+    {
+        "id":  "pdf",
+        "slug":  "pdf",
+        "href":  "/tools/pdf",
+        "code":  "PDF",
+        "title":  {
+                      "vi":  "PDF Studio",
+                      "en":  "PDF Studio"
+                  },
+        "description":  {
+                            "vi":  "Xử lý PDF cục bộ, ưu tiên riêng tư.",
+                            "en":  "Local-first PDF processing."
+                        },
+        "status":  "ready",
+        "icon":  "pdf",
+        "accent":  "#2563eb",
+        "showHome":  true,
+        "showOrbit":  true,
+        "orbitRing":  2,
+        "orbitAngle":  326,
+        "requiresAuth":  false,
+        "allowedRoles":  [
+
+                         ],
+        "categoryId":  null,
+        "toolType":  "source",
+        "hasInlineHtml":  false
     },
-    "status": "ready",
-    "icon": "quiz",
-    "accent": "#06b6d4",
-    "showHome": true,
-    "showOrbit": true,
-    "orbitRing": 1,
-    "orbitAngle": 222,
-    "requiresAuth": false,
-    "allowedRoles": [],
-    "categoryId": null,
-    "toolType": "source",
-    "hasInlineHtml": false
-  },
-  {
-    "id": "pdf",
-    "slug": "pdf",
-    "href": "/tools/pdf",
-    "code": "PDF",
-    "title": {
-      "vi": "PDF Studio",
-      "en": "PDF Studio"
+    {
+        "id":  "comtrade",
+        "slug":  "comtrade",
+        "href":  "/tools/comtrade",
+        "code":  "CFG",
+        "title":  {
+                      "vi":  "COMTRADE",
+                      "en":  "COMTRADE"
+                  },
+        "description":  {
+                            "vi":  "Đọc CFG/DAT và biểu diễn kênh analog, digital.",
+                            "en":  "Read CFG/DAT and plot analog and digital channels."
+                        },
+        "status":  "ready",
+        "icon":  "comtrade",
+        "accent":  "#8b5cf6",
+        "showHome":  true,
+        "showOrbit":  true,
+        "orbitRing":  3,
+        "orbitAngle":  198,
+        "requiresAuth":  false,
+        "allowedRoles":  [
+
+                         ],
+        "categoryId":  null,
+        "toolType":  "source",
+        "hasInlineHtml":  false
     },
-    "description": {
-      "vi": "Xử lý PDF cục bộ, ưu tiên riêng tư.",
-      "en": "Local-first PDF processing."
-    },
-    "status": "ready",
-    "icon": "pdf",
-    "accent": "#2563eb",
-    "showHome": true,
-    "showOrbit": true,
-    "orbitRing": 2,
-    "orbitAngle": 326,
-    "requiresAuth": false,
-    "allowedRoles": [],
-    "categoryId": null,
-    "toolType": "source",
-    "hasInlineHtml": false
-  },
-  {
-    "id": "comtrade",
-    "slug": "comtrade",
-    "href": "/tools/comtrade",
-    "code": "CFG",
-    "title": {
-      "vi": "COMTRADE",
-      "en": "COMTRADE"
-    },
-    "description": {
-      "vi": "Đọc CFG/DAT và biểu diễn kênh analog, digital.",
-      "en": "Read CFG/DAT and plot analog and digital channels."
-    },
-    "status": "ready",
-    "icon": "comtrade",
-    "accent": "#8b5cf6",
-    "showHome": true,
-    "showOrbit": true,
-    "orbitRing": 3,
-    "orbitAngle": 198,
-    "requiresAuth": false,
-    "allowedRoles": [],
-    "categoryId": null,
-    "toolType": "source",
-    "hasInlineHtml": false
-  }
+    {
+        "id":  "remove-background",
+        "slug":  "remove-background",
+        "href":  "/tools/remove-background",
+        "code":  "RMBG",
+        "title":  {
+                      "vi":  "Remove Background",
+                      "en":  "Remove Background"
+                  },
+        "description":  {
+                            "vi":  "TÃ¡ch ná»n áº£nh trá»±c tiáº¿p trÃªn trÃ¬nh duyá»‡t. áº¢nh khÃ´ng táº£i lÃªn server.",
+                            "en":  "Remove image backgrounds directly in the browser. Images are not uploaded to the server."
+                        },
+        "status":  "ready",
+        "icon":  "image",
+        "accent":  "#22c55e",
+        "showHome":  true,
+        "showOrbit":  false,
+        "orbitRing":  1,
+        "orbitAngle":  0,
+        "requiresAuth":  false,
+        "allowedRoles":  [
+
+                         ],
+        "categoryId":  null,
+        "toolType":  "source",
+        "hasInlineHtml":  false
+    }
 ];
 export const adminToolCategories = [];
 export const adminOrbitRings = [
