@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../../components/LanguageProvider";
 import { invokeEdge, supabase } from "../../lib/supabase-browser";
+import initialProfile from "../../public/content/cv/profile.json";
 import styles from "./cv.module.css";
 
 type Localized = { vi: string; en: string };
@@ -142,9 +143,9 @@ export default function CvPage() {
   const cv = t.cv;
 
   const [profile, setProfile] =
-    useState<Profile | null>(null);
+    useState<Profile | null>(initialProfile as Profile);
   const [loaded, setLoaded] =
-    useState(false);
+    useState(true);
   const [pdfMessage, setPdfMessage] =
     useState("");
   const [photoUrl, setPhotoUrl] =

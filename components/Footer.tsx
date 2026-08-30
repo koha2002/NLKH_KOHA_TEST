@@ -11,6 +11,8 @@ export function Footer() {
   const links = adminNavigation.filter((x) => x.visible && ["footer","both"].includes(String(x.location || "both")) && !x.requires_auth);
   const label = (x: any) => language === "en" ? (x.label_en || x.label_vi) : x.label_vi;
   const intro = language === "en" ? (site.footer_intro_en || site.footer_intro_vi) : site.footer_intro_vi;
+  const year = new Date().getFullYear();
+  const copyright = String(site.copyright_text || `© ${year} Nguyễn Lê Khánh Hòa`).replace(/©\s*\d{4}/, `© ${year}`);
   return (
     <footer className={styles.footer}>
       <div className={`container ${styles.grid}`}>
@@ -29,7 +31,7 @@ export function Footer() {
         </div>
       </div>
       <div className={`container ${styles.bottom}`}>
-        <p>{site.copyright_text || "© 2026 Nguyễn Lê Khánh Hòa"}</p>
+        <p suppressHydrationWarning>{copyright}</p>
         <p>{t.footer.rights}</p>
       </div>
     </footer>

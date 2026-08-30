@@ -1,20 +1,15 @@
+import { notFound } from "next/navigation";
+import { AdminSeoJsonLd } from "../../../components/AdminSeoJsonLd";
+import { AdminToolRoute } from "../../../components/AdminToolRoute";
+import { adminTools } from "../../../data/admin-generated";
+
+const fixedTool:any = adminTools.find((x:any) => x.slug === "remove-background");
+
 export default function RemoveBackgroundPage() {
-  return (
-    <main style={{ minHeight: "calc(100dvh - 64px)", background: "#121418" }}>
-      <iframe
-        src="/tool-modules/remove-background/index.html"
-        title="Remove Background"
-        style={{
-          width: "100%",
-          height: "calc(100dvh - 64px)",
-          minHeight: 720,
-          border: 0,
-          display: "block",
-          background: "#121418",
-        }}
-        allow="clipboard-read; clipboard-write"
-        loading="eager"
-      />
-    </main>
-  );
+  const tool:any = fixedTool;
+  if (!tool) notFound();
+  return <>
+    <AdminSeoJsonLd route="/tools/remove-background" />
+    <AdminToolRoute tool={tool} />
+  </>;
 }

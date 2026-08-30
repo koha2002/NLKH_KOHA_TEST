@@ -8,12 +8,12 @@ const seoMap=new Map((adminSeoEntries as readonly any[]).map((x:any)=>[String(x.
 function meta(route:string,defaults:{changeFrequency?:any;priority?:number}={}){
   const s:any=seoMap.get(route);
   if(s?.indexable===false)return null;
-  return {url:`${site}${route==="/"?"":route}/`.replace(/([^:]\/)\/+/g,"$1"),changeFrequency:(s?.change_frequency||defaults.changeFrequency||"weekly") as any,priority:Number(s?.priority??defaults.priority??.7)};
+  return {url:route==="/"?`${site}/`:`${site}${route}`,changeFrequency:(s?.change_frequency||defaults.changeFrequency||"weekly") as any,priority:Number(s?.priority??defaults.priority??.7)};
 }
 
 export default function sitemap():MetadataRoute.Sitemap{
   const out:MetadataRoute.Sitemap=[];
-  const fixed:[string,any,number][]=[["/","weekly",1],["/cv","monthly",.9],["/tools","weekly",.9],["/software","weekly",.8],["/data","weekly",.4],["/news","daily",.9]];
+  const fixed:[string,any,number][]=[["/","weekly",1],["/cv","monthly",.9],["/tools","weekly",.9],["/software","weekly",.8],["/news","daily",.9]];
   for(const[r,c,p]of fixed){if(r==="/cv"&&!adminCvVisible)continue;const x=meta(r,{changeFrequency:c,priority:p});if(x)out.push(x)}
   for(const t of adminTools as readonly any[]){if(t.requiresAuth)continue;const x=meta(t.href||`/tools/${t.slug}`,{changeFrequency:"monthly",priority:.8});if(x)out.push(x)}
   for(const a of adminNewsArticles as readonly any[]){const x=meta(`/news/${a.slug}`,{changeFrequency:"monthly",priority:a.featured?.85:.7});if(x)out.push(x)}

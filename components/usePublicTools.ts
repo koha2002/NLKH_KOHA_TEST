@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { adminOrbitRings, adminTools } from "../data/admin-generated";
 
 export type PublicTool = {
   id: string; slug: string; code: string; route: string; title_vi: string; title_en: string;
@@ -9,12 +9,23 @@ export type PublicTool = {
 };
 export type PublicRing = { id: string; size: number; duration: number; reverse: boolean; dashed: boolean; dot_angle?: number | null; dot_tone: string };
 
+const staticTools: PublicTool[] = (adminTools as readonly any[]).map((tool:any, index:number) => ({
+  id:String(tool.id), slug:String(tool.slug), code:String(tool.code || "TOOL"), route:String(tool.href || `/tools/${tool.slug}`),
+  title_vi:String(tool.title?.vi || tool.slug), title_en:String(tool.title?.en || tool.title?.vi || tool.slug),
+  description_vi:String(tool.description?.vi || ""), description_en:String(tool.description?.en || tool.description?.vi || ""),
+  icon:tool.icon || null, accent:String(tool.accent || "#2563eb"), status:String(tool.status || "ready"),
+  show_home:tool.showHome !== false, show_orbit:tool.showOrbit !== false, orbit_ring:Number(tool.orbitRing || 1),
+  orbit_angle:Number(tool.orbitAngle || 0), sort_order:Number(tool.sortOrder ?? index),
+}));
+
+const staticRings: PublicRing[] = (adminOrbitRings as readonly any[]).map((ring:any) => ({
+  id:String(ring.id), size:Number(ring.size || 100), duration:Number(ring.duration || 30), reverse:!!ring.reverse,
+  dashed:!!ring.dashed, dot_angle:ring.dotAngle === null || ring.dotAngle === undefined ? null : Number(ring.dotAngle),
+  dot_tone:String(ring.dotTone || "blue"),
+}));
+
+// Site dùng Next static export. Dữ liệu public đã được sync ở prebuild nên không gọi /api/public/tools
+// (route này không tồn tại trong static export). Kết quả này cũng giúp HTML đầu tiên có đủ tool cho crawler.
 export function usePublicTools() {
-  const [state, setState] = useState<{ tools: PublicTool[] | null; rings: PublicRing[] | null }>({ tools: null, rings: null });
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/public/tools", { signal: controller.signal, cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<{ tools?: PublicTool[]; rings?: PublicRing[] }> : Promise.reject()).then((data) => setState({ tools: data.tools || [], rings: data.rings || [] })).catch(() => undefined);
-    return () => controller.abort();
-  }, []);
-  return state;
+  return { tools: staticTools, rings: staticRings };
 }

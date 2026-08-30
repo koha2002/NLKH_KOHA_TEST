@@ -8,7 +8,7 @@ import styles from "../app/tools/tool-page.module.css";
 type Tool={
   id:string;slug:string;href:string;code:string;
   title:{vi:string;en:string};description:{vi:string;en:string};
-  requiresAuth:boolean;allowedRoles:readonly string[];hasInlineHtml:boolean
+  requiresAuth:boolean;allowedRoles:readonly string[];hasInlineHtml:boolean;status?:string
 };
 type RuntimePolicy={requires_auth:boolean;allowed_roles:string[]|null;visible:boolean;status:string|null};
 
@@ -18,7 +18,7 @@ export function AdminToolRoute({
   tool:Tool;beforeFrame?:ReactNode;importTarget?:string
 }){
   const{language}=useLanguage(),vi=language==="vi";
-  const[policy,setPolicy]=useState<RuntimePolicy|null>(null),[policyLoaded,setPolicyLoaded]=useState(false),[access,setAccess]=useState<MyAccess|null>(null);
+  const[policy,setPolicy]=useState<RuntimePolicy|null>(()=>({requires_auth:!!tool.requiresAuth,allowed_roles:[...(tool.allowedRoles||[])],visible:true,status:tool.status||null})),[policyLoaded,setPolicyLoaded]=useState(true),[access,setAccess]=useState<MyAccess|null>(null);
 
   useEffect(()=>{
     let alive=true;
