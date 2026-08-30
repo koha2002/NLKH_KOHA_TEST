@@ -1,103 +1,154 @@
 <!doctype html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Remove Background</title>
-<link rel="stylesheet" href="./remove-background.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Remove Background & ID Photo</title>
+  <link rel="stylesheet" href="./remove-background.css">
 </head>
 <body>
-<div class="app">
-  <header class="top">
+<div class="app-shell">
+  <header class="topbar">
     <div>
-      <div class="brand">REMOVE BACKGROUND</div>
-      <span class="sub" data-i18n="subtitle">Tách nền ảnh trực tiếp trên trình duyệt</span>
+      <h1>REMOVE BACKGROUND & ID PHOTO</h1>
+      <p>Tách nền ngay trên thiết bị, sửa vùng xóa lẹm/còn dư, thay nền và xuất ảnh thẻ.</p>
     </div>
-    <div class="grow"></div>
-    <div class="state" data-i18n="localState">● Ảnh xử lý trong browser</div>
-    <div class="lang-switch" aria-label="Language">
-      <button type="button" class="lang-btn" data-lang="vi">VI</button>
-      <span>/</span>
-      <button type="button" class="lang-btn" data-lang="en">EN</button>
-    </div>
-    <div class="actions">
-      <button id="openBtn" class="primary" data-i18n="openImage">Mở ảnh</button>
-      <button id="runBtn" class="success" data-i18n="removeBg">Tách nền</button>
-      <select id="exportFormat" data-i18n-title="exportFormatTitle" title="Định dạng xuất">
-        <option value="png" data-i18n="exportPng">Xuất PNG</option>
-        <option value="webp" data-i18n="exportWebp">Xuất WebP</option>
-        <option value="jpg" data-i18n="exportJpg">Xuất JPG</option>
-      </select>
-      <button id="saveBtn" data-i18n="export">Xuất</button>
+    <div class="badges">
+      <span id="engineBadge" class="badge pending">AI đang chuẩn bị...</span>
+      <span class="badge info">Ảnh không upload để xử lý</span>
     </div>
   </header>
 
-  <aside class="side">
-    <section class="card">
-      <h3 data-i18n="statusTitle">TRẠNG THÁI</h3>
-      <div id="status" class="status"></div>
-      <div class="progress"><i id="bar"></i></div>
-      <div class="meta">
-        <div class="box"><span data-i18n="originalImage">Ảnh gốc</span><b id="size">—</b></div>
-        <div class="box"><span data-i18n="result">Kết quả</span><b id="result" data-i18n="noneYet">Chưa có</b></div>
-      </div>
-    </section>
+  <nav class="toolbar">
+    <button id="openBtn" class="btn primary">Mở ảnh</button>
+    <input id="fileInput" type="file" accept="image/*" hidden>
+    <button id="removeBtn" class="btn success" disabled>Tách nền</button>
+    <button id="refineBtn" class="btn outline" disabled>Chỉnh viền</button>
+    <button id="finishRefineBtn" class="btn success hidden">Xong chỉnh viền</button>
+    <button id="resetBtn" class="btn muted" disabled>Làm lại</button>
+    <span class="spacer"></span>
+    <button id="downloadTransparentBtn" class="btn outline" disabled>Tải PNG trong suốt</button>
+    <button id="downloadFinalBtn" class="btn primary" disabled>Xuất ảnh</button>
+  </nav>
 
-    <section class="card">
-      <h3 data-i18n="controlsTitle">THAO TÁC</h3>
-      <div class="hint">
-        <div data-i18n="hintZoom">• Lăn chuột để phóng to / thu nhỏ.</div>
-        <div data-i18n="hintPan">• Giữ chuột trái và kéo để pan ảnh.</div>
-        <div data-i18n="hintFit">• Bấm Khớp ảnh để fit lại khung.</div>
-        <div data-i18n="hintActual">• Bấm 100% để xem ảnh rõ nét theo kích thước thật.</div>
-      </div>
-    </section>
+  <section class="progress-card">
+    <div class="progress-row">
+      <span id="progressLabel">Sẵn sàng.</span>
+      <strong id="progressPercent">0%</strong>
+    </div>
+    <div class="track"><div id="progressBar" class="bar"></div></div>
+  </section>
 
-    <input id="file" type="file" accept="image/*" class="hidden">
-  </aside>
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card">
+        <h2>TRẠNG THÁI</h2>
+        <div id="statusBox" class="status">Chưa có ảnh. Hãy bấm <b>Mở ảnh</b>.</div>
+        <div class="stats">
+          <div><small>Ảnh gốc</small><b id="sourceMeta">—</b></div>
+          <div><small>Kết quả</small><b id="resultMeta">—</b></div>
+          <div><small>Xử lý</small><b id="deviceMeta">—</b></div>
+          <div><small>Xuất</small><b id="exportMeta">Gốc</b></div>
+        </div>
+      </section>
 
-  <main class="main">
-    <section class="panel">
-      <div class="panelbar">
-        <div class="title" data-i18n="originalTitle">ẢNH GỐC</div>
-        <div class="controls">
-          <button data-view="src" data-act="fit" data-i18n="fit">Khớp ảnh</button>
-          <button data-view="src" data-act="100">100%</button>
-          <button data-view="src" data-act="out">-</button>
-          <button data-view="src" data-act="in">+</button>
+      <section id="refineCard" class="card disabled-card">
+        <h2>SỬA SAU TÁCH NỀN</h2>
+        <p class="hint">
+          AI xóa <b>còn dư nền</b>: dùng <b>Xóa dư</b>.
+          AI xóa <b>lẹm tóc/người/quần áo</b>: dùng <b>Khôi phục</b>.
+        </p>
+        <div class="tool-toggle">
+          <button id="eraseToolBtn" class="tool-btn active" disabled>Xóa dư</button>
+          <button id="restoreToolBtn" class="tool-btn" disabled>Khôi phục</button>
         </div>
-        <div id="srcName" class="name">—</div>
-      </div>
-      <div id="srcViewer" class="viewer">
-        <div class="stage" data-view="src">
-          <div id="srcWrap" class="canvas-wrap"><img id="srcImg" alt="" draggable="false"></div>
+        <label>Cỡ cọ: <b id="brushSizeValue">36 px</b></label>
+        <input id="brushSize" type="range" min="4" max="180" value="36" disabled>
+        <label>Độ mềm: <b id="brushSoftnessValue">35%</b></label>
+        <input id="brushSoftness" type="range" min="0" max="90" value="35" disabled>
+        <label>Zoom sửa: <b id="refineZoomValue">100%</b></label>
+        <input id="refineZoom" type="range" min="50" max="300" step="10" value="100" disabled>
+        <div class="row">
+          <button id="undoBtn" class="btn small muted" disabled>↶ Undo</button>
+          <button id="redoBtn" class="btn small muted" disabled>↷ Redo</button>
         </div>
-        <div class="placeholder" data-i18n="openPreview">Mở ảnh để xem trước</div>
-      </div>
-      <div class="foot"><span id="srcZoom">100%</span><span class="small" data-i18n="originalImage">Ảnh gốc</span></div>
-    </section>
+        <div class="legend">
+          <span><i class="dot erase"></i>Xóa dư nền</span>
+          <span><i class="dot restore"></i>Khôi phục phần bị lẹm</span>
+          <span class="shortcut-hint">Ctrl+Z: Undo • Ctrl+Y / Ctrl+Shift+Z: Redo</span>
+        </div>
+      </section>
 
-    <section class="panel">
-      <div class="panelbar">
-        <div class="title" data-i18n="resultTitle">KẾT QUẢ</div>
-        <div class="controls">
-          <button data-view="out" data-act="fit" data-i18n="fit">Khớp ảnh</button>
-          <button data-view="out" data-act="100">100%</button>
-          <button data-view="out" data-act="out">-</button>
-          <button data-view="out" data-act="in">+</button>
+      <section class="card">
+        <h2>THAY NỀN</h2>
+        <div class="preset-grid">
+          <button class="bg-preset active" data-bg="transparent" disabled>Trong suốt</button>
+          <button class="bg-preset" data-bg="white" disabled>Trắng</button>
+          <button class="bg-preset" data-bg="lightblue" disabled>Xanh nhạt</button>
+          <button class="bg-preset" data-bg="passportblue" disabled>Xanh passport</button>
+          <button class="bg-preset" data-bg="red" disabled>Đỏ</button>
         </div>
-        <div class="name" data-i18n="transparentOutput">PNG trong suốt</div>
-      </div>
-      <div id="outViewer" class="viewer checker">
-        <div class="stage" data-view="out">
-          <div id="outWrap" class="canvas-wrap"><img id="outImg" alt="" draggable="false"></div>
+        <label>Màu tùy chọn</label>
+        <div class="row">
+          <input id="customColor" type="color" value="#ffffff" disabled>
+          <button id="applyColorBtn" class="btn small outline" disabled>Dùng màu</button>
         </div>
-        <div class="placeholder" data-i18n="notRemovedYet">Chưa tách nền</div>
-      </div>
-      <div class="foot"><span id="outZoom">—</span><span class="small" data-i18n="transparentBackground">Nền trong suốt</span></div>
+        <label>Ảnh nền riêng</label>
+        <div class="row">
+          <button id="chooseBgBtn" class="btn small outline" disabled>Chọn ảnh nền</button>
+          <button id="clearBgBtn" class="btn small muted" disabled>Bỏ ảnh nền</button>
+        </div>
+        <input id="bgFileInput" type="file" accept="image/*" hidden>
+      </section>
+
+      <section class="card">
+        <h2>ẢNH THẺ / HỒ SƠ</h2>
+        <label>Cỡ xuất</label>
+        <select id="sizePreset" disabled>
+          <option value="original">Giữ kích thước gốc</option>
+          <option value="2x3">2 × 3 cm — 236 × 354 px</option>
+          <option value="3x4">3 × 4 cm — 354 × 472 px</option>
+          <option value="35x45">3.5 × 4.5 cm — 413 × 531 px</option>
+          <option value="4x6">4 × 6 cm — 472 × 709 px</option>
+          <option value="5x5">5 × 5 cm — 591 × 591 px</option>
+          <option value="2x2in">2 × 2 inch — 600 × 600 px</option>
+        </select>
+        <label>Phóng / thu người: <b id="scaleValue">100%</b></label>
+        <input id="scaleRange" type="range" min="65" max="160" value="100" disabled>
+        <label>Dịch ngang: <b id="offsetXValue">0</b></label>
+        <input id="offsetXRange" type="range" min="-35" max="35" value="0" disabled>
+        <label>Dịch dọc: <b id="offsetYValue">0</b></label>
+        <input id="offsetYRange" type="range" min="-35" max="35" value="0" disabled>
+        <button id="resetAdjustBtn" class="btn small muted" disabled>Reset căn chỉnh</button>
+        <label>Định dạng</label>
+        <select id="formatPreset" disabled>
+          <option value="png">PNG</option>
+          <option value="jpg">JPG</option>
+          <option value="webp">WebP</option>
+        </select>
+        <p class="hint">
+          Preset quy đổi gần 300 DPI. Từng cổng nộp hồ sơ có thể yêu cầu kích thước/dung lượng khác nhau.
+        </p>
+      </section>
+    </aside>
+
+    <section class="previews">
+      <article class="preview-card">
+        <header><h2>ẢNH GỐC</h2><span id="sourceCaption">Chưa có ảnh</span></header>
+        <div class="canvas-scroll"><canvas id="sourcePreview"></canvas></div>
+      </article>
+      <article class="preview-card">
+        <header><h2 id="resultTitle">KẾT QUẢ</h2><span id="resultCaption">Chưa xử lý</span></header>
+        <div id="resultScroll" class="canvas-scroll">
+          <canvas id="resultPreview"></canvas>
+          <div id="brushCursor" class="brush-cursor hidden"></div>
+        </div>
+      </article>
     </section>
   </main>
+
+  <footer>Tool tự đồng bộ giao diện Sáng/Tối với website. Ảnh được xử lý trên CPU/GPU của thiết bị người dùng.</footer>
 </div>
-<script src="./remove-background.js"></script>
+<script type="module" src="./remove-background.js"></script>
 </body>
 </html>
