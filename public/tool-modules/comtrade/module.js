@@ -2,7 +2,40 @@
   "use strict";
 
   const core = window.ComtradeCore;
-  const Plotly = window.Plotly;
+  let Plotly = window.Plotly;
+  let plotlyPromise = null;
+
+  function ensurePlotly() {
+    if (Plotly) return Promise.resolve(Plotly);
+    if (window.Plotly) {
+      Plotly = window.Plotly;
+      return Promise.resolve(Plotly);
+    }
+    if (plotlyPromise) return plotlyPromise;
+
+    plotlyPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "./vendor/plotly-2.24.1.min.js";
+      script.async = true;
+      script.dataset.kohaPlotly = "lazy";
+      script.addEventListener("load", () => {
+        Plotly = window.Plotly;
+        if (!Plotly) {
+          plotlyPromise = null;
+          reject(new Error(t("plotUnavailable")));
+          return;
+        }
+        resolve(Plotly);
+      }, { once: true });
+      script.addEventListener("error", () => {
+        plotlyPromise = null;
+        reject(new Error(t("plotUnavailable")));
+      }, { once: true });
+      document.head.appendChild(script);
+    });
+
+    return plotlyPromise;
+  }
   if (!core) throw new Error("COMTRADE Core chưa được nạp.");
 
   const elements = {
@@ -502,6 +535,7 @@
       state.filter = "";
       elements.channelSearch.value = "";
       elements.resultsArea.hidden = false;
+      await ensurePlotly();
       renderResults();
       window.setTimeout(() => elements.resultsArea.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     } catch (error) {
@@ -582,8 +616,14 @@
       elements.dropzone.classList.remove("dragover");
     });
   });
-  elements.dropzone.addEventListener("drop", (event) => handleFiles(event.dataTransfer.files));
-  elements.fileInput.addEventListener("change", (event) => handleFiles(event.target.files));
+  elements.dropzone.addEventListener("drop", (event) => {
+    handleFiles(event.dataTransfer.files);
+    ensurePlotly().catch(() => {});
+  });
+  elements.fileInput.addEventListener("change", (event) => {
+    handleFiles(event.target.files);
+    ensurePlotly().catch(() => {});
+  });
   elements.processBtn.addEventListener("click", processRecord);
   elements.resetBtn.addEventListener("click", resetStudio);
   elements.exportBtn.addEventListener("click", exportCsv);
