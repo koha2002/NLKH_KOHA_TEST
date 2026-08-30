@@ -6,6 +6,22 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: ./out
     autoDeployTrigger: commit
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains"
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-src 'self' https: blob:; worker-src 'self' blob:; media-src 'self' data: blob: https:; object-src 'none'; base-uri 'self'; form-action 'self' https:; frame-ancestors 'self'; manifest-src 'self'; upgrade-insecure-requests"
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), accelerometer=(), gyroscope=(), magnetometer=()"
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: "same-origin-allow-popups"
+      - path: /*
+        name: Cross-Origin-Resource-Policy
+        value: "same-site"
     envVars:
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
@@ -24,6 +40,22 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     autoDeployTrigger: commit
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains"
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-src 'self' https: blob:; worker-src 'self' blob:; media-src 'self' data: blob: https:; object-src 'none'; base-uri 'self'; form-action 'self' https:; frame-ancestors 'self'; manifest-src 'self'; upgrade-insecure-requests"
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), accelerometer=(), gyroscope=(), magnetometer=()"
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: "same-origin-allow-popups"
+      - path: /*
+        name: Cross-Origin-Resource-Policy
+        value: "same-site"
     envVars:
       - key: VITE_SUPABASE_URL
         sync: false
