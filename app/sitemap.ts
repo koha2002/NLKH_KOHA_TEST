@@ -1,22 +1,85 @@
 import type { MetadataRoute } from "next";
-import { adminContentPages, adminCvVisible, adminNewsArticles, adminSeoEntries, adminSite, adminTools } from "../data/admin-generated";
+import {
+  adminContentPages,
+  adminCvVisible,
+  adminNewsArticles,
+  adminSeoEntries,
+  adminSite,
+  adminTools,
+} from "../data/admin-generated";
 
 export const dynamic = "force-static";
-const site=String((adminSite as any).site_url||"https://nguyenlekhanhhoa.com").replace(/\/$/,"");
-const seoMap=new Map((adminSeoEntries as readonly any[]).map((x:any)=>[String(x.route),x]));
 
-function meta(route:string,defaults:{changeFrequency?:any;priority?:number}={}){
-  const s:any=seoMap.get(route);
-  if(s?.indexable===false)return null;
-  return {url:route==="/"?`${site}/`:`${site}${route}`,changeFrequency:(s?.change_frequency||defaults.changeFrequency||"weekly") as any,priority:Number(s?.priority??defaults.priority??.7)};
+type SitemapEntry = MetadataRoute.Sitemap[number];
+type ChangeFrequency = NonNullable<SitemapEntry["changeFrequency"]>;
+type SeoEntry = (typeof adminSeoEntries)[number];
+type ContentPage = { slug: string; requires_auth?: boolean };
+
+const site = String(adminSite.site_url || "https://nguyenlekhanhhoa.com").replace(/\/$/, "");
+const seoMap = new Map<string, SeoEntry>(
+  adminSeoEntries.map((entry) => [String(entry.route), entry]),
+);
+
+function meta(
+  route: string,
+  defaults: { changeFrequency?: ChangeFrequency; priority?: number } = {},
+): SitemapEntry | null {
+  const seo = seoMap.get(route);
+  if (seo?.indexable === false) return null;
+
+  const changeFrequency = String(
+    seo?.change_frequency || defaults.changeFrequency || "weekly",
+  ) as ChangeFrequency;
+
+  return {
+    url: route === "/" ? `${site}/` : `${site}${route}`,
+    changeFrequency,
+    priority: Number(seo?.priority ?? defaults.priority ?? 0.7),
+  };
 }
 
-export default function sitemap():MetadataRoute.Sitemap{
-  const out:MetadataRoute.Sitemap=[];
-  const fixed:[string,any,number][]=[["/","weekly",1],["/cv","monthly",.9],["/tools","weekly",.9],["/software","weekly",.8],["/news","daily",.9]];
-  for(const[r,c,p]of fixed){if(r==="/cv"&&!adminCvVisible)continue;const x=meta(r,{changeFrequency:c,priority:p});if(x)out.push(x)}
-  for(const t of adminTools as readonly any[]){if(t.requiresAuth)continue;const x=meta(t.href||`/tools/${t.slug}`,{changeFrequency:"monthly",priority:.8});if(x)out.push(x)}
-  for(const a of adminNewsArticles as readonly any[]){const x=meta(`/news/${a.slug}`,{changeFrequency:"monthly",priority:a.featured?.85:.7});if(x)out.push(x)}
-  for(const p of adminContentPages as readonly any[]){if(p.requires_auth)continue;const x=meta(`/p/${p.slug}`,{changeFrequency:"monthly",priority:.6});if(x)out.push(x)}
-  const seen=new Set<string>();return out.filter(x=>!seen.has(x.url)&&(seen.add(x.url),true));
+export default function sitemap(): MetadataRoute.Sitemap {
+  const out: MetadataRoute.Sitemap = [];
+  const fixed: Array<[string, ChangeFrequency, number]> = [
+    ["/", "weekly", 1],
+    ["/cv", "monthly", 0.9],
+    ["/tools", "weekly", 0.9],
+    ["/software", "weekly", 0.8],
+    ["/news", "daily", 0.9],
+  ];
+
+  for (const [route, changeFrequency, priority] of fixed) {
+    if (route === "/cv" && !adminCvVisible) continue;
+    const entry = meta(route, { changeFrequency, priority });
+    if (entry) out.push(entry);
+  }
+
+  for (const tool of adminTools) {
+    if (tool.requiresAuth) continue;
+    const entry = meta(tool.href || `/tools/${tool.slug}`, {
+      changeFrequency: "monthly",
+      priority: 0.8,
+    });
+    if (entry) out.push(entry);
+  }
+
+  for (const article of adminNewsArticles) {
+    const entry = meta(`/news/${article.slug}`, {
+      changeFrequency: "monthly",
+      priority: article.featured ? 0.85 : 0.7,
+    });
+    if (entry) out.push(entry);
+  }
+
+  for (const page of adminContentPages as readonly ContentPage[]) {
+    if (page.requires_auth) continue;
+    const entry = meta(`/p/${page.slug}`, {
+      changeFrequency: "monthly",
+      priority: 0.6,
+    });
+    if (entry) out.push(entry);
+  }
+
+  const seen = new Set<string>();
+  return out.filter((entry) => !seen.has(entry.url) && Boolean(seen.add(entry.url)));
 }

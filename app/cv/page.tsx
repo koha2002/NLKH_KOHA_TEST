@@ -88,6 +88,8 @@ type Profile = {
   extraSections?: Extra[];
 };
 
+type PresignDownloadResult = { url?: string };
+
 const extraLabels: Record<string, Localized> = {
   project: { vi: "Dự án", en: "Projects" },
   language: { vi: "Ngôn ngữ", en: "Languages" },
@@ -144,12 +146,8 @@ export default function CvPage() {
 
   const [profile, setProfile] =
     useState<Profile | null>(initialProfile as Profile);
-  const [loaded, setLoaded] =
-    useState(true);
-  const [pdfMessage, setPdfMessage] =
-    useState("");
-  const [photoUrl, setPhotoUrl] =
-    useState("");
+  const [pdfMessage, setPdfMessage] = useState("");
+  const [signedPhoto, setSignedPhoto] = useState<{ mediaId: string; url: string } | null>(null);
 
   useEffect(() => {
     fetch("/content/cv/profile.json", {
@@ -157,24 +155,22 @@ export default function CvPage() {
     })
       .then((response) => response.json())
       .then((data) => setProfile(data as Profile))
-      .catch(() => setProfile(null))
-      .finally(() => setLoaded(true));
+      .catch(() => setProfile(null));
   }, []);
 
   useEffect(() => {
+    const mediaId = profile?.photoMediaId;
+    if (!mediaId) return;
+
     let cancelled = false;
-    const fallback = profile?.photo || "";
-    setPhotoUrl(fallback);
-
-    if (!profile?.photoMediaId) return;
-
     invokeEdge("r2-file", {
       action: "presign-download",
-      media_id: profile.photoMediaId,
+      media_id: mediaId,
     })
-      .then((out: any) => {
-        if (!cancelled && out?.url) {
-          setPhotoUrl(out.url);
+      .then((result) => {
+        const out = result as PresignDownloadResult;
+        if (!cancelled && out.url) {
+          setSignedPhoto({ mediaId, url: out.url });
         }
       })
       .catch(() => {});
@@ -182,7 +178,12 @@ export default function CvPage() {
     return () => {
       cancelled = true;
     };
-  }, [profile?.photoMediaId, profile?.photo]);
+  }, [profile?.photoMediaId]);
+
+  const photoUrl =
+    signedPhoto && signedPhoto.mediaId === profile?.photoMediaId
+      ? signedPhoto.url
+      : profile?.photo || "";
 
   const extras = useMemo(() => {
     const map = new Map<string, Extra[]>();
@@ -197,18 +198,6 @@ export default function CvPage() {
 
     return [...map.entries()];
   }, [profile]);
-
-  if (!loaded) {
-    return (
-      <main className={styles.loading}>
-        <p>
-          {language === "vi"
-            ? "Đang tải hồ sơ…"
-            : "Loading profile…"}
-        </p>
-      </main>
-    );
-  }
 
   if (!profile || profile.visible === false) {
     return (
@@ -230,24 +219,6 @@ export default function CvPage() {
   const showPdf =
     theme.show_download_pdf !== false &&
     profile.pdfAccess !== "hidden";
-
-  const educations =
-    profile.educations?.length
-      ? profile.educations
-      : profile.education
-        ? [
-            {
-              period:
-                profile.education.period || "",
-              school:
-                profile.education.school,
-              major:
-                profile.education.major,
-              subtitle:
-                profile.education.subtitle,
-            } as Education,
-          ]
-        : [];
 
   async function openPdf() {
     setPdfMessage("");
@@ -281,14 +252,13 @@ export default function CvPage() {
       }
 
       if (currentProfile.pdfMediaId) {
-        const out: any =
-          await invokeEdge("r2-file", {
+        const out = (await invokeEdge("r2-file", {
             action: "presign-download",
             media_id:
               currentProfile.pdfMediaId,
-          });
+          })) as PresignDownloadResult;
 
-        if (!out?.url) {
+        if (!out.url) {
           throw new Error(
             language === "vi"
               ? "Không tạo được liên kết tải CV tóm tắt."
@@ -396,6 +366,7 @@ export default function CvPage() {
           {showPhoto ? (
             <div className={styles.identityCard}>
               {photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={photoUrl}
                   alt={profile.name}
