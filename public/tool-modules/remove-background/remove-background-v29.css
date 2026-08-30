@@ -1,0 +1,325 @@
+:root{
+  color-scheme:light;
+  --bg:#f5f8fc;--panel:#ffffff;--panel2:#f7f9fc;--border:#d7e1ee;
+  --text:#172033;--muted:#64748b;--blue:#2166d8;--green:#14945a;--chip:#eef4fb;
+  --canvas:#eef3f8;--canvasText:#63738a;--toolbar:#ffffff;--shadow:0 12px 30px rgba(15,23,42,.07);
+}
+html[data-tool-theme="dark"]{
+  color-scheme:dark;
+  --bg:#07101d;--panel:#0d1727;--panel2:#111e31;--border:#203149;
+  --text:#f2f7ff;--muted:#9fb1c9;--blue:#3988ff;--green:#22b36b;--chip:#18253a;
+  --canvas:#0b1523;--canvasText:#9fb1c9;--toolbar:#0d1727;--shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;transition:background .18s,color .18s}
+button,input,select{font:inherit}
+.app-shell{max-width:1680px;margin:auto;padding:14px}
+.topbar,.toolbar,.progress-card,.card,.preview-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+.topbar{padding:18px 20px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.topbar h1{margin:0 0 7px;font-size:30px}.topbar p{margin:0;color:var(--muted)}
+.badges{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.badge{padding:9px 12px;border-radius:999px;background:var(--chip);border:1px solid var(--border);font-size:13px}
+.badge.pending{color:#c58b10}.badge.ok{color:#14884f}.badge.warn{color:#b66d00}.badge.error{color:#c93636}.badge.info{color:#2374b9}
+html[data-tool-theme="dark"] .badge.pending{color:#ffdc86}
+html[data-tool-theme="dark"] .badge.ok{color:#97ffb3}
+html[data-tool-theme="dark"] .badge.warn{color:#ffd393}
+html[data-tool-theme="dark"] .badge.error{color:#ff9f9f}
+html[data-tool-theme="dark"] .badge.info{color:#91d9ff}
+.toolbar{margin-top:12px;padding:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--toolbar)}.spacer{flex:1}
+.btn{border:1px solid transparent;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;color:white}
+.btn:disabled,.bg-preset:disabled,.tool-btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--blue)}.btn.success{background:var(--green)}.btn.muted{background:#5b687a}
+.btn.outline{background:transparent;border-color:#6d86a6;color:var(--text)}.btn.small{padding:8px 10px;font-size:13px}.hidden{display:none!important}
+.progress-card{margin-top:12px;padding:12px}.progress-row{display:flex;justify-content:space-between;margin-bottom:8px}
+.track{height:9px;background:var(--chip);border-radius:999px;overflow:hidden}.bar{height:100%;width:0;background:linear-gradient(90deg,#2d7dff,#31c3ff)}
+.layout{display:grid;grid-template-columns:360px 1fr;gap:12px;margin-top:12px}.sidebar{display:flex;flex-direction:column;gap:12px}
+.card{padding:14px}.card h2{font-size:18px;margin:0 0 12px}.status{padding:12px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;line-height:1.5}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.stats div{background:var(--panel2);border:1px solid var(--border);padding:10px;border-radius:11px}
+.stats small{display:block;color:var(--muted);margin-bottom:5px}.stats b{font-size:13px}.hint{color:var(--muted);font-size:13px;line-height:1.5}
+label{display:block;color:var(--muted);font-size:13px;font-weight:700;margin:12px 0 6px}input[type=range],select{width:100%}
+select{height:40px;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:0 9px}
+input[type=color]{height:38px;min-width:65px;background:var(--panel2);border:1px solid var(--border);border-radius:9px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.preset-grid,.tool-toggle{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.bg-preset,.tool-btn{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px;cursor:pointer;font-weight:700}
+.bg-preset.active,.tool-btn.active{outline:2px solid #4b93ef;background:var(--chip)}#restoreToolBtn.active{outline-color:#2bc47a}
+.disabled-card{opacity:.66}.disabled-card.enabled{opacity:1}.legend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:12px}
+.legend span{display:flex;align-items:center;gap:5px}.dot{width:10px;height:10px;border-radius:50%;display:inline-block}.dot.erase{background:#ff667a}.dot.restore{background:#43d98b}
+.previews{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:0}.preview-card{min-height:640px;overflow:hidden;display:flex;flex-direction:column}
+.preview-card header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;align-items:center}
+.preview-card h2{font-size:20px;margin:0}.preview-card header span{color:var(--muted);font-size:12px;text-align:right}
+.canvas-scroll{position:relative;flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:12px;min-height:0;background:var(--panel)}
+canvas{display:block;max-width:none;background:var(--canvas);border:1px solid var(--border);border-radius:10px;touch-action:none}
+.brush-cursor{position:fixed;z-index:999999;border:2px solid #ff5068;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.brush-cursor.restore{border-color:#22bf70}footer{text-align:center;color:var(--muted);font-size:12px;padding:14px}
+@media(max-width:1200px){.layout{grid-template-columns:1fr}.previews{grid-template-columns:1fr}.preview-card{min-height:500px}}
+@media(max-width:700px){.app-shell{padding:8px}.topbar h1{font-size:23px}.stats{grid-template-columns:1fr}.preset-grid{grid-template-columns:1fr}}
+
+/* ===== NLKH Remove Background V2.3: old-style autofit ===== */
+/*
+  Mục tiêu:
+  - Trả layout về flow tự nhiên như tool cũ.
+  - Preview tự fit vào khung, không phóng canvas lớn hơn khung.
+  - Sidebar có nhiều chức năng nhưng cuộn riêng, không kéo cao 2 preview.
+  - Chế độ Chỉnh viền mới được phép zoom > 100% và cuộn trong khung.
+*/
+@media (min-width: 1201px) {
+  html,
+  body {
+    width: 100%;
+    min-height: 100%;
+    height: auto;
+    overflow: auto;
+  }
+
+  .app-shell {
+    width: 100%;
+    max-width: 1680px;
+    height: auto;
+    min-height: 0;
+    margin: 0 auto;
+    padding: 14px;
+    display: block;
+    overflow: visible;
+  }
+
+  .topbar {
+    padding: 16px 20px;
+  }
+
+  .toolbar {
+    margin-top: 12px;
+    padding: 10px;
+  }
+
+  .progress-card {
+    margin-top: 12px;
+    padding: 12px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 350px minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+    align-items: start;
+    overflow: visible;
+  }
+
+  .sidebar {
+    height: clamp(590px, 68vh, 735px);
+    max-height: clamp(590px, 68vh, 735px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    align-self: start;
+    overscroll-behavior: contain;
+  }
+
+  .previews {
+    min-width: 0;
+    height: clamp(590px, 68vh, 735px);
+    min-height: 590px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    align-self: start;
+  }
+
+  .preview-card {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .preview-card header {
+    flex: 0 0 auto;
+  }
+
+  .canvas-scroll {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+  }
+
+  /*
+    Đây là phần tạo cảm giác "tự fit" giống tool cũ:
+    canvas giữ đúng tỉ lệ nhưng không bao giờ lớn hơn vùng preview.
+  */
+  .canvas-scroll canvas {
+    display: block;
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain;
+    flex: 0 0 auto;
+  }
+
+  /*
+    Chỉ khi sửa viền mới cho phép phóng > khung để người dùng
+    zoom 150-300% và cuộn tới tóc/viền cần sửa.
+  */
+  .canvas-scroll.refine-active {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .canvas-scroll.refine-active canvas {
+    max-width: none !important;
+    max-height: none !important;
+  }
+
+  footer {
+    padding: 10px 8px 4px;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1200px) {
+  .layout {
+    grid-template-columns: 315px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .sidebar {
+    max-height: 680px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .previews {
+    height: 680px;
+    min-height: 560px;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .preview-card {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .canvas-scroll {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .canvas-scroll canvas {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain;
+  }
+
+  .canvas-scroll.refine-active canvas {
+    max-width: none !important;
+    max-height: none !important;
+  }
+}
+
+@media (max-width: 900px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+  }
+
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .layout {
+    display: block;
+    overflow: visible;
+  }
+
+  .sidebar {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .previews {
+    margin-top: 10px;
+    height: auto;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .preview-card {
+    min-height: 480px;
+    height: auto;
+  }
+
+  .canvas-scroll {
+    min-height: 400px;
+  }
+
+  .canvas-scroll canvas {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 70vh !important;
+    object-fit: contain;
+  }
+
+  .canvas-scroll.refine-active canvas {
+    max-width: none !important;
+    max-height: none !important;
+  }
+}
+/* ===== end V2.3 old-style autofit ===== */
+
+/* V2.4 keyboard shortcut hint */
+.shortcut-hint{
+  display:block;
+  width:100%;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+/* ===== NLKH V2.9 CLEAN VIEWER START ===== */
+.canvas-scroll{position:relative;overscroll-behavior:contain}
+.canvas-scroll.viewer-zoomed-v29{align-items:flex-start!important;justify-content:flex-start!important}
+.canvas-scroll.viewer-pan-v29,.canvas-scroll.viewer-pan-v29 canvas{cursor:grabbing!important;user-select:none}
+
+.preview-card>header{display:flex;align-items:center;gap:10px}
+.viewer-controls-v29{display:inline-flex;align-items:center;gap:6px;margin-left:auto;flex:0 0 auto}
+.viewer-value-v29{
+  display:inline-flex;align-items:center;justify-content:center;min-width:50px;height:30px;padding:0 8px;
+  border:1px solid var(--border);border-radius:8px;background:var(--surface-2,var(--panel));
+  color:var(--text);font:700 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap
+}
+.viewer-fit-v29{
+  height:30px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2,var(--panel));
+  color:var(--text);font:700 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer;white-space:nowrap
+}
+.viewer-fit-v29:hover{filter:brightness(1.08)}
+.viewer-fit-v29.hidden{display:none!important}
+
+.viewer-toast-v29{
+  position:sticky;left:12px;top:12px;z-index:30;width:max-content;padding:5px 8px;border:1px solid var(--border);
+  border-radius:8px;background:var(--panel);color:var(--text);font:700 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;
+  pointer-events:none;opacity:0;transform:translateY(-3px);transition:opacity .14s ease,transform .14s ease;
+  box-shadow:0 4px 18px rgba(0,0,0,.16)
+}
+.viewer-toast-v29.show{opacity:.92;transform:translateY(0)}
+
+@media(max-width:700px){
+  .viewer-controls-v29{gap:4px}
+  .viewer-value-v29{min-width:44px;height:28px;padding:0 6px}
+  .viewer-fit-v29{height:28px;padding:0 8px}
+}
+/* ===== NLKH V2.9 CLEAN VIEWER END ===== */
