@@ -352,7 +352,7 @@ html[data-theme="dark"] #questions-preview *,
 .fa-file-import::before{content:"↑"}
 .fa-file-pdf::before{content:"P"}
 .fa-file-word::before{content:"W"}
-.fa-grip-vertical::before{content:"•"}
+.fa-grip-vertical::before{content:"⋮"}
 .fa-home::before{content:"⌂"}
 .fa-image::before{content:"▣"}
 .fa-pencil-alt::before{content:"✎"}
@@ -362,5 +362,5 @@ html[data-theme="dark"] #questions-preview *,
 .fa-trash-alt::before{content:"×"}
 .fa-trophy::before{content:"★"}
 .fa-upload::before{content:"↑"}
-.fa-xs::before{content:"•"}
+.fa-xs{font-size:.75em!important}
 /* END QUIZ V37 ICONS */
