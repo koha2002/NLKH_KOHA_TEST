@@ -261,6 +261,7 @@ try {
   // Software icons are public catalog assets. Materialize them into the static
   // frontend at build time so /software stays instant without per-card Edge calls.
   const softwareIconDir = out("public/software-icons");
+  fs.rmSync(softwareIconDir, { recursive:true, force:true });
   fs.mkdirSync(softwareIconDir, { recursive:true });
 
   for (const x of software) {
@@ -286,9 +287,6 @@ try {
       const allowedExt = new Set([".png",".jpg",".jpeg",".webp",".svg",".gif",".avif",".ico"]);
       const ext = allowedExt.has(originalExt) ? originalExt : mimeExt;
       const baseName = safeSlug(x.slug || x.name || String(x.id)) || "software";
-      const fileName = `${baseName}-${String(x.id).slice(0,8)}${ext}`;
-      const rel = `/software-icons/${fileName}`;
-      const target = out(`public/software-icons/${fileName}`);
 
       const signed = await edge("r2-file", {
         action:"presign-download",
@@ -299,9 +297,65 @@ try {
 
       const ir = await fetch(signed.url);
       if (!ir.ok) throw new Error(`icon HTTP ${ir.status}`);
-      fs.writeFileSync(target, Buffer.from(await ir.arrayBuffer()));
+
+      const input = Buffer.from(await ir.arrayBuffer());
+      if (input.length < 128) throw new Error("icon response too small");
+
+      let output = input;
+      let outputExt = ext;
+      let optimized = false;
+
+      try {
+        const candidate = await sharp(input, {
+          animated:false,
+          density:192
+        })
+          .rotate()
+          .resize(128, 128, {
+            fit:"contain",
+            position:"centre",
+            background:{ r:0, g:0, b:0, alpha:0 },
+            withoutEnlargement:true
+          })
+          .webp({
+            quality:82,
+            alphaQuality:100,
+            effort:4,
+            smartSubsample:true
+          })
+          .toBuffer();
+
+        if (candidate.length < 256) {
+          throw new Error("optimized icon too small");
+        }
+
+        // Keep original only when it is already smaller. This avoids making
+        // tiny source icons heavier just to force WebP.
+        if (candidate.length < input.length) {
+          output = candidate;
+          outputExt = ".webp";
+          optimized = true;
+        }
+      } catch (iconOptimizeError) {
+        console.warn(
+          `[CMS] Software icon optimize fallback for ${x.slug || x.id}:`,
+          iconOptimizeError?.message || iconOptimizeError
+        );
+      }
+
+      const fileName = `${baseName}-${String(x.id).slice(0,8)}${outputExt}`;
+      const rel = `/software-icons/${fileName}`;
+      const target = out(`public/software-icons/${fileName}`);
+      fs.writeFileSync(target, output);
       x.icon_url = rel;
-      console.log(`[CMS] Software icon -> ${rel}`);
+
+      const reduction = input.length
+        ? (100 - output.length / input.length * 100).toFixed(1)
+        : "0.0";
+
+      console.log(
+        `[CMS] Software icon -> ${rel} (${input.length}B -> ${output.length}B, -${reduction}%, ${optimized ? "webp-128" : "original"})`
+      );
     } catch (err) {
       console.warn(`[CMS] Software icon failed for ${x.slug || x.id}:`, err?.message || err);
     }
