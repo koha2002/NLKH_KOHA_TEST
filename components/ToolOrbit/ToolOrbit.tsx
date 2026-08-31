@@ -96,7 +96,7 @@ export function ToolOrbit({ language }: ToolOrbitProps) {
 
       <div className={styles.core}>
         <span className={styles.coreHalo} aria-hidden="true" />
-        <Image src="/koha-logo.png" alt="KoHa" width={1000} height={1000} priority />
+        <Image src="/koha-logo-320.webp" alt="KoHa" width={320} height={320} priority />
       </div>
 
       <p className={styles.caption}>LEARN · BUILD · SHARE</p>

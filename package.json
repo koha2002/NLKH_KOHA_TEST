@@ -6,9 +6,9 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "predev": "node scripts/prepare-pdf-vendor.mjs && node scripts/patch-pdf-mode.mjs && node scripts/harden-tool-modules.mjs",
+    "predev": "node scripts/optimize-home-assets.mjs && node scripts/prepare-pdf-vendor.mjs && node scripts/patch-pdf-mode.mjs && node scripts/harden-tool-modules.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/sync-admin-cms.mjs && node scripts/prepare-pdf-vendor.mjs && node scripts/patch-pdf-mode.mjs && node scripts/harden-tool-modules.mjs",
+    "prebuild": "node scripts/sync-admin-cms.mjs && node scripts/optimize-home-assets.mjs && node scripts/prepare-pdf-vendor.mjs && node scripts/patch-pdf-mode.mjs && node scripts/harden-tool-modules.mjs",
     "build": "next build",
     "start": "node serve-static.mjs",
     "lint": "eslint .",
