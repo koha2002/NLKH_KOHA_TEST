@@ -1,5 +1,5 @@
 body {
-            font-family: 'Be Vietnam Pro', sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
             background-color: #f0f2f5;
             display: flex;
             flex-direction: column;
@@ -326,3 +326,41 @@ html[data-theme="dark"] #questions-preview *,
 @media (min-width: 641px) and (max-width: 980px) {
     #quiz-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
+
+/* QUIZ V37 — tiny system-symbol replacement for Font Awesome.
+ * Keeps existing .fas/.fa-* class contracts used by index.html/module.js,
+ * but removes the 150KB icon font + external Font Awesome stylesheet.
+ */
+.fas,.fa-solid,.far,.fa-regular{
+  font-family:"Segoe UI Symbol","Arial Unicode MS",system-ui,sans-serif!important;
+  font-style:normal!important;
+  font-weight:700!important;
+  line-height:1;
+  display:inline-block;
+  text-rendering:auto;
+}
+.fas::before,.fa-solid::before,.far::before,.fa-regular::before{
+  content:"•";
+  display:inline-block;
+  min-width:1em;
+  text-align:center;
+}
+.fa-arrow-left::before{content:"←"}
+.fa-file-alt::before{content:"▤"}
+.fa-file-code::before{content:"{}"}
+.fa-file-export::before{content:"↓"}
+.fa-file-import::before{content:"↑"}
+.fa-file-pdf::before{content:"P"}
+.fa-file-word::before{content:"W"}
+.fa-grip-vertical::before{content:"•"}
+.fa-home::before{content:"⌂"}
+.fa-image::before{content:"▣"}
+.fa-pencil-alt::before{content:"✎"}
+.fa-play::before{content:"▶"}
+.fa-plus::before{content:"+"}
+.fa-rocket::before{content:"◆"}
+.fa-trash-alt::before{content:"×"}
+.fa-trophy::before{content:"★"}
+.fa-upload::before{content:"↑"}
+.fa-xs::before{content:"•"}
+/* END QUIZ V37 ICONS */
