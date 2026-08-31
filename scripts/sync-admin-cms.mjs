@@ -109,6 +109,64 @@ try {
   const cv = cvProfiles[0] || null;
   const sections = cv ? cvSections.filter(x=>x.profile_id===cv.id) : [];
 
+  // NLKH_CV_STATIC_PHOTO_V1
+  // Materialize the public CV photo once at build time so /cv can render it
+  // from the first HTML paint without a post-hydration Edge presign request.
+  let cvPhotoResolved = String(cv?.photo_url || "").trim();
+  if (cv?.photo_media_id) {
+    try {
+      const assets = await rest(
+        "media_assets",
+        `select=id,object_key,original_name,mime_type,visibility,public_url,sha256&id=eq.${encodeURIComponent(cv.photo_media_id)}&limit=1`
+      );
+      const asset = assets[0];
+      if (!asset) throw new Error(`missing media asset ${cv.photo_media_id}`);
+
+      if (String(asset.visibility || "") !== "public") {
+        console.warn("[CMS] CV photo media is not public; keeping runtime signed fallback.");
+        cvPhotoResolved = "";
+      } else {
+        let sourceUrl = String(asset.public_url || "").trim();
+        if (!/^https?:\/\//i.test(sourceUrl)) {
+          const signed = await edge("r2-file", {
+            action: "presign-download",
+            media_id: asset.id,
+            object_key: asset.object_key,
+          });
+          sourceUrl = String(signed?.url || "").trim();
+        }
+        if (!/^https?:\/\//i.test(sourceUrl)) throw new Error("CV photo has no usable source URL.");
+
+        const response = await fetch(sourceUrl);
+        if (!response.ok) throw new Error(`CV photo HTTP ${response.status}`);
+
+        const mime = String(asset.mime_type || response.headers.get("content-type") || "").toLowerCase();
+        const originalExt = path.extname(String(asset.original_name || "")).toLowerCase();
+        const mimeExt =
+          mime.includes("webp") ? ".webp" :
+          mime.includes("png") ? ".png" :
+          mime.includes("avif") ? ".avif" :
+          ".jpg";
+        const allowedExt = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif"]);
+        const ext = allowedExt.has(originalExt) ? originalExt : mimeExt;
+        const versionSeed = String(asset.sha256 || asset.id || "current")
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .slice(0, 12) || "current";
+        const dir = out("public/cv-media");
+        const fileName = `profile-${versionSeed}${ext}`;
+
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, fileName), Buffer.from(await response.arrayBuffer()));
+        cvPhotoResolved = `/cv-media/${fileName}`;
+        console.log(`[CMS] CV photo -> ${cvPhotoResolved}`);
+      }
+    } catch (err) {
+      console.warn("[CMS] Không materialize được ảnh CV; dùng signed fallback:", err?.message || err);
+      cvPhotoResolved = "";
+    }
+  }
+
   // Giữ đúng cấu trúc CV source gốc, đồng thời thêm visible/extraSections để Admin có thể ẩn hồ sơ và thêm mục mới.
   if (cv) {
     const educations = sections.filter(x=>x.section_type==="education");
@@ -126,7 +184,7 @@ try {
       born: cv.birth_date || "",
       address: { vi: cv.address_vi || "", en: cv.address_en || cv.address_vi || "" },
       phone: cv.phone || "", phoneHref: phoneHref(cv.phone), email: cv.email || "",
-      photo: cv.photo_url || (cv.photo_media_id ? "" : "/profile.jpg"), photoMediaId: cv.photo_media_id || "",
+      photo: cvPhotoResolved || (cv.photo_media_id ? "" : "/profile.jpg"), photoMediaId: cv.photo_media_id || "",
       pdf: (cv.pdf_access || "public") === "public" ? (cv.pdf_url || (cv.pdf_media_id ? "" : "/content/cv/current.pdf")) : "",
       pdfAccess: cv.pdf_access || "public", pdfMediaId: cv.pdf_media_id || "",
       theme: cv.theme || {layout:"source-default",accent:"blue",show_photo:true,show_contact:true,show_download_pdf:true},

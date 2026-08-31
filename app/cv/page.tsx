@@ -160,7 +160,9 @@ export default function CvPage() {
 
   useEffect(() => {
     const mediaId = profile?.photoMediaId;
-    if (!mediaId) return;
+    // Public CV media is materialized at build time. Only call the Edge
+    // presign fallback when the generated profile has no static photo URL.
+    if (!mediaId || profile?.photo) return;
 
     let cancelled = false;
     invokeEdge("r2-file", {
@@ -178,7 +180,7 @@ export default function CvPage() {
     return () => {
       cancelled = true;
     };
-  }, [profile?.photoMediaId]);
+  }, [profile?.photo, profile?.photoMediaId]);
 
   const photoUrl =
     signedPhoto && signedPhoto.mediaId === profile?.photoMediaId
@@ -370,10 +372,20 @@ export default function CvPage() {
                 <img
                   src={photoUrl}
                   alt={profile.name}
-                  width={325}
-                  height={352}
+                  width={320}
+                  height={330}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                 />
-              ) : null}
+              ) : (
+                <div
+                  className={styles.photoFallback}
+                  aria-hidden="true"
+                >
+                  {profile.name?.trim().slice(0, 1).toUpperCase() || "CV"}
+                </div>
+              )}
 
               <div>
                 <strong>{profile.name}</strong>
