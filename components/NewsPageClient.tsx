@@ -6,7 +6,7 @@ import styles from "../app/news/news.module.css";
 
 const PAGE_SIZE = 6;
 
-type NewsCategory = {
+export type NewsCategory = {
   id: string | number;
   slug?: string | null;
   name_vi?: string | null;
@@ -15,7 +15,7 @@ type NewsCategory = {
   sort_order?: number | string | null;
 };
 
-type NewsArticle = {
+export type NewsArticle = {
   id?: string | number | null;
   slug: string;
   category_id?: string | number | null;
@@ -33,8 +33,8 @@ type NewsArticle = {
 };
 
 type NewsPageClientProps = {
-  articles: NewsArticle[];
-  categories: NewsCategory[];
+  articles: readonly NewsArticle[];
+  categories: readonly NewsCategory[];
 };
 
 function timeOf(article: NewsArticle) {

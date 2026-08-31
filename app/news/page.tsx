@@ -1,14 +1,18 @@
 import {
-  adminNewsArticles,
   adminNewsCategories,
+  adminNewsList,
 } from "../../data/admin-generated";
-import { NewsPageClient } from "../../components/NewsPageClient";
+import {
+  NewsPageClient,
+  type NewsArticle,
+  type NewsCategory,
+} from "../../components/NewsPageClient";
 
 export default function NewsPage(){
   return (
     <NewsPageClient
-      articles={adminNewsArticles as unknown as any[]}
-      categories={adminNewsCategories as unknown as any[]}
+      articles={adminNewsList as unknown as readonly NewsArticle[]}
+      categories={adminNewsCategories as unknown as readonly NewsCategory[]}
     />
   );
 }
