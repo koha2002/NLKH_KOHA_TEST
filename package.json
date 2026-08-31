@@ -24,7 +24,8 @@
     "next": "16.2.6",
     "pdf-lib": "^1.17.1",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "sharp": "0.35.4"
   },
   "devDependencies": {
     "@types/node": "22.19.19",

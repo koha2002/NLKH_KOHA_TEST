@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
+import sharp from "sharp";
 
 // Node chạy predev/prebuild trước Next.js, nên tự nạp .env.local để CMS sync dùng cùng cấu hình với frontend.
 for (const envFile of [".env.local", ".env"]) {
@@ -16,7 +18,6 @@ function write(rel, data) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, typeof data === "string" ? data : JSON.stringify(data, null, 2) + "\n", "utf8");
 }
-function q(v){ return JSON.stringify(v ?? null); }
 function ts(value){ return JSON.stringify(value, null, 2); }
 async function rest(table, query="") {
   const r = await fetch(`${URL}/rest/v1/${table}?${query}`, {
@@ -328,6 +329,71 @@ try {
     compatibility:x.compatibility||null
   }));
 
+  // NLKH_NEWS_STATIC_THUMBS_V1
+  // Generate list-card derivatives only. Full adminNewsArticles retains the
+  // original CMS/R2 cover_image for article detail and source fidelity.
+  const newsThumbDir = out("public/news-thumbs");
+  fs.rmSync(newsThumbDir, { recursive:true, force:true });
+  fs.mkdirSync(newsThumbDir, { recursive:true });
+  const newsListCoverById = new Map();
+
+  for (const x of news) {
+    const source = String(x.cover_image || "").trim();
+    if (!/^https?:\/\//i.test(source)) continue;
+
+    try {
+      const response = await fetch(source);
+      if (!response.ok) throw new Error(`cover HTTP ${response.status}`);
+
+      const input = Buffer.from(await response.arrayBuffer());
+      if (input.length < 1000) throw new Error("cover response too small");
+
+      const output = await sharp(input, { animated:false })
+        .rotate()
+        .resize(768, 432, {
+          fit:"cover",
+          position:"centre",
+          withoutEnlargement:false
+        })
+        .webp({
+          quality:76,
+          effort:4,
+          smartSubsample:true
+        })
+        .toBuffer();
+
+      if (output.length < 1000){
+        throw new Error("generated thumbnail too small");
+      }
+
+      const baseName = safeSlug(x.slug || String(x.id)) || "news";
+      const versionSeed = createHash("sha1")
+        .update(`${source}|${x.updated_at || ""}|${x.id || ""}`)
+        .digest("hex")
+        .slice(0, 10);
+
+      const fileName = `${baseName}-${versionSeed}.webp`;
+      const target = path.join(newsThumbDir, fileName);
+      fs.writeFileSync(target, output);
+
+      const listUrl = `/news-thumbs/${fileName}`;
+      newsListCoverById.set(String(x.id), listUrl);
+
+      const reduction = input.length
+        ? (100 - output.length / input.length * 100).toFixed(1)
+        : "0.0";
+
+      console.log(
+        `[CMS] News thumb -> ${listUrl} (${Math.round(input.length/1024)}KB -> ${Math.round(output.length/1024)}KB, -${reduction}%)`
+      );
+    } catch (err) {
+      console.warn(
+        `[CMS] News thumb failed for ${x.slug || x.id}; giữ cover gốc:`,
+        err?.message || err
+      );
+    }
+  }
+
   const normalizedNewsList = news.map(x=>({
     id:x.id,
     slug:x.slug,
@@ -337,7 +403,7 @@ try {
     excerpt_vi:x.excerpt_vi||"",
     excerpt_en:x.excerpt_en||x.excerpt_vi||"",
     tags:Array.isArray(x.tags)?x.tags:[],
-    cover_image:x.cover_image||"",
+    cover_image:newsListCoverById.get(String(x.id))||x.cover_image||"",
     cover_alt_vi:x.cover_alt_vi||"",
     cover_alt_en:x.cover_alt_en||x.cover_alt_vi||"",
     published_at:x.published_at||null,
