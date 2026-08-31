@@ -1,4 +1,39 @@
 document.addEventListener('DOMContentLoaded', () => {
+            const lazyScripts = new Map();
+
+            function loadScriptOnce(key, src, ready) {
+                if (ready()) return Promise.resolve();
+                if (lazyScripts.has(key)) return lazyScripts.get(key);
+                const promise = new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.async = true;
+                    script.dataset.kohaLazy = key;
+                    script.addEventListener('load', () => {
+                        if (ready()) resolve();
+                        else reject(new Error('Thư viện ' + key + ' không khởi tạo đúng.'));
+                    }, { once: true });
+                    script.addEventListener('error', () => reject(new Error('Không tải được thư viện ' + key + '.')), { once: true });
+                    document.head.appendChild(script);
+                }).catch((error) => {
+                    lazyScripts.delete(key);
+                    throw error;
+                });
+                lazyScripts.set(key, promise);
+                return promise;
+            }
+
+            const ensureHtml2Pdf = () => loadScriptOnce(
+                'html2pdf',
+                'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+                () => typeof window.html2pdf === 'function'
+            );
+
+            const ensureJsZip = () => loadScriptOnce(
+                'jszip',
+                'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+                () => Boolean(window.JSZip)
+            );
             // --- DOM ELEMENTS ---
             const screens = { home: document.getElementById('home-screen'), playerName: document.getElementById('player-name-screen'), quiz: document.getElementById('quiz-screen'), end: document.getElementById('end-screen'), creator: document.getElementById('creator-screen') };
             const playerNameInput = document.getElementById('player-name');
@@ -800,6 +835,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const contentHtml = await generateExportHtml(quizToExport, options);
                 
                 if (format === 'pdf') {
+                    await ensureHtml2Pdf();
                     const element = document.createElement('div');
                     element.innerHTML = contentHtml;
                     const pdfOptions = {
@@ -809,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         html2canvas:  { scale: 2, useCORS: true },
                         jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
                     };
-                    html2pdf().from(element).set(pdfOptions).save();
+                    window.html2pdf().from(element).set(pdfOptions).save();
                 } else if (format === 'docx') {
                     const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' "+
                         "xmlns:w='urn:schemas-microsoft-com:office:word' "+
@@ -1471,8 +1507,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             async function readWordDocxToSchema(file, title) {
+                await ensureJsZip();
                 const arrayBuffer = await file.arrayBuffer();
-                const zip = await JSZip.loadAsync(arrayBuffer);
+                const zip = await window.JSZip.loadAsync(arrayBuffer);
 
                 const documentEntry = zip.file('word/document.xml');
                 if (!documentEntry) throw new Error('Không tìm thấy word/document.xml trong file .docx.');
