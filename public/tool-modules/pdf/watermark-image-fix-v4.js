@@ -167,6 +167,11 @@
     syncFileManager();
   }
 
+  async function ensurePdfLib(){
+    if(window.PDFLib&&window.PDFLib.PDFDocument)return window.PDFLib;
+    if(typeof window.ensurePDFLib!=='function')throw new Error('PDF engine loader is unavailable.');
+    return window.ensurePDFLib();
+  }
   async function readBytes(file){return new Uint8Array(await file.arrayBuffer())}
   async function embedStamp(doc,file){
     var bytes=await readBytes(file);
@@ -206,7 +211,7 @@
 
   function schedulePreview(){ clearTimeout(previewTimer); previewTimer=setTimeout(renderLivePreview,260); }
   async function renderLivePreview(){
-    if(!isPdfWatermark()||!window.PDFLib)return;
+    if(!isPdfWatermark())return;
     var files=selected(),select=el('wmPreviewFile'),frame=el('wmPreviewFrame'),empty=el('wmPreviewEmpty'),status=el('wmPreviewStatus'),pageInput=el('wmPreviewPage');
     if(!select||!frame)return;
     var old=select.value; select.innerHTML='';
@@ -217,6 +222,7 @@
       if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=null} return;
     }
     try{
+      await ensurePdfLib();
       if(status)status.textContent='Đang dựng xem trước… / Rendering…';
       var file=files[Math.max(0,Number(select.value||0))];
       var src=await PDFLib.PDFDocument.load(await readBytes(file),{ignoreEncryption:false});
@@ -292,7 +298,7 @@
     return new Blob([await doc.save()],{type:'application/pdf'});
   }
   async function processOfflineAll(){
-    if(!window.PDFLib)throw new Error('pdf-lib is not loaded.');
+    await ensurePdfLib();
     var files=selected();if(!files.length)throw new Error('Vui lòng chọn PDF. / Please select PDF.');
     if(!window.watermarkFile)throw new Error('Vui lòng chọn ảnh dấu. / Please choose a stamp image.');
     var results=[];

@@ -10,10 +10,27 @@ let html=fs.readFileSync(file,"utf8");
 if(!html.includes("offline-v2.css")){
   html=html.replace("</head>",'  <link rel="stylesheet" href="./offline-v2.css" />\n</head>');
 }
-if(!html.includes("vendor/pdf-lib.min.js")){
-  html=html.replace("</body>",'  <script src="./vendor/pdf-lib.min.js"></script>\n  <script src="./offline-v2.js"></script>\n</body>');
-}else if(!html.includes("offline-v2.js")){
-  html=html.replace("</body>",'  <script src="./offline-v2.js"></script>\n</body>');
+// pdf-lib is intentionally lazy. Never re-inject the heavy vendor bundle
+// into initial HTML during predev/prebuild.
+html=html.replace(
+  /\s*<script\b[^>]*src=["']\.\/vendor\/pdf-lib\.min\.js["'][^>]*><\/script>\s*/gi,
+  "\n"
+);
+
+const lazyTag='  <script src="./pdf-lib-lazy-v33.js"></script>';
+const offlineTag='  <script src="./offline-v2.js"></script>';
+
+if(!html.includes("pdf-lib-lazy-v33.js")){
+  if(html.includes(offlineTag)){
+    html=html.replace(offlineTag,lazyTag+"\n"+offlineTag);
+  }else{
+    html=html.replace("</body>",lazyTag+"\n</body>");
+  }
 }
+
+if(!html.includes("offline-v2.js")){
+  html=html.replace("</body>",offlineTag+"\n</body>");
+}
+
 fs.writeFileSync(file,html,"utf8");
-console.log("[PDF] Đã bảo đảm có lựa chọn Offline/Online; Online giữ nguyên module.js hiện tại.");
+console.log("[PDF] Offline/Online ready; pdf-lib remains lazy and loads only when needed.");

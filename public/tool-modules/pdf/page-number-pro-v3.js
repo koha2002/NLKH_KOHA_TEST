@@ -586,6 +586,16 @@
     host.append(root);
   }
 
+  async function ensurePdfLib() {
+    if (window.PDFLib?.PDFDocument) return window.PDFLib;
+    if (typeof window.ensurePDFLib !== "function") {
+      throw new Error(
+        t("Không tìm thấy bộ nạp PDF engine.", "PDF engine loader is unavailable.")
+      );
+    }
+    return window.ensurePDFLib();
+  }
+
   function standardFontName() {
     const fonts = window.PDFLib?.StandardFonts || {};
     return fonts[state.font] || fonts.Helvetica;
@@ -736,11 +746,7 @@
   }
 
   async function previewBlob(file) {
-    if (!window.PDFLib?.PDFDocument) {
-      throw new Error(
-        t("PDF engine chưa sẵn sàng.", "PDF engine is not ready.")
-      );
-    }
+    await ensurePdfLib();
 
     const bytes = await file.arrayBuffer();
     const source = await window.PDFLib.PDFDocument.load(bytes, {
@@ -917,12 +923,12 @@
   }
 
   async function processNumbers(button) {
-    if (!window.PDFLib?.PDFDocument) {
+    try {
+      await ensurePdfLib();
+    } catch (error) {
       alert(
-        t(
-          "PDF engine chưa sẵn sàng. Hãy tải lại trang.",
-          "PDF engine is not ready. Reload the page."
-        )
+        `${t("Không thể nạp PDF engine:", "Could not load PDF engine:")} ` +
+        `${error?.message || error}`
       );
       return;
     }
