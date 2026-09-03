@@ -14,6 +14,7 @@ const CAP={
   rotate:{offline:true,online:true},
   watermark:{offline:true,online:true},
   pdfa:{offline:false,online:true},
+  validatepdfa:{offline:false,online:true},
   wordpdf:{offline:false,online:true},
   powerpointpdf:{offline:false,online:true},
   excelpdf:{offline:false,online:true},
@@ -25,10 +26,12 @@ const CAP={
   deletepages:{offline:true,online:false},
   reorderpages:{offline:true,online:false},
   compressimage:{offline:true,online:true},
+  upscaleimage:{offline:false,online:true},
   resizeimage:{offline:true,online:true},
   cropimage:{offline:true,online:true},
   rotateimage:{offline:true,online:true},
   convertimage:{offline:true,online:true},
+  repairimage:{offline:false,online:true},
   watermarkimage:{offline:true,online:true},
   removebackgroundimage:{offline:false,online:true}
 };
@@ -95,6 +98,7 @@ const TOOL_META_V57={
   pdfocr:{g:'improve',vi:'OCR PDF',en:'OCR PDF',k:'ocr scan nhan dang chu searchable text'},
   repair:{g:'improve',vi:'Sửa PDF',en:'Repair PDF',k:'sua hong repair corrupt fix'},
   pdfa:{g:'improve',vi:'PDF → PDF/A',en:'PDF → PDF/A',k:'pdfa luu tru archive long term'},
+  validatepdfa:{g:'improve',vi:'Kiểm tra PDF/A',en:'Validate PDF/A',k:'kiem tra validate pdfa compliance archive iso'},
   watermark:{g:'edit',vi:'Đóng dấu PDF',en:'Watermark PDF',k:'dong dau watermark ban quyen text image'},
   pagenumber:{g:'edit',vi:'Đánh số trang',en:'Page Numbers',k:'danh so trang number page'},
   wordpdf:{g:'topdf',vi:'Word → PDF',en:'Word → PDF',k:'word doc docx office pdf'},
@@ -106,10 +110,12 @@ const TOOL_META_V57={
   protect:{g:'security',vi:'Bảo vệ PDF',en:'Protect PDF',k:'bao ve mat khau password encrypt security'},
   unlock:{g:'security',vi:'Mở khóa PDF',en:'Unlock PDF',k:'mo khoa mat khau password unlock decrypt'},
   compressimage:{g:'images',vi:'Nén ảnh',en:'Compress Image',k:'nen anh image compress'},
+  upscaleimage:{g:'images',vi:'Nâng độ phân giải ảnh',en:'Upscale Image',k:'nang do phan giai upscale image 2x 4x quality'},
   resizeimage:{g:'images',vi:'Đổi kích thước ảnh',en:'Resize Image',k:'doi kich thuoc resize image width height'},
   cropimage:{g:'images',vi:'Cắt ảnh',en:'Crop Image',k:'cat anh crop image'},
   rotateimage:{g:'images',vi:'Xoay ảnh',en:'Rotate Image',k:'xoay anh rotate image'},
   convertimage:{g:'images',vi:'Đổi định dạng ảnh',en:'Convert Image',k:'doi dinh dang convert jpg png gif heic'},
+  repairimage:{g:'images',vi:'Sửa ảnh lỗi',en:'Repair Image',k:'sua anh loi hong repair image corrupt broken jpg jpeg'},
   watermarkimage:{g:'images',vi:'Đóng dấu ảnh',en:'Watermark Image',k:'dong dau anh watermark image'},
   removebackgroundimage:{g:'images',vi:'Xóa nền ảnh',en:'Remove Image Background',k:'xoa nen background remove image'}
 };
@@ -175,7 +181,7 @@ function localizeToolNames(){
   const finderLabel=el('toolFinderLabelV57');if(finderLabel)finderLabel.textContent=t('Tìm nhanh công cụ','Find a tool');
   const q=el('toolSearchV57');if(q)q.placeholder=t('Gõ: gộp, OCR, Word, mật khẩu...','Try: merge, OCR, Word, password...');
   const browse=document.querySelector('.select-label[for="apiTool"]');if(browse)browse.textContent=t('Duyệt theo nhóm','Browse by category');
-  const intro=document.querySelector('.studio-intro');if(intro)intro.textContent=t('27 công cụ được sắp theo việc bạn muốn làm: trang, tối ưu, chỉnh sửa, chuyển đổi, bảo mật và hình ảnh.','27 tools are organized by what you want to do: pages, optimize, edit, convert, secure, and images.');
+  const intro=document.querySelector('.studio-intro');if(intro)intro.textContent=t('30 công cụ được sắp theo việc bạn muốn làm: trang, tối ưu, chỉnh sửa, chuyển đổi, bảo mật và hình ảnh.','30 tools are organized by what you want to do: pages, optimize, edit, convert, secure, and images.');
   const metric=document.querySelector('.studio-metrics div:nth-child(2) span');if(metric)metric.textContent=t('Nhóm tác vụ rõ ràng','Clear task groups');
   ensureToolFinderV57();renderToolFinderV57();
 }
@@ -273,6 +279,13 @@ function optionsHtml(k){
     ['pdfa-1b','PDF/A-1b'],['pdfa-1a','PDF/A-1a'],['pdfa-2u','PDF/A-2u'],['pdfa-2a','PDF/A-2a'],
     ['pdfa-3b','PDF/A-3b'],['pdfa-3u','PDF/A-3u'],['pdfa-3a','PDF/A-3a']
   ],'pdfa-2b'))+checkbox('pdfaDowngrade',t('Cho phép hạ chuẩn nếu chuyển đổi lỗi','Allow conformance downgrade if needed'),true);
+  if(k==='validatepdfa')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Kiểm tra PDF/A','Validate PDF/A')+'</strong></div>'+
+    field(t('Chuẩn cần kiểm tra','Conformance to validate'),select('validatePdfaConformance',[
+      ['pdfa-1b','PDF/A-1b'],['pdfa-1a','PDF/A-1a'],
+      ['pdfa-2b','PDF/A-2b'],['pdfa-2u','PDF/A-2u'],['pdfa-2a','PDF/A-2a'],
+      ['pdfa-3b','PDF/A-3b'],['pdfa-3u','PDF/A-3u'],['pdfa-3a','PDF/A-3a']
+    ],'pdfa-2b'))+
+    note('Công cụ chỉ kiểm tra mức tuân thủ và trả kết quả xác thực; không tạo một PDF mới.','This tool validates conformance and returns a validation result; it does not create a new PDF.');
   if(k==='pdfjpg')return field(t('Chế độ','Mode'),select('pdfJpgMode',[
     ['pages',t('Chuyển từng trang thành JPG','Convert every page to JPG')],
     ['extract',t('Trích xuất ảnh có trong PDF','Extract embedded images')]
@@ -293,6 +306,7 @@ function optionsHtml(k){
   if(k==='compressimage')return field(t('Mức độ nén','Compression level'),select('compressionLevel',[
     ['low',t('Nén thấp','Low')],['recommended',t('Khuyến nghị','Recommended')],['extreme',t('Nén cao','Extreme')]
   ],'recommended'));
+  if(k==='upscaleimage')body.multiplier=Number(el('upscaleMultiplier')?.value||2);
   if(k==='resizeimage'){
     const rm=(m==='online'?(el('resizeMode')?.value||'pixels'):'pixels');
     return (m==='online'?field(t('Cách đổi kích thước','Resize mode'),select('resizeMode',[
@@ -317,6 +331,11 @@ function optionsHtml(k){
         field(t('Thời gian mỗi ảnh (1/100 giây)','Frame time (1/100 sec)'),input('gifTime','number','50','min="1"'))+
         field(t('Lặp','Loop'),select('gifLoop',[['1',t('Có','Yes')],['0',t('Không','No')]],'1'))+'</div>':'');
   }
+  if(k==='upscaleimage')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Nâng độ phân giải ảnh','Upscale Image')+'</strong></div>'+
+    field(t('Mức phóng đại','Upscale multiplier'),select('upscaleMultiplier',[['2','2×'],['4','4×']],'2'))+
+    note('API chính thức chỉ hỗ trợ 2× hoặc 4×. Ảnh được gửi tới dịch vụ Online để xử lý.','The official API supports 2× or 4× only. The image is sent to the Online service for processing.');
+  if(k==='repairimage')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Sửa ảnh lỗi','Repair Image')+'</strong></div>'+
+    note('Dùng cho ảnh JPG/JPEG bị hỏng hoặc không đọc được. Không có setting giả.','Designed for corrupted or broken JPG/JPEG images. No fake settings are shown.');
   if(k==='watermarkimage'){
     const wm=m==='offline'?'text':(el('watermarkMode')?.value||'text');
     return (m==='online'?field(t('Loại dấu','Watermark type'),select('watermarkMode',[['text',t('Văn bản','Text')],['image',t('Hình ảnh','Image')]],wm)):'<input type="hidden" id="watermarkMode" value="text">')+
@@ -345,20 +364,20 @@ function processLabel(k){
     compress:['Nén PDF','Compress PDF'],merge:['Gộp PDF','Merge PDF'],split:['Tách PDF','Split PDF'],
     splitsmart:['Phân tích & tách PDF','Analyze & split PDF'],pdfocr:['OCR PDF','OCR PDF'],
     unlock:['Mở khóa PDF','Unlock PDF'],protect:['Bảo vệ PDF','Protect PDF'],rotate:['Xoay PDF','Rotate PDF'],
-    watermark:['Đóng dấu PDF','Watermark PDF'],pdfa:['Chuyển sang PDF/A','Convert to PDF/A'],
+    watermark:['Đóng dấu PDF','Watermark PDF'],pdfa:['Chuyển sang PDF/A','Convert to PDF/A'],validatepdfa:['Kiểm tra PDF/A','Validate PDF/A'],
     wordpdf:['Chuyển Word sang PDF','Convert Word to PDF'],powerpointpdf:['Chuyển PowerPoint sang PDF','Convert PowerPoint to PDF'],
     excelpdf:['Chuyển Excel sang PDF','Convert Excel to PDF'],pdfjpg:['Chuyển PDF sang JPG','Convert PDF to JPG'],
     imagepdf:['Tạo PDF từ ảnh','Create PDF from images'],pagenumber:['Đánh số trang','Add page numbers'],
     extract:['Trích xuất văn bản','Extract text'],repair:['Sửa PDF','Repair PDF'],deletepages:['Xóa trang','Delete pages'],
-    reorderpages:['Sắp xếp trang','Reorder pages'],compressimage:['Nén ảnh','Compress image'],resizeimage:['Đổi kích thước','Resize image'],
-    cropimage:['Cắt ảnh','Crop image'],rotateimage:['Xoay ảnh','Rotate image'],convertimage:['Chuyển đổi ảnh','Convert image'],
+    reorderpages:['Sắp xếp trang','Reorder pages'],compressimage:['Nén ảnh','Compress image'],upscaleimage:['Nâng độ phân giải','Upscale image'],resizeimage:['Đổi kích thước','Resize image'],
+    cropimage:['Cắt ảnh','Crop image'],rotateimage:['Xoay ảnh','Rotate image'],convertimage:['Chuyển đổi ảnh','Convert image'],repairimage:['Sửa ảnh lỗi','Repair image'],
     watermarkimage:['Đóng dấu ảnh','Watermark image'],removebackgroundimage:['Xóa nền ảnh','Remove background']
   }[k]||['Bắt đầu xử lý','Start processing'];
   return t(m[0],m[1]);
 }
 function fileConfig(k){
   if(OFFICE.has(k))return {accept:k==='wordpdf'?'.doc,.docx':k==='excelpdf'?'.xls,.xlsx':'.ppt,.pptx',multi:false,label:t('Chọn tài liệu Office','Choose Office document')};
-  if(['compressimage','resizeimage','cropimage','rotateimage','convertimage','watermarkimage','removebackgroundimage','imagepdf'].includes(k))
+  if(['compressimage','upscaleimage','resizeimage','cropimage','rotateimage','convertimage','repairimage','watermarkimage','removebackgroundimage','imagepdf'].includes(k))
     return {accept:'image/*',multi:k==='imagepdf'||k==='watermarkimage',label:t('Chọn ảnh','Choose image')};
   return {accept:'application/pdf,.pdf',multi:k==='merge'||k==='watermark',label:t('Chọn PDF','Choose PDF')};
 }
@@ -414,7 +433,7 @@ function validateFileType(k,list){
     if(k==='wordpdf')return /\.(doc|docx)$/.test(n);
     if(k==='excelpdf')return /\.(xls|xlsx)$/.test(n);
     if(k==='powerpointpdf')return /\.(ppt|pptx)$/.test(n);
-    if(['compressimage','resizeimage','cropimage','rotateimage','convertimage','watermarkimage','removebackgroundimage','imagepdf'].includes(k))return /^image\//.test(f.type)||/\.(png|jpe?g|gif|webp|bmp|tiff?|heic)$/i.test(n);
+    if(['compressimage','upscaleimage','resizeimage','cropimage','rotateimage','convertimage','repairimage','watermarkimage','removebackgroundimage','imagepdf'].includes(k))return /^image\//.test(f.type)||/\.(png|jpe?g|gif|webp|bmp|tiff?|heic)$/i.test(n);
     return f.type==='application/pdf'||/\.pdf$/i.test(n);
   });
   if(!good)throw new Error(t('Tệp đã chọn không đúng định dạng của công cụ.','The selected file type is not supported by this tool.'));
@@ -482,6 +501,7 @@ async function runOnline(){
   if(k==='pdfocr')body.ocr_languages=Array.from(document.querySelectorAll('input[name="ocrLang"]:checked')).map(x=>x.value);
   if(k==='protect')body.password=requireValue('passwordInput','Hãy nhập mật khẩu mới.','Enter a new password.');
   if(k==='pdfa'){body.conformance=el('pdfaConformance')?.value||'pdfa-2b';body.allow_downgrade=!!el('pdfaDowngrade')?.checked}
+  if(k==='validatepdfa'){body.conformance=el('validatePdfaConformance')?.value||'pdfa-2b';body.allow_downgrade=false}
   if(k==='pdfjpg')body.pdfjpg_mode=el('pdfJpgMode')?.value||'pages';
   if(k==='imagepdf'){
     body.orientation=el('imagePdfOrientation')?.value||'portrait';
@@ -490,6 +510,7 @@ async function runOnline(){
     body.merge_after=!!el('imagePdfMerge')?.checked;
   }
   if(k==='extract')body.detailed=!!el('extractDetailed')?.checked;
+  if(k==='upscaleimage')body.multiplier=Number(el('upscaleMultiplier')?.value||2);
   if(k==='resizeimage'){
     const rm=el('resizeMode')?.value||'pixels'; body.resize_mode=rm;
     if(rm==='pixels'){body.pixels_width=numberValue('resizeWidth',0);body.pixels_height=numberValue('resizeHeight',0)}
@@ -525,6 +546,11 @@ async function runOnline(){
     if(el('watermarkMosaic'))body.mosaic=!!el('watermarkMosaic').checked;
     if(el('watermarkLayer'))body.layer=el('watermarkLayer').value||'above';
   }
+  if(k==='upscaleimage')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Nâng độ phân giải ảnh','Upscale Image')+'</strong></div>'+
+    field(t('Mức phóng đại','Upscale multiplier'),select('upscaleMultiplier',[['2','2×'],['4','4×']],'2'))+
+    note('API chính thức chỉ hỗ trợ 2× hoặc 4×. Ảnh được gửi tới dịch vụ Online để xử lý.','The official API supports 2× or 4× only. The image is sent to the Online service for processing.');
+  if(k==='repairimage')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Sửa ảnh lỗi','Repair Image')+'</strong></div>'+
+    note('Dùng cho ảnh JPG/JPEG bị hỏng hoặc không đọc được. Không có setting giả.','Designed for corrupted or broken JPG/JPEG images. No fake settings are shown.');
   if(k==='watermarkimage'){
     const wm=el('watermarkMode')?.value||'text';
     const e={
@@ -548,6 +574,23 @@ async function runOnline(){
   if(!pr.ok)throw new Error(await pr.text());
   const result=await pr.json();
   if(result.status!=='TaskSuccess')throw new Error(result.status_text||result.status||'Task failed');
+  if(k==='validatepdfa'){
+    const validation=Array.isArray(result.validations)?result.validations[0]:null;
+    const rawStatus=String(validation?.status??result.validated??t('Không có trạng thái','No status returned'));
+    const target=el('validatePdfaConformance')?.value||'pdfa-2b';
+    const c=el('resultContainer'),link=el('downloadLink');
+    if(c){
+      c.classList.remove('hidden');
+      const h=c.querySelector('h3'),p=c.querySelector('p');
+      if(h)h.textContent=t('Kết quả kiểm tra PDF/A','PDF/A validation result');
+      if(p)p.textContent=target+' · '+rawStatus;
+    }
+    if(link){link.style.display='none';link.removeAttribute('href')}
+    window.finalDownloadUrl=null;window.finalDownloadFilename=null;window.downloadAuthHeader=null;
+    setStatus('Đã hoàn tất kiểm tra PDF/A.','PDF/A validation completed.','success');
+    return;
+  }
+  const resultLink=el('downloadLink');if(resultLink)resultLink.style.display='';
   window.finalDownloadUrl='https://'+task.server+'/v1/download/'+task.task;
   window.finalDownloadFilename=result.download_filename||'result';
   window.downloadAuthHeader=auth;
