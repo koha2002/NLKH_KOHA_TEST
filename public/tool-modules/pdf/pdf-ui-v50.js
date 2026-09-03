@@ -482,3 +482,220 @@ new MutationObserver(m=>{
 window.addEventListener('load',()=>sync('load'));
 window.NLKH_PDF_CAPABILITIES_V51=CAP;
 })();
+
+;(()=>{ 'use strict';
+const OCR_V53_LANGS=[
+['vie','Tiếng Việt','Vietnamese','popular'],
+['eng','Tiếng Anh','English','popular'],
+['chi_sim','Tiếng Trung giản thể','Chinese (Simplified)','popular'],
+['chi_tra','Tiếng Trung phồn thể','Chinese (Traditional)','popular'],
+['jpn','Tiếng Nhật','Japanese','popular'],
+['kor','Tiếng Hàn','Korean','popular'],
+['fra','Tiếng Pháp','French','popular'],
+['deu','Tiếng Đức','German','popular'],
+['spa','Tiếng Tây Ban Nha','Spanish','popular'],
+['por','Tiếng Bồ Đào Nha','Portuguese','popular'],
+['ita','Tiếng Ý','Italian','popular'],
+['rus','Tiếng Nga','Russian','popular'],
+['tha','Tiếng Thái','Thai','popular'],
+['ind','Tiếng Indonesia','Indonesian','popular'],
+['msa','Tiếng Mã Lai','Malay','popular'],
+['khm','Tiếng Khmer','Khmer','popular'],
+['lao','Tiếng Lào','Lao','popular'],
+['ara','Tiếng Ả Rập','Arabic','popular'],
+['hin','Tiếng Hindi','Hindi','popular'],
+['nld','Tiếng Hà Lan','Dutch','popular'],
+['pol','Tiếng Ba Lan','Polish','popular'],
+['tur','Tiếng Thổ Nhĩ Kỳ','Turkish','popular'],
+['ukr','Tiếng Ukraina','Ukrainian','popular'],
+['ces','Tiếng Séc','Czech','popular'],
+['dan','Tiếng Đan Mạch','Danish','popular'],
+['fin','Tiếng Phần Lan','Finnish','popular'],
+['nor','Tiếng Na Uy','Norwegian','popular'],
+['swe','Tiếng Thụy Điển','Swedish','popular'],
+['afr','Tiếng Afrikaans','Afrikaans','more'],
+['amh','Tiếng Amhara','Amharic','more'],
+['asm','Tiếng Assam','Assamese','more'],
+['aze','Tiếng Azerbaijan','Azerbaijani','more'],
+['aze_cyrl','Azerbaijan (Cyrillic)','Azerbaijani (Cyrillic)','more'],
+['bel','Tiếng Belarus','Belarusian','more'],
+['ben','Tiếng Bengal','Bengali','more'],
+['bod','Tiếng Tây Tạng','Tibetan','more'],
+['bos','Tiếng Bosnia','Bosnian','more'],
+['bre','Tiếng Breton','Breton','more'],
+['bul','Tiếng Bulgaria','Bulgarian','more'],
+['cat','Tiếng Catalan','Catalan','more'],
+['ceb','Tiếng Cebuano','Cebuano','more'],
+['chr','Tiếng Cherokee','Cherokee','more'],
+['cos','Tiếng Corsica','Corsican','more'],
+['cym','Tiếng Wales','Welsh','more'],
+['deu_latf','Đức Fraktur','German Fraktur','more'],
+['dzo','Tiếng Dzongkha','Dzongkha','more'],
+['ell','Tiếng Hy Lạp','Greek','more'],
+['enm','Tiếng Anh Trung cổ','Middle English','more'],
+['epo','Tiếng Esperanto','Esperanto','more'],
+['equ','Tiếng Quechua Ecuador','Quechua (Ecuador)','more'],
+['est','Tiếng Estonia','Estonian','more'],
+['eus','Tiếng Basque','Basque','more'],
+['fao','Tiếng Faroe','Faroese','more'],
+['fas','Tiếng Ba Tư','Persian','more'],
+['fil','Tiếng Filipino','Filipino','more'],
+['frm','Tiếng Pháp Trung cổ','Middle French','more'],
+['fry','Tiếng Tây Frisia','Western Frisian','more'],
+['gla','Tiếng Gaelic Scotland','Scottish Gaelic','more'],
+['gle','Tiếng Ireland','Irish','more'],
+['glg','Tiếng Galicia','Galician','more'],
+['grc','Tiếng Hy Lạp cổ','Ancient Greek','more'],
+['guj','Tiếng Gujarat','Gujarati','more'],
+['hat','Tiếng Creole Haiti','Haitian Creole','more'],
+['heb','Tiếng Hebrew','Hebrew','more'],
+['hrv','Tiếng Croatia','Croatian','more'],
+['hun','Tiếng Hungary','Hungarian','more'],
+['hye','Tiếng Armenia','Armenian','more'],
+['iku','Tiếng Inuktitut','Inuktitut','more'],
+['isl','Tiếng Iceland','Icelandic','more'],
+['ita_old','Tiếng Ý cổ','Old Italian','more'],
+['jav','Tiếng Java','Javanese','more'],
+['kan','Tiếng Kannada','Kannada','more'],
+['kat','Tiếng Georgia','Georgian','more'],
+['kat_old','Tiếng Georgia cổ','Old Georgian','more'],
+['kaz','Tiếng Kazakhstan','Kazakh','more'],
+['kir','Tiếng Kyrgyz','Kyrgyz','more'],
+['kmr','Tiếng Kurd Kurmanji','Kurdish (Kurmanji)','more'],
+['kor_vert','Tiếng Hàn dọc','Korean Vertical','more'],
+['lat','Tiếng Latin','Latin','more'],
+['lav','Tiếng Latvia','Latvian','more'],
+['lit','Tiếng Litva','Lithuanian','more'],
+['ltz','Tiếng Luxembourg','Luxembourgish','more'],
+['mal','Tiếng Malayalam','Malayalam','more'],
+['mar','Tiếng Marathi','Marathi','more'],
+['mkd','Tiếng Macedonia','Macedonian','more'],
+['mlt','Tiếng Malta','Maltese','more'],
+['mon','Tiếng Mông Cổ','Mongolian','more'],
+['mri','Tiếng Māori','Māori','more'],
+['mya','Tiếng Myanmar','Burmese','more'],
+['nep','Tiếng Nepal','Nepali','more'],
+['oci','Tiếng Occitan','Occitan','more'],
+['ori','Tiếng Odia','Odia','more'],
+['pan','Tiếng Punjab','Punjabi','more'],
+['pus','Tiếng Pashto','Pashto','more'],
+['que','Tiếng Quechua','Quechua','more'],
+['ron','Tiếng Romania','Romanian','more'],
+['san','Tiếng Phạn','Sanskrit','more'],
+['sin','Tiếng Sinhala','Sinhala','more'],
+['slk','Tiếng Slovakia','Slovak','more'],
+['slv','Tiếng Slovenia','Slovenian','more'],
+['snd','Tiếng Sindhi','Sindhi','more'],
+['spa_old','Tiếng Tây Ban Nha cổ','Old Spanish','more'],
+['sqi','Tiếng Albania','Albanian','more'],
+['srp','Tiếng Serbia (Cyrillic)','Serbian (Cyrillic)','more'],
+['srp_latn','Tiếng Serbia (Latin)','Serbian (Latin)','more'],
+['sun','Tiếng Sunda','Sundanese','more'],
+['swa','Tiếng Swahili','Swahili','more'],
+['syr','Tiếng Syriac','Syriac','more'],
+['tam','Tiếng Tamil','Tamil','more'],
+['tat','Tiếng Tatar','Tatar','more'],
+['tel','Tiếng Telugu','Telugu','more'],
+['tgk','Tiếng Tajik','Tajik','more'],
+['tgl','Tiếng Tagalog','Tagalog','more'],
+['tir','Tiếng Tigrinya','Tigrinya','more'],
+['ton','Tiếng Tonga','Tongan','more'],
+['uig','Tiếng Uyghur','Uyghur','more'],
+['urd','Tiếng Urdu','Urdu','more'],
+['uzb','Tiếng Uzbek','Uzbek','more'],
+['uzb_cyrl','Uzbek (Cyrillic)','Uzbek (Cyrillic)','more'],
+['yid','Tiếng Yiddish','Yiddish','more'],
+['yor','Tiếng Yoruba','Yoruba','more']
+];
+const OCR_V53_PRESETS={
+  vi_en:['vie','eng'],
+  east_asia:['chi_sim','chi_tra','jpn','kor'],
+  asean:['vie','eng','tha','ind','msa','khm','lao','mya','tgl'],
+  west_europe:['eng','fra','deu','spa','por','ita','nld'],
+  east_europe:['rus','ukr','pol','ces','slk','hun','ron','bul','hrv','srp','srp_latn'],
+  south_asia:['eng','hin','ben','tam','tel','mal','mar','guj','pan','urd','nep'],
+  middle_east:['ara','fas','heb','tur','urd']
+};
+const $=id=>document.getElementById(id);
+const isEn=()=>String(document.documentElement.lang||'vi').toLowerCase().startsWith('en');
+const tx=(vi,en)=>isEn()?en:vi;
+function isOcr(){return $('apiTool')?.value==='pdfocr'}
+function selected(){return new Set(Array.from(document.querySelectorAll('input[name="ocrLang"]:checked')).map(x=>x.value))}
+function setSelected(codes){
+  const wanted=new Set(codes);
+  document.querySelectorAll('#ocrLangGridV53 input[name="ocrLang"]').forEach(x=>x.checked=wanted.has(x.value));
+  updateCount();
+}
+function updateCount(){
+  const n=selected().size,c=$('ocrLangCountV53');
+  if(c)c.textContent=n?tx(`${n} ngôn ngữ đã chọn`,`${n} language${n===1?'':'s'} selected`):tx('Chưa chọn ngôn ngữ','No language selected');
+}
+function filter(){
+  const q=String($('ocrLangSearchV53')?.value||'').trim().toLowerCase();
+  document.querySelectorAll('#ocrLangGridV53 .ocr-v53-lang').forEach(item=>{
+    item.hidden=!!q&&!item.dataset.search.includes(q);
+  });
+}
+function render(){
+  if(!isOcr())return;
+  const box=$('toolOptions');if(!box)return;
+  if(box.dataset.ocrV53==='1'){localize();return}
+  const before=selected();
+  const initial=before.size?[...before]:['vie','eng'];
+  box.dataset.ocrV53='1';
+  box.innerHTML=`<div class="nlkh-task-head"><span class="nlkh-inline-badge">OCR · ONLINE</span><strong>OCR PDF</strong></div>
+    <div class="nlkh-task-note">${tx('Dùng cho PDF scan/ảnh để tạo lớp chữ có thể tìm kiếm và sao chép.','Use scanned/image PDFs to create searchable and copyable text.')}</div>
+    <div class="ocr-v53-auto-note"><strong>${tx('Về chế độ Tự động','About Auto mode')}</strong><span>${tx('iLoveAPI hiện yêu cầu gửi danh sách ocr_languages; tài liệu API không công bố chế độ tự nhận diện ngôn ngữ. Vì vậy KOHA không tạo Auto giả.','iLoveAPI currently expects an ocr_languages list; its API documentation does not expose automatic language detection. KOHA therefore does not fake an Auto mode.')}</span></div>
+    <div class="ocr-v53-toolbar">
+      <div class="ocr-v53-search"><span>⌕</span><input id="ocrLangSearchV53" type="search" placeholder="${tx('Tìm ngôn ngữ…','Search languages…')}"></div>
+      <div id="ocrLangCountV53" class="ocr-v53-count"></div>
+    </div>
+    <div class="ocr-v53-presets">
+      <button type="button" data-ocr-preset="vi_en">${tx('Việt + English','Vietnamese + English')}</button>
+      <button type="button" data-ocr-preset="east_asia">${tx('Đông Á','East Asia')}</button>
+      <button type="button" data-ocr-preset="asean">ASEAN</button>
+      <button type="button" data-ocr-preset="west_europe">${tx('Tây Âu','Western Europe')}</button>
+      <button type="button" data-ocr-preset="east_europe">${tx('Đông Âu','Eastern Europe')}</button>
+      <button type="button" data-ocr-preset="south_asia">${tx('Nam Á','South Asia')}</button>
+      <button type="button" data-ocr-preset="middle_east">${tx('Trung Đông','Middle East')}</button>
+      <button type="button" id="ocrClearV53" class="is-muted">${tx('Xóa chọn','Clear')}</button>
+    </div>
+    <div class="ocr-v53-section"><div class="ocr-v53-section-title"><strong>${tx('Phổ biến','Common')}</strong><span>${tx('Chọn một hoặc nhiều ngôn ngữ có trong tài liệu.','Choose one or more languages present in the document.')}</span></div>
+      <div id="ocrLangGridV53" class="ocr-v53-grid"></div>
+    </div>
+    <button type="button" id="ocrMoreToggleV53" class="ocr-v53-more">${tx('Hiện thêm ngôn ngữ','Show more languages')} <span>↓</span></button>
+    <div id="ocrMoreV53" class="ocr-v53-morebox hidden"><div class="ocr-v53-section-title"><strong>${tx('Tất cả ngôn ngữ API','All API languages')}</strong><span>${tx('Danh sách theo mã OCR chính thức.','List based on official OCR language codes.')}</span></div><div id="ocrLangMoreGridV53" class="ocr-v53-grid"></div></div>`;
+  const common=$('ocrLangGridV53'),more=$('ocrLangMoreGridV53');
+  OCR_V53_LANGS.forEach(([code,vi,en,group])=>{
+    const label=document.createElement('label');
+    label.className='ocr-v53-lang';
+    label.dataset.search=`${code} ${vi} ${en}`.toLowerCase();
+    label.innerHTML=`<input type="checkbox" name="ocrLang" value="${code}"><span><strong>${isEn()?en:vi}</strong><small>${code}</small></span>`;
+    (group==='popular'?common:more).appendChild(label);
+  });
+  setSelected(initial);
+  $('ocrLangSearchV53')?.addEventListener('input',filter);
+  box.querySelectorAll('[data-ocr-preset]').forEach(b=>b.addEventListener('click',()=>setSelected(OCR_V53_PRESETS[b.dataset.ocrPreset]||[])));
+  $('ocrClearV53')?.addEventListener('click',()=>setSelected([]));
+  $('ocrMoreToggleV53')?.addEventListener('click',()=>{
+    const m=$('ocrMoreV53'),show=m.classList.contains('hidden');
+    m.classList.toggle('hidden',!show);
+    $('ocrMoreToggleV53').innerHTML=show?`${tx('Thu gọn','Show less')} <span>↑</span>`:`${tx('Hiện thêm ngôn ngữ','Show more languages')} <span>↓</span>`;
+  });
+  box.addEventListener('change',e=>{if(e.target.matches('input[name="ocrLang"]'))updateCount()});
+}
+function localize(){
+  if(!isOcr())return;
+  const box=$('toolOptions');if(!box||box.dataset.ocrV53!=='1')return;
+  const keep=[...selected()];
+  box.dataset.ocrV53='0';render();setSelected(keep);
+}
+document.addEventListener('change',e=>{if(e.target===$('apiTool'))setTimeout(render,50)},true);
+document.addEventListener('click',e=>{if(e.target.closest?.('[data-tool]'))setTimeout(render,80)},true);
+new MutationObserver(m=>{
+  if(m.some(x=>x.type==='attributes'&&x.attributeName==='lang'))setTimeout(localize,20);
+  if(isOcr()&&$('toolOptions')&&!$('toolOptions').querySelector('#ocrLangGridV53'))setTimeout(render,20);
+}).observe(document.documentElement,{attributes:true,attributeFilter:['lang'],childList:true,subtree:true});
+window.addEventListener('load',()=>setTimeout(render,80));
+window.NLKH_OCR_LANGUAGES_V53=OCR_V53_LANGS.map(x=>x[0]);
+})();
