@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow,noarchive">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KoHa PDF & Image Studio</title>
@@ -10,6 +12,7 @@
   <link rel="stylesheet" href="./offline-v2.css" />
   <link rel="stylesheet" href="./v48.css" />
   <link rel="stylesheet" href="./page-number-pro-v3.css?v=3">
+  <link rel="stylesheet" href="./pdf-ui-v50.css?v=50">
 </head>
 <body>
   <main class="pdf-app">
@@ -20,7 +23,7 @@
         <p class="studio-intro">Chọn công cụ, thêm tệp và tải kết quả. Toàn bộ chức năng cũ được giữ nguyên trong một giao diện mới dễ sử dụng hơn.</p>
       </div>
       <div class="studio-metrics" aria-label="Thông tin bộ công cụ">
-        <div><strong>25</strong><span>Công cụ PDF & ảnh</span></div>
+        <div><strong>27</strong><span>Công cụ PDF & ảnh</span></div>
         <div><strong>01</strong><span>Không gian thống nhất</span></div>
       </div>
     </header>
@@ -49,6 +52,8 @@
             <option value="compress">Nén PDF</option>
             <option value="merge">Gộp PDF</option>
             <option value="split">Tách PDF</option>
+            <option value="splitsmart">Tách PDF thông minh bằng AI</option>
+            <option value="pdfocr">OCR PDF</option>
             <option value="unlock">Mở khóa PDF</option>
             <option value="protect">Bảo vệ PDF</option>
             <option value="rotate">Xoay PDF</option>
@@ -136,7 +141,7 @@
   <script src="./watermark-image-fix-v4.js"></script>
 <script src="./offline-v2.js"></script>
   <script src="./i18n-v48.js"></script>
-  <script src="./pdf-mode-filter-v2.js"></script>
+  <script src="./pdf-ui-v50.js?v=50"></script>
   <script src="./page-number-pro-v3.js?v=3"></script>
 </body>
 </html>
