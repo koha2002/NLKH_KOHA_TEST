@@ -424,6 +424,8 @@ async function runOnline(){
     body.vertical_position=pos[0]||'middle'; body.horizontal_position=pos[1]||'center';
     body.transparency=Math.min(100,Math.max(1,numberValue('watermarkTransparency',50)));
     body.rotation=((numberValue('watermarkRotation',0)%360)+360)%360;
+    body.vertical_position_adjustment=numberValue('watermarkVerticalAdjust',0);
+    body.horizontal_position_adjustment=numberValue('watermarkHorizontalAdjust',0);
     if(el('watermarkPages'))body.pages=el('watermarkPages').value||'all';
     if(el('watermarkMosaic'))body.mosaic=!!el('watermarkMosaic').checked;
     if(el('watermarkLayer'))body.layer=el('watermarkLayer').value||'above';
