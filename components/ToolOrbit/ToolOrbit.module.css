@@ -176,10 +176,3 @@
   .node strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   .icon { width: 30px; height: 30px; flex-basis: 30px; }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .ring,
-  .node,
-  .dot,
-  .coreHalo { animation: none; }
-}
