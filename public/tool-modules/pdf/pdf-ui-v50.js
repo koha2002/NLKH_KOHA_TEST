@@ -18,11 +18,11 @@ const CAP={
   wordpdf:{offline:false,online:true},
   powerpointpdf:{offline:false,online:true},
   excelpdf:{offline:false,online:true},
-  pdfjpg:{offline:false,online:true},
+  pdfjpg:{offline:true,online:true},
   imagepdf:{offline:true,online:true},
   htmlpdf:{offline:false,online:true},
   pagenumber:{offline:true,online:false},
-  extract:{offline:false,online:true},
+  extract:{offline:true,online:true},
   repair:{offline:false,online:true},
   deletepages:{offline:true,online:false},
   reorderpages:{offline:true,online:false},
@@ -305,10 +305,24 @@ function optionsHtml(k){
       ['pdfa-3b','PDF/A-3b'],['pdfa-3u','PDF/A-3u'],['pdfa-3a','PDF/A-3a']
     ],'pdfa-2b'))+
     note('Công cụ chỉ kiểm tra mức tuân thủ và trả kết quả xác thực; không tạo một PDF mới.','This tool validates conformance and returns a validation result; it does not create a new PDF.');
-  if(k==='pdfjpg')return field(t('Chế độ','Mode'),select('pdfJpgMode',[
-    ['pages',t('Chuyển từng trang thành JPG','Convert every page to JPG')],
-    ['extract',t('Trích xuất ảnh có trong PDF','Extract embedded images')]
-  ],'pages'));
+  if(k==='pdfjpg'){
+    if(m==='offline')return '<div class="nlkh-task-head">'+offlineBadge()+'<strong>'+t('PDF → JPG tại máy','Local PDF → JPG')+'</strong></div>'+
+      field(t('Độ phân giải','Render resolution'),select('pdfJpgScale',[
+        ['1.5',t('108 DPI · nhẹ','108 DPI · light')],
+        ['2',t('144 DPI · khuyến nghị','144 DPI · recommended')],
+        ['3',t('216 DPI · chất lượng cao','216 DPI · high quality')]
+      ],'2'))+
+      field(t('Chất lượng JPG','JPEG quality'),select('pdfJpgQuality',[
+        ['0.82',t('82% · file nhỏ','82% · smaller')],
+        ['0.9',t('90% · khuyến nghị','90% · recommended')],
+        ['0.96',t('96% · cao','96% · high')]
+      ],'0.9'))+
+      note('Offline render từng trang thành JPG. Trích xuất ảnh gốc nhúng trong PDF chỉ có ở Online.','Offline renders every page to JPG. Extracting original embedded images is Online-only.');
+    return field(t('Chế độ','Mode'),select('pdfJpgMode',[
+      ['pages',t('Chuyển từng trang thành JPG','Convert every page to JPG')],
+      ['extract',t('Trích xuất ảnh có trong PDF','Extract embedded images')]
+    ],'pages'));
+  }
   if(k==='imagepdf'){
     if(m==='offline')return note('Offline hiện ghép ảnh thành PDF theo đúng kích thước ảnh, không thêm lề. Chuyển Online để chọn A4/Letter, hướng trang và lề.','Offline currently creates PDF pages at image size with no margin. Switch Online for A4/Letter, orientation and margin.');
     return '<div class="nlkh-grid-3">'+
@@ -317,15 +331,19 @@ function optionsHtml(k){
       field(t('Lề (px)','Margin (px)'),input('imagePdfMargin','number','0','min="0" step="1"'))+
     '</div>'+checkbox('imagePdfMerge',t('Gộp tất cả ảnh vào một PDF','Merge all images into one PDF'),true);
   }
-  if(k==='extract')return checkbox('extractDetailed',t('Xuất dữ liệu chi tiết: trang, vị trí, font, cỡ chữ…','Detailed output: page, position, font, font size…'))+
-    note('API Extract hiện trích xuất văn bản. Không ghi nhãn “text + ảnh” khi engine chưa làm việc đó.','The Extract API currently extracts text. It is not labelled “text + images” unless the engine supports both.');
+  if(k==='extract'){
+    if(m==='offline')return '<div class="nlkh-task-head">'+offlineBadge()+'<strong>'+t('Trích xuất text tại máy','Local text extraction')+'</strong></div>'+
+      checkbox('extractPageMarkers',t('Thêm tiêu đề phân cách từng trang','Include page separators'),true)+
+      note('Offline chỉ đọc text layer có sẵn trong PDF. PDF scan/ảnh không có text layer cần dùng OCR PDF Online.','Offline reads the existing PDF text layer only. Scanned/image PDFs without a text layer require Online OCR.');
+    return checkbox('extractDetailed',t('Xuất dữ liệu chi tiết: trang, vị trí, font, cỡ chữ…','Detailed output: page, position, font, font size…'))+
+      note('API Extract hiện trích xuất văn bản. Không ghi nhãn “text + ảnh” khi engine chưa làm việc đó.','The Extract API currently extracts text. It is not labelled “text + images” unless the engine supports both.');
+  }
   if(k==='repair')return note('Không có setting bổ sung. Hệ thống sẽ thử khôi phục cấu trúc PDF bị lỗi.','No extra settings. The service will attempt to recover the damaged PDF structure.');
   if(k==='deletepages')return field(t('Trang cần xóa','Pages to delete'),input('deletePageRange','text','', 'placeholder="2,4-6"'),t('Ví dụ: 2,4-6. Không thể xóa toàn bộ trang.','Example: 2,4-6. You cannot delete every page.'));
   if(k==='reorderpages')return field(t('Thứ tự trang mới','New page order'),input('reorderPageOrder','text','', 'placeholder="3,1,2,4-6"'),t('Trang không ghi sẽ được nối ở cuối theo thứ tự cũ.','Unlisted pages are appended in their original order.'));
   if(k==='compressimage')return field(t('Mức độ nén','Compression level'),select('compressionLevel',[
     ['low',t('Nén thấp','Low')],['recommended',t('Khuyến nghị','Recommended')],['extreme',t('Nén cao','Extreme')]
   ],'recommended'));
-  if(k==='upscaleimage')body.multiplier=Number(el('upscaleMultiplier')?.value||2);
   if(k==='resizeimage'){
     const rm=(m==='online'?(el('resizeMode')?.value||'pixels'):'pixels');
     return (m==='online'?field(t('Cách đổi kích thước','Resize mode'),select('resizeMode',[
@@ -603,11 +621,6 @@ async function runOnline(){
     if(el('watermarkMosaic'))body.mosaic=!!el('watermarkMosaic').checked;
     if(el('watermarkLayer'))body.layer=el('watermarkLayer').value||'above';
   }
-  if(k==='upscaleimage')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Nâng độ phân giải ảnh','Upscale Image')+'</strong></div>'+
-    field(t('Mức phóng đại','Upscale multiplier'),select('upscaleMultiplier',[['2','2×'],['4','4×']],'2'))+
-    note('API chính thức chỉ hỗ trợ 2× hoặc 4×. Ảnh được gửi tới dịch vụ Online để xử lý.','The official API supports 2× or 4× only. The image is sent to the Online service for processing.');
-  if(k==='repairimage')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Sửa ảnh lỗi','Repair Image')+'</strong></div>'+
-    note('Dùng cho ảnh JPG/JPEG bị hỏng hoặc không đọc được. Không có setting giả.','Designed for corrupted or broken JPG/JPEG images. No fake settings are shown.');
   if(k==='watermarkimage'){
     const wm=el('watermarkMode')?.value||'text';
     const e={
