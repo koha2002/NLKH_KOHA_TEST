@@ -413,7 +413,7 @@ const state={
  sourceFile:null,sourceImage:null,sourceUrl:null,cutoutBlob:null,cutoutImage:null,cutoutUrl:null,
  sourceCanvas:null,baseCanvas:null,editCanvas:null,backgroundImage:null,backgroundUrl:null,
  bgMode:"transparent",bgColor:"#ffffff",sizePreset:"original",format:"png",scale:1,offsetX:0,offsetY:0,
- processing:false,removeBackground:null,device:null,refine:false,tool:"erase",brushSize:36,softness:.35,zoom:1,
+ processing:false,removeBackground:null,enginePromise:null,device:null,refine:false,tool:"erase",brushSize:36,softness:.35,zoom:1,
  drawing:false,currentStroke:null,strokes:[],redo:[]
 };
 const $=id=>document.getElementById(id);
@@ -599,10 +599,21 @@ function resetResult(){
 function fullReset(){revoke("sourceUrl");state.sourceFile=null;state.sourceImage=null;resetResult();el.fileInput.value="";el.bgFileInput.value="";el.removeBtn.disabled=true;el.resetBtn.disabled=true;setStatus('Chưa có ảnh. Hãy bấm <b>Mở ảnh</b>.');progress("Sẵn sàng.",0);renderAll()}
 
 async function engine(){
- if(state.removeBackground)return state.removeBackground;badge("Đang tải AI engine...","pending");
- const urls=["https://esm.sh/@imgly/background-removal@1.7.0?bundle","https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm"];let last;
- for(const u of urls){try{const m=await import(u),fn=m.removeBackground||m.default?.removeBackground||m.default;if(typeof fn==="function"){state.removeBackground=fn;return fn}}catch(e){last=e}}
- throw last||new Error("Không tải được AI engine.")
+ if(state.removeBackground)return state.removeBackground;
+ if(state.enginePromise)return state.enginePromise;
+ badge(txt("downloadingEngine"),"pending");
+ state.enginePromise=(async()=>{
+  const urls=["https://esm.sh/@imgly/background-removal@1.7.0?bundle","https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm"];
+  let last;
+  for(const u of urls){
+   try{
+    const m=await import(u),fn=m.removeBackground||m.default?.removeBackground||m.default;
+    if(typeof fn==="function"){state.removeBackground=fn;return fn}
+   }catch(e){last=e}
+  }
+  throw last||new Error("Không tải được AI engine.");
+ })().catch(e=>{state.enginePromise=null;throw e});
+ return state.enginePromise;
 }
 function config(device){return{device,model:"isnet",proxyToWorker:false,output:{format:"image/png",quality:1,type:"foreground"},progress:(key,current,total)=>{
  if(total>0&&String(key).startsWith("fetch:"))progress(`Đang tải model: ${String(key).split(":").pop()}`,Math.min(74,8+(current/total)*64));
@@ -616,7 +627,9 @@ async function runRemoval(blob){
 async function openSource(file){
  if(!file?.type?.startsWith("image/"))throw new Error(txt("selectImageError"));
  revoke("sourceUrl");state.sourceUrl=URL.createObjectURL(file);state.sourceFile=file;state.sourceImage=await loadImage(state.sourceUrl);resetResult();
- el.removeBtn.disabled=false;el.resetBtn.disabled=false;setStatus('Ảnh đã nạp. Bấm <b>Tách nền</b>.');progress("Ảnh sẵn sàng.",0);renderAll()
+ el.removeBtn.disabled=false;el.resetBtn.disabled=false;setStatus('Ảnh đã nạp. Bấm <b>Tách nền</b>.');progress(txt("imageReady"),0);renderAll();
+ // V38.2: prewarm only after the user selects an image.
+ engine().then(()=>badge(navigator.gpu?txt("engineGpuReady"):txt("engineCpuReady"),"ok")).catch(()=>badge(txt("engineOnUse"),"warn"));
 }
 function initEdit(){
  const w=state.cutoutImage.width,h=state.cutoutImage.height;
@@ -739,7 +752,7 @@ window.addEventListener("keydown",e=>{
  el.offsetYRange.oninput=()=>{state.offsetY=+el.offsetYRange.value;el.offsetYValue.textContent=el.offsetYRange.value;renderAll()};
  el.resetAdjustBtn.onclick=()=>{resetAdjust();renderAll()};el.downloadTransparentBtn.onclick=downloadTransparent;el.downloadFinalBtn.onclick=downloadFinal
 }
-function init(){installThemeSync();installLocaleSync();bind();enableAfter(false);resetAdjust();bgActive("transparent");renderAll();badge(navigator.gpu?"WebGPU có sẵn • chờ ảnh":"Không có WebGPU • sẽ dùng CPU","ok");progress("Sẵn sàng.",0);engine().then(()=>badge(navigator.gpu?"AI engine sẵn sàng • ưu tiên GPU":"AI engine sẵn sàng • CPU","ok")).catch(()=>badge("AI sẽ tải khi xử lý ảnh","warn"))}
+function init(){installThemeSync();installLocaleSync();bind();enableAfter(false);resetAdjust();bgActive("transparent");renderAll();badge(txt("engineOnUse"),"ok");progress(txt("ready"),0)}
 init();
 
 // ===== NLKH V2.9 CLEAN VIEWER START =====
