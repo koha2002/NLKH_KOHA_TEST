@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../../components/LanguageProvider";
-import { invokeEdge, supabase } from "../../lib/supabase-browser";
 import initialProfile from "../../public/content/cv/profile.json";
 import styles from "./cv.module.css";
 
@@ -165,10 +164,13 @@ export default function CvPage() {
     if (!mediaId || profile?.photo) return;
 
     let cancelled = false;
-    invokeEdge("r2-file", {
-      action: "presign-download",
-      media_id: mediaId,
-    })
+    void import("../../lib/supabase-browser")
+      .then(({ invokeEdge }) =>
+        invokeEdge("r2-file", {
+          action: "presign-download",
+          media_id: mediaId,
+        }),
+      )
       .then((result) => {
         const out = result as PresignDownloadResult;
         if (!cancelled && out.url) {
@@ -237,6 +239,12 @@ export default function CvPage() {
     }
 
     try {
+      const browser =
+        currentProfile.pdfAccess === "authenticated" ||
+        Boolean(currentProfile.pdfMediaId)
+          ? await import("../../lib/supabase-browser")
+          : null;
+
       if (
         currentProfile.pdfAccess ===
         "authenticated"
@@ -244,7 +252,7 @@ export default function CvPage() {
         const {
           data: { session },
         } =
-          await supabase.auth.getSession();
+          await browser!.supabase.auth.getSession();
 
         if (!session) {
           window.location.href =
@@ -254,7 +262,7 @@ export default function CvPage() {
       }
 
       if (currentProfile.pdfMediaId) {
-        const out = (await invokeEdge("r2-file", {
+        const out = (await browser!.invokeEdge("r2-file", {
             action: "presign-download",
             media_id:
               currentProfile.pdfMediaId,

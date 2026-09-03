@@ -1,7 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { SitePresence } from "./SitePresence";
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useState } from "react";
+
+const LazySitePresence = lazy(() =>
+  import("./SitePresence").then((module) => ({ default: module.SitePresence })),
+);
 
 export type ShellMenuItem = { id: string; label_vi: string; label_en: string; href: string; location: "header" | "footer" | "both"; open_new_tab?: boolean };
 export type ShellSocial = { id: string; platform: string; label: string; url: string; icon?: string | null };
@@ -35,7 +38,7 @@ export function PublicShellProvider({ children }: { children: React.ReactNode })
     return () => controller.abort();
   }, []);
   const stable = useMemo(() => value, [value]);
-  return <><SitePresence/><ShellContext.Provider value={stable}>{children}</ShellContext.Provider></>;
+  return <><Suspense fallback={null}><LazySitePresence /></Suspense><ShellContext.Provider value={stable}>{children}</ShellContext.Provider></>;
 }
 
 export function usePublicShell() { return useContext(ShellContext); }

@@ -3,7 +3,6 @@
 import { useEffect,useMemo,useState } from "react";
 import { useLanguage } from "../../components/LanguageProvider";
 import { adminSoftwareCategories,adminSoftwareItems } from "../../data/admin-generated";
-import { getMyAccess,invokeEdge } from "../../lib/supabase-browser";
 import styles from "./software.module.css";
 
 const PAGE_SIZE=9;
@@ -21,6 +20,19 @@ type SoftwareItem={
   allowedRoles:string[];featured?:boolean;
 };
 
+function hasPersistedSupabaseSession(){
+  if(typeof window==="undefined")return false;
+  try{
+    for(let index=0;index<window.localStorage.length;index+=1){
+      const key=window.localStorage.key(index);
+      if(!key||!/^sb-[a-z0-9-]+-auth-token$/i.test(key))continue;
+      const raw=window.localStorage.getItem(key);
+      if(raw&&raw!=="null"&&raw!=="{}")return true;
+    }
+  }catch{}
+  return false;
+}
+
 export default function SoftwarePage(){
   const{language,t}=useLanguage(),copy=t.software,vi=language==="vi";
   const[query,setQuery]=useState("");
@@ -36,7 +48,19 @@ export default function SoftwarePage(){
 
   useEffect(()=>{
     let alive=true;
-    getMyAccess()
+
+    if(!hasPersistedSupabaseSession()){
+      const readyTimer=window.setTimeout(()=>{
+        if(alive)setAccessReady(true);
+      },0);
+      return()=>{
+        alive=false;
+        window.clearTimeout(readyTimer);
+      };
+    }
+
+    void import("../../lib/supabase-browser")
+      .then(({getMyAccess})=>getMyAccess())
       .then((a:any)=>{if(alive)setAccess(a||{authenticated:false})})
       .catch(()=>{if(alive)setAccess({authenticated:false})})
       .finally(()=>{if(alive)setAccessReady(true)});
@@ -119,6 +143,7 @@ export default function SoftwarePage(){
     }
     try{
       setBusyId(item.id);
+      const {invokeEdge}=await import("../../lib/supabase-browser");
       const out:any=await invokeEdge("r2-file",{action:"software-download",software_id:item.id});
       if(!out?.url)throw new Error(vi?"Không tạo được liên kết tải.":"Could not create the download link.");
       window.open(out.url,"_blank","noopener,noreferrer");

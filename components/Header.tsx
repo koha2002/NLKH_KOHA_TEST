@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "./LanguageProvider";
 import { adminNavigation } from "../data/admin-generated";
-import { getMyAccess, initials, type MyAccess } from "../lib/supabase-browser";
+import type { MyAccess } from "../lib/supabase-browser";
 import styles from "./Header.module.css";
 
 type NavRow = {
@@ -21,6 +21,31 @@ type NavRow = {
   icon_url?: string | null;
 };
 
+function hasPersistedSupabaseSession() {
+  if (typeof window === "undefined") return false;
+
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key || !/^sb-[a-z0-9-]+-auth-token$/i.test(key)) continue;
+
+      const raw = window.localStorage.getItem(key);
+      if (raw && raw !== "null" && raw !== "{}") return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+function accessInitials(name?: string, email?: string) {
+  const source = (name || email?.split("@")[0] || "U").trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
+}
+
 export function Header() {
   const { language, setLanguage, theme, toggleTheme, t } = useLanguage();
   const vi = language === "vi";
@@ -28,7 +53,28 @@ export function Header() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [access, setAccess] = useState<MyAccess>({ authenticated: false, permissions: [] });
 
-  useEffect(() => { getMyAccess().then(setAccess).catch(() => setAccess({ authenticated: false, permissions: [] })); }, []);
+  useEffect(() => {
+    let alive = true;
+
+    if (!hasPersistedSupabaseSession()) {
+      return () => {
+        alive = false;
+      };
+    }
+
+    void import("../lib/supabase-browser")
+      .then(({ getMyAccess }) => getMyAccess())
+      .then((nextAccess) => {
+        if (alive) setAccess(nextAccess);
+      })
+      .catch(() => {
+        if (alive) setAccess({ authenticated: false, permissions: [] });
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const allowed = useMemo(() => {
     const navigation = adminNavigation as readonly NavRow[];
@@ -72,7 +118,7 @@ export function Header() {
         </div>
 
         {access.authenticated ? <div className={styles.accountWrap}>
-          <button className={styles.avatarButton} onClick={() => setAccountOpen((v) => !v)} aria-expanded={accountOpen} aria-label={vi ? "Tài khoản" : "Account"}>{access.avatar_url ? <img src={access.avatar_url} alt="" /> : <span>{initials(access.display_name, access.email)}</span>}</button>
+          <button className={styles.avatarButton} onClick={() => setAccountOpen((v) => !v)} aria-expanded={accountOpen} aria-label={vi ? "Tài khoản" : "Account"}>{access.avatar_url ? <img src={access.avatar_url} alt="" /> : <span>{accessInitials(access.display_name, access.email)}</span>}</button>
           {accountOpen ? <div className={styles.accountMenu}><strong>{access.display_name || access.email}</strong><small>{access.email}</small><a href="/account">{vi ? "Tài khoản & ảnh đại diện" : "Account & profile picture"}</a>{access.status === "active" && (access.permissions || []).length ? <><a href={process.env.NEXT_PUBLIC_ADMIN_URL || "https://admin.nguyenlekhanhhoa.com"}>{vi ? "Quản trị" : "Admin"} ↗</a><a href="https://automation.nguyenlekhanhhoa.com">Automation {"\u2197"}</a></> : null}</div> : null}
         </div> : <a className={styles.loginButton} href="/login">{vi ? "Đăng nhập" : "Sign in"}</a>}
 
