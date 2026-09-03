@@ -35,7 +35,7 @@ const CAP={
 
 const API_ALIAS={wordpdf:'officepdf',powerpointpdf:'officepdf',excelpdf:'officepdf'};
 const OFFICE=new Set(['wordpdf','powerpointpdf','excelpdf']);
-const PROTECTED_UI=new Set(['watermark','pagenumber']);
+const PROTECTED_UI=new Set(['watermark','pagenumber','cropimage']);
 let lastTool='';
 let renderQueued=false;
 

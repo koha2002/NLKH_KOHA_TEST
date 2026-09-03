@@ -1,0 +1,18 @@
+import fs from "node:fs";
+const idx=fs.readFileSync("public/tool-modules/pdf/index.html","utf8");
+const ui=fs.readFileSync("public/tool-modules/pdf/pdf-ui-v50.js","utf8");
+const crop=fs.readFileSync("public/tool-modules/pdf/crop-image-v55.js","utf8");
+const ok=(v,m)=>{if(!v){console.error("FAIL:",m);process.exitCode=1}else console.log("PASS:",m)};
+ok(idx.includes("crop-image-v55.css?v=55"),"Crop V55 CSS loaded");
+ok(idx.includes("crop-image-v55.js?v=55"),"Crop V55 JS loaded");
+ok(/PROTECTED_UI=new Set\(\[[^\]]*'cropimage'/.test(ui),"Central renderer delegates Crop UI to V55");
+ok(crop.includes("NLKH_CROP_IMAGE_V55"),"Crop V55 marker");
+ok(crop.includes("'1:1':1")&&crop.includes("'4:3':4/3")&&crop.includes("'3:4':3/4")&&crop.includes("'16:9':16/9"),"Aspect-ratio presets");
+ok(crop.includes("getBoundingClientRect"),"Displayed-image geometry conversion");
+ok(crop.includes("naturalWidth")&&crop.includes("naturalHeight"),"Natural image pixels used");
+ok(crop.includes("pointerdown")&&crop.includes("pointermove"),"Interactive pointer dragging");
+ok(crop.includes("cropX")&&crop.includes("cropY")&&crop.includes("cropWidth")&&crop.includes("cropHeight"),"Existing processing contract preserved");
+ok(crop.includes("ResizeObserver"),"Overlay responds to preview resizing");
+ok(crop.includes("crop-v55-guides"),"Rule-of-thirds guides");
+if(process.exitCode)process.exit(process.exitCode);
+console.log("Crop Image V55 scoped checks passed.");
