@@ -20,6 +20,7 @@ const CAP={
   excelpdf:{offline:false,online:true},
   pdfjpg:{offline:false,online:true},
   imagepdf:{offline:true,online:true},
+  htmlpdf:{offline:false,online:true},
   pagenumber:{offline:true,online:false},
   extract:{offline:false,online:true},
   repair:{offline:false,online:true},
@@ -54,11 +55,24 @@ function setStatus(vi,enText,type='info'){
   const s=el('statusMessage'); if(!s)return;
   s.textContent=t(vi,enText); s.className='status-message status--'+type;
 }
+function htmlPdfUrlV59(){
+  return String(el('htmlPdfUrl')?.value||'').trim();
+}
+function validHtmlPdfUrlV59(){
+  try{
+    const u=new URL(htmlPdfUrlV59());
+    return (u.protocol==='http:'||u.protocol==='https:')&&!!u.hostname;
+  }catch(_){return false}
+}
+function syncProcessReadyV59(){
+  const b=el('processButton');if(!b)return;
+  b.disabled=tool()==='htmlpdf'?!validHtmlPdfUrlV59():files().length===0;
+}
 function setBusy(on){
   const l=el('loader'),txt=el('processButtonText'),b=el('processButton');
   if(l)l.style.display=on?'block':'none';
   if(txt)txt.style.display=on?'none':'block';
-  if(b)b.disabled=on||files().length===0;
+  if(b)b.disabled=on||(tool()==='htmlpdf'?!validHtmlPdfUrlV59():files().length===0);
 }
 function setMode(m){
   const b=modeBtn(m);
@@ -105,6 +119,7 @@ const TOOL_META_V57={
   powerpointpdf:{g:'topdf',vi:'PowerPoint → PDF',en:'PowerPoint → PDF',k:'powerpoint ppt pptx office pdf'},
   excelpdf:{g:'topdf',vi:'Excel → PDF',en:'Excel → PDF',k:'excel xls xlsx office pdf'},
   imagepdf:{g:'topdf',vi:'Ảnh → PDF',en:'Image → PDF',k:'anh hinh jpg png image pdf'},
+  htmlpdf:{g:'topdf',vi:'Web / URL → PDF',en:'Web / URL → PDF',k:'web url html website trang web link to pdf'},
   pdfjpg:{g:'frompdf',vi:'PDF → JPG',en:'PDF → JPG',k:'pdf jpg jpeg image export'},
   extract:{g:'frompdf',vi:'Trích xuất văn bản',en:'Extract Text',k:'trich xuat van ban text extract data'},
   protect:{g:'security',vi:'Bảo vệ PDF',en:'Protect PDF',k:'bao ve mat khau password encrypt security'},
@@ -181,7 +196,7 @@ function localizeToolNames(){
   const finderLabel=el('toolFinderLabelV57');if(finderLabel)finderLabel.textContent=t('Tìm nhanh công cụ','Find a tool');
   const q=el('toolSearchV57');if(q)q.placeholder=t('Gõ: gộp, OCR, Word, mật khẩu...','Try: merge, OCR, Word, password...');
   const browse=document.querySelector('.select-label[for="apiTool"]');if(browse)browse.textContent=t('Duyệt theo nhóm','Browse by category');
-  const intro=document.querySelector('.studio-intro');if(intro)intro.textContent=t('30 công cụ được sắp theo việc bạn muốn làm: trang, tối ưu, chỉnh sửa, chuyển đổi, bảo mật và hình ảnh.','30 tools are organized by what you want to do: pages, optimize, edit, convert, secure, and images.');
+  const intro=document.querySelector('.studio-intro');if(intro)intro.textContent=t('31 công cụ được sắp theo việc bạn muốn làm: trang, tối ưu, chỉnh sửa, chuyển đổi, bảo mật và hình ảnh.','31 tools are organized by what you want to do: pages, optimize, edit, convert, secure, and images.');
   const metric=document.querySelector('.studio-metrics div:nth-child(2) span');if(metric)metric.textContent=t('Nhóm tác vụ rõ ràng','Clear task groups');
   ensureToolFinderV57();renderToolFinderV57();
 }
@@ -239,6 +254,10 @@ function officeHtml(k){
 }
 function optionsHtml(k){
   const m=mode();
+  if(k==='htmlpdf')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Web / URL → PDF','Web / URL → PDF')+'</strong></div>'+
+    field(t('Địa chỉ trang web công khai','Public webpage URL'),'<input id="htmlPdfUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://example.com/page">',t('Trang phải truy cập được công khai bằng HTTP/HTTPS.','The page must be publicly reachable over HTTP/HTTPS.'))+
+    note('Dịch vụ Online sẽ truy cập URL này và tạo PDF. Không cần tải file lên từ máy.','The Online service will fetch this URL and create a PDF. No local file upload is required.')+
+    note('V59 chỉ dùng Basic Web → PDF. Các tùy chọn A4, landscape, margin và single-page chưa bật vì tài liệu REST hiện chưa nhất quán với guide.','V59 uses Basic Web → PDF only. A4, landscape, margin, and single-page options stay disabled because the REST reference and guide are currently inconsistent.');
   if(OFFICE.has(k))return officeHtml(k);
   if(k==='splitsmart')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Tách PDF thông minh','Smart Split PDF')+'</strong></div>'+
     field(t('Yêu cầu tách','Split instructions'),'<textarea id="smartSplitPrompt" rows="5" placeholder="'+t('Ví dụ: Tách mỗi hóa đơn thành một file PDF riêng.','Example: Split each invoice into a separate PDF file.')+'"></textarea>')+
@@ -367,7 +386,7 @@ function processLabel(k){
     watermark:['Đóng dấu PDF','Watermark PDF'],pdfa:['Chuyển sang PDF/A','Convert to PDF/A'],validatepdfa:['Kiểm tra PDF/A','Validate PDF/A'],
     wordpdf:['Chuyển Word sang PDF','Convert Word to PDF'],powerpointpdf:['Chuyển PowerPoint sang PDF','Convert PowerPoint to PDF'],
     excelpdf:['Chuyển Excel sang PDF','Convert Excel to PDF'],pdfjpg:['Chuyển PDF sang JPG','Convert PDF to JPG'],
-    imagepdf:['Tạo PDF từ ảnh','Create PDF from images'],pagenumber:['Đánh số trang','Add page numbers'],
+    imagepdf:['Tạo PDF từ ảnh','Create PDF from images'],htmlpdf:['Tạo PDF từ web','Create PDF from web'],pagenumber:['Đánh số trang','Add page numbers'],
     extract:['Trích xuất văn bản','Extract text'],repair:['Sửa PDF','Repair PDF'],deletepages:['Xóa trang','Delete pages'],
     reorderpages:['Sắp xếp trang','Reorder pages'],compressimage:['Nén ảnh','Compress image'],upscaleimage:['Nâng độ phân giải','Upscale image'],resizeimage:['Đổi kích thước','Resize image'],
     cropimage:['Cắt ảnh','Crop image'],rotateimage:['Xoay ảnh','Rotate image'],convertimage:['Chuyển đổi ảnh','Convert image'],repairimage:['Sửa ảnh lỗi','Repair image'],
@@ -383,6 +402,14 @@ function fileConfig(k){
 }
 function applyFileConfig(k){
   const f=el('fileInput'),box=el('uploadBox'); if(!f||!box)return;
+  const urlOnly=k==='htmlpdf';
+  box.classList.toggle('hidden',urlOnly);
+  if(urlOnly){
+    el('fileListContainer')?.classList.add('hidden');
+    el('previewArea')?.classList.add('hidden');
+    syncProcessReadyV59();
+    return;
+  }
   const c=fileConfig(k); f.accept=c.accept; f.multiple=c.multi;
   const strong=box.querySelector('label strong'); if(strong)strong.textContent=c.label;
   const small=box.querySelector('label small'); if(small)small.textContent=t('Kéo thả hoặc nhấn để chọn đúng định dạng của công cụ.','Drop or click to choose a supported file type.');
@@ -393,6 +420,11 @@ function bindOptions(k){
   ['splitMode','resizeMode','convertTo','watermarkMode'].forEach(id=>{const n=el(id);if(n)n.addEventListener('change',()=>renderOptions(k))});
   const show=el('showPassword'); if(show)show.addEventListener('change',()=>{['passwordInput','passwordConfirm'].forEach(id=>{const x=el(id);if(x)x.type=show.checked?'text':'password'})});
   const wm=el('watermarkImageInput'); if(wm)wm.addEventListener('change',e=>{window.watermarkFile=e.target.files?.[0]||null});
+  const url=el('htmlPdfUrl');if(url){
+    url.addEventListener('input',syncProcessReadyV59);
+    url.addEventListener('change',syncProcessReadyV59);
+    setTimeout(syncProcessReadyV59,0);
+  }
   box.querySelectorAll('input,select,textarea').forEach(n=>{
     n.addEventListener('input',()=>{if(typeof window.updateImagePreview==='function')try{window.updateImagePreview()}catch(_){}});
     n.addEventListener('change',()=>{if(typeof window.updateImagePreview==='function')try{window.updateImagePreview()}catch(_){}});
@@ -449,13 +481,32 @@ async function uploadFile(server,task,auth,file){
   if(!r.ok)throw new Error(await r.text());
   return (await r.json()).server_filename;
 }
+async function uploadCloudUrlV59(server,task,auth,url){
+  const r=await fetch('https://'+server+'/v1/upload',{
+    method:'POST',
+    headers:{Authorization:auth,'Content-Type':'application/json;charset=UTF-8'},
+    body:JSON.stringify({task,cloud_file:url})
+  });
+  if(!r.ok)throw new Error(await r.text());
+  const data=await r.json();
+  if(!data.server_filename)throw new Error(t('Dịch vụ không trả server_filename cho URL.','The service did not return server_filename for the URL.'));
+  let filename='';
+  try{
+    const parsed=new URL(url);
+    const parts=parsed.pathname.split('/').filter(Boolean);
+    filename=parts[parts.length-1]||parsed.hostname;
+  }catch(_){}
+  return {server_filename:data.server_filename,filename:filename||'webpage'};
+}
 function requireValue(id,messageVi,messageEn){
   const v=String(el(id)?.value||'').trim(); if(!v)throw new Error(t(messageVi,messageEn)); return v;
 }
 function numberValue(id,fallback=0){const n=Number(el(id)?.value);return Number.isFinite(n)?n:fallback}
 async function runOnline(){
-  const k=tool(),list=files(); if(!list.length)throw new Error(t('Vui lòng chọn ít nhất một tệp.','Please select at least one file.'));
-  validateFileType(k,list);
+  const k=tool(),list=files();
+  if(k!=='htmlpdf'&&!list.length)throw new Error(t('Vui lòng chọn ít nhất một tệp.','Please select at least one file.'));
+  if(k!=='htmlpdf')validateFileType(k,list);
+  if(k==='htmlpdf'&&!validHtmlPdfUrlV59())throw new Error(t('Hãy nhập URL công khai hợp lệ bắt đầu bằng http:// hoặc https://.','Enter a valid public URL starting with http:// or https://.'));
   if(k==='protect'){
     const p=requireValue('passwordInput','Hãy nhập mật khẩu mới.','Enter a new password.');
     if(p!==String(el('passwordConfirm')?.value||''))throw new Error(t('Hai mật khẩu không khớp.','Passwords do not match.'));
@@ -480,13 +531,19 @@ async function runOnline(){
   }
 
   const uploaded=[];
-  for(let i=0;i<list.length;i++){
-    setStatus('Đang tải tệp '+(i+1)+'/'+list.length+'…','Uploading file '+(i+1)+'/'+list.length+'…');
-    const server_filename=await uploadFile(task.server,task.task,auth,list[i]);
-    const item={server_filename,filename:list[i].name};
-    if(k==='unlock')item.password=requireValue('passwordInput','Hãy nhập mật khẩu hiện tại.','Enter the current password.');
-    if(k==='rotate'||k==='rotateimage')item.rotate=numberValue('rotateAngle',90);
-    uploaded.push(item);
+  if(k==='htmlpdf'){
+    const url=htmlPdfUrlV59();
+    setStatus('Đang gửi URL để dịch vụ lấy trang web…','Sending URL for the service to fetch the webpage…');
+    uploaded.push(await uploadCloudUrlV59(task.server,task.task,auth,url));
+  }else{
+    for(let i=0;i<list.length;i++){
+      setStatus('Đang tải tệp '+(i+1)+'/'+list.length+'…','Uploading file '+(i+1)+'/'+list.length+'…');
+      const server_filename=await uploadFile(task.server,task.task,auth,list[i]);
+      const item={server_filename,filename:list[i].name};
+      if(k==='unlock')item.password=requireValue('passwordInput','Hãy nhập mật khẩu hiện tại.','Enter the current password.');
+      if(k==='rotate'||k==='rotateimage')item.rotate=numberValue('rotateAngle',90);
+      uploaded.push(item);
+    }
   }
 
   const body={task:task.task,tool:api,files:uploaded};
