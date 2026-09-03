@@ -23,3 +23,12 @@
 .pdf-v52-hidden-field{display:none!important}
 @keyframes pdfV52Shimmer{to{background-position-x:-200%}}
 @media(max-width:650px){.pdf-v52-head{display:grid}.pdf-v52-meta{justify-content:flex-start}.pdf-v52-grid{grid-template-columns:repeat(2,minmax(0,1fr));max-height:540px}}
+
+/* PAGE UX V57 */
+.pdf-v57-headcopy{min-width:0;flex:1}
+.pdf-v57-headright{display:flex;align-items:flex-end;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.pdf-v57-actions{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}
+.pdf-v57-actions button{min-height:29px;border:1px solid var(--pdf-line);border-radius:6px;background:var(--pdf-surface-soft);color:var(--pdf-ink);padding:5px 8px;font-size:8px;font-weight:750;cursor:pointer}
+.pdf-v57-actions button:hover{border-color:var(--pdf-blue);color:var(--pdf-blue)}
+.pdf-v52-file[draggable=true]{cursor:grab}.pdf-v52-file.is-dragging{opacity:.5;transform:scale(.98)}
+@media(max-width:650px){.pdf-v57-headright{justify-content:flex-start;align-items:flex-start}.pdf-v57-actions{justify-content:flex-start}}

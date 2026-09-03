@@ -11,6 +11,8 @@ let observer=null;
 let selectedPages=new Set();
 let reorderPages=[];
 let renderTimer=null;
+let mergeOriginal=[];
+let mergeOriginalSetKey='';
 
 function en(){return String(document.documentElement.lang||'vi').toLowerCase().startsWith('en')}
 function t(vi,enText){return en()?enText:vi}
@@ -72,22 +74,30 @@ function managedFields(k){
   if(del)del.classList.toggle('pdf-v52-hidden-field',k==='deletepages');
   if(reo)reo.classList.toggle('pdf-v52-hidden-field',k==='reorderpages');
 }
+function actionButton(action,label){return `<button type="button" data-page-action="${action}">${label}</button>`}
+function toolbarHtml(k){
+  if(k==='deletepages')return `<div class="pdf-v57-actions">${actionButton('odd',t('Chọn trang lẻ','Select odd'))}${actionButton('even',t('Chọn trang chẵn','Select even'))}${actionButton('clear',t('Bỏ chọn','Clear'))}</div>`;
+  if(k==='reorderpages')return `<div class="pdf-v57-actions">${actionButton('reset-order',t('Khôi phục thứ tự','Reset order'))}</div>`;
+  if(k==='split')return `<div class="pdf-v57-actions">${actionButton('clear',t('Bỏ chọn nhanh','Clear selection'))}</div>`;
+  if(k==='merge')return `<div class="pdf-v57-actions">${actionButton('reset-merge',t('Khôi phục thứ tự file','Reset file order'))}</div>`;
+  return '';
+}
 function headerHtml(k,count,file){
   const copy={
-    split:[t('Chọn trang để điền nhanh khoảng tách','Select pages to quickly fill split ranges'),
-           t('Click trang để thêm/bỏ. Bạn vẫn có thể chỉnh range thủ công ở bên trái.','Click pages to add/remove them. You can still edit ranges manually on the left.')],
+    split:[t('Chọn trang để tạo nhanh các khoảng tách','Select pages to quickly build split ranges'),
+           t('Click thumbnail để thêm/bỏ trang; các trang liền nhau tự gộp thành một khoảng.','Click thumbnails to add/remove pages; consecutive pages become one range.')],
     deletepages:[t('Chọn trang cần xóa','Select pages to delete'),
-                 t('Click thumbnail để đánh dấu trang sẽ xóa.','Click thumbnails to mark pages for deletion.')],
+                 t('Click thumbnail hoặc dùng chọn nhanh trang lẻ/chẵn.','Click thumbnails or use odd/even quick selection.')],
     reorderpages:[t('Kéo thả để sắp xếp trang','Drag to reorder pages'),
-                  t('Kéo thumbnail sang vị trí mới. Thứ tự được cập nhật tự động.','Drag thumbnails to a new position. The page order updates automatically.')],
+                  t('Kéo thumbnail sang vị trí mới; thứ tự xử lý cập nhật ngay.','Drag thumbnails to a new position; processing order updates immediately.')],
     rotate:[t('Xem trước các trang sẽ xoay','Preview pages to be rotated'),
             t('Góc xoay được áp dụng cho toàn bộ PDF.','The rotation angle is applied to the entire PDF.')],
     pdfjpg:[t('Xem trước các trang PDF','Preview PDF pages'),
             t('Ở chế độ “Pages”, mỗi trang sẽ được xuất thành JPG.','In “Pages” mode, each page will be exported as JPG.')]
   }[k]||['',''];
   return `<div class="pdf-v52-head">
-    <div><strong>${copy[0]}</strong><small>${copy[1]}</small></div>
-    <div class="pdf-v52-meta"><span>${count} ${t('trang','pages')}</span><span>${formatSize(file.size)}</span></div>
+    <div class="pdf-v57-headcopy"><strong>${copy[0]}</strong><small>${copy[1]}</small></div>
+    <div class="pdf-v57-headright"><div class="pdf-v52-meta"><span>${count} ${t('trang','pages')}</span><span>${formatSize(file.size)}</span></div>${toolbarHtml(k)}</div>
   </div>`;
 }
 function cardShell(pageNum,k){
@@ -103,11 +113,11 @@ function cardShell(pageNum,k){
       syncSelectionUi(k);
     });
   }
-  if(k==='reorderpages')bindDrag(c);
+  if(k==='reorderpages')bindPageDrag(c);
   return c;
 }
 function syncSelectionUi(k){
-  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page').forEach(c=>{
+  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach(c=>{
     const n=Number(c.dataset.page),active=selectedPages.has(n);
     c.classList.toggle(k==='deletepages'?'is-delete':'is-selected',active);
     const s=c.querySelector('.pdf-v52-state');
@@ -116,7 +126,16 @@ function syncSelectionUi(k){
   if(k==='deletepages')setInput('deletePageRange',compressPages(selectedPages));
   if(k==='split')setInput('splitRange',compressPages(selectedPages));
 }
-function bindDrag(c){
+function selectPattern(kind){
+  if(!currentDoc)return;
+  selectedPages.clear();
+  for(let n=1;n<=currentDoc.numPages;n++){
+    if(kind==='odd'&&n%2===1)selectedPages.add(n);
+    if(kind==='even'&&n%2===0)selectedPages.add(n);
+  }
+  syncSelectionUi(tool());
+}
+function bindPageDrag(c){
   c.addEventListener('dragstart',e=>{
     c.classList.add('is-dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',c.dataset.page);
   });
@@ -124,19 +143,68 @@ function bindDrag(c){
   c.addEventListener('dragover',e=>{
     e.preventDefault();
     const grid=c.parentElement,drag=grid.querySelector('.is-dragging');if(!drag||drag===c)return;
-    const r=c.getBoundingClientRect(),before=e.clientY<r.top+r.height/2 || (Math.abs(e.clientY-(r.top+r.height/2))<r.height*.25 && e.clientX<r.left+r.width/2);
+    const r=c.getBoundingClientRect();
+    const before=e.clientY<r.top+r.height/2 || (Math.abs(e.clientY-(r.top+r.height/2))<r.height*.25 && e.clientX<r.left+r.width/2);
     grid.insertBefore(drag,before?c:c.nextSibling);
   });
 }
 function syncReorderFromDom(){
-  reorderPages=Array.from(document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page')).map(c=>Number(c.dataset.page));
-  setInput('reorderPageOrder',compressOrder(reorderPages));
-  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page').forEach((c,i)=>{
+  reorderPages=Array.from(document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)')).map(c=>Number(c.dataset.page));
+  setInput('reorderPageOrder',reorderPages.join(','));
+  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach((c,i)=>{
     const state=c.querySelector('.pdf-v52-state');
     if(state)state.textContent=`${i+1}`;
   });
 }
-function compressOrder(a){return a.join(',')}
+function resetPageOrder(){
+  const grid=workspace().querySelector('.pdf-v52-grid');if(!grid)return;
+  [...grid.querySelectorAll('.pdf-v52-page')].sort((a,b)=>Number(a.dataset.page)-Number(b.dataset.page)).forEach(c=>grid.appendChild(c));
+  syncReorderFromDom();
+}
+function replaceSelectedFiles(list){
+  if(!Array.isArray(window.selectedFiles))return;
+  window.selectedFiles.splice(0,window.selectedFiles.length,...list);
+  if(typeof window.renderFileList==='function')try{window.renderFileList()}catch(_){}
+  const name=el('fileName');
+  if(name)name.textContent=list.length>1?`${list.length} ${t('tệp đã được chọn','files selected')}`:(list[0]?.name||t('Chưa có tệp nào được chọn','No file selected'));
+}
+function mergeSetKey(list){return list.map(sig).sort().join('|')}
+function syncMergeFromDom(){
+  const cards=[...workspace().querySelectorAll('.pdf-v52-file')];
+  const ordered=cards.map(c=>c._kohaFile).filter(Boolean);
+  if(ordered.length!==cards.length)return;
+  replaceSelectedFiles(ordered);
+  workspace().dataset.mergeKey=ordered.map(sig).join('|');
+}
+function bindMergeDrag(card){
+  card.draggable=true;
+  card.addEventListener('dragstart',e=>{
+    card.classList.add('is-dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','merge');
+  });
+  card.addEventListener('dragend',()=>{card.classList.remove('is-dragging');syncMergeFromDom()});
+  card.addEventListener('dragover',e=>{
+    e.preventDefault();
+    const grid=card.parentElement,drag=grid.querySelector('.is-dragging');if(!drag||drag===card)return;
+    const r=card.getBoundingClientRect();
+    const before=e.clientX<r.left+r.width/2;
+    grid.insertBefore(drag,before?card:card.nextSibling);
+  });
+}
+function resetMergeOrder(){
+  if(!mergeOriginal.length)return;
+  replaceSelectedFiles(mergeOriginal);
+  workspace().dataset.mergeKey='';
+  refresh();
+}
+function bindWorkspaceActions(k){
+  workspace().querySelectorAll('[data-page-action]').forEach(b=>b.addEventListener('click',()=>{
+    const a=b.dataset.pageAction;
+    if(a==='clear'){selectedPages.clear();syncSelectionUi(k)}
+    if(a==='odd'||a==='even')selectPattern(a);
+    if(a==='reset-order')resetPageOrder();
+    if(a==='reset-merge')resetMergeOrder();
+  }));
+}
 async function renderPage(card,doc,myGen){
   if(card.dataset.rendered==='1')return;
   card.dataset.rendered='1';
@@ -176,6 +244,7 @@ async function loadSingle(k,file){
   if(myGen!==generation)return;
   currentDoc=doc;currentKey=key;
   w.innerHTML=headerHtml(k,doc.numPages,file)+'<div class="pdf-v52-grid"></div>';
+  bindWorkspaceActions(k);
   const grid=w.querySelector('.pdf-v52-grid');
   selectedPages.clear();
   if(k==='split')parseRanges(el('splitRange')?.value,doc.numPages).forEach(n=>selectedPages.add(n));
@@ -187,12 +256,21 @@ async function loadSingle(k,file){
   observeCards(doc,myGen);
 }
 async function renderMerge(list){
+  const setKey=mergeSetKey(list);
+  if(setKey!==mergeOriginalSetKey){mergeOriginal=[...list];mergeOriginalSetKey=setKey}
   const myGen=++generation,w=workspace();w.classList.remove('hidden');el('emptyPreview')?.classList.add('hidden');
-  w.innerHTML=`<div class="pdf-v52-head"><div><strong>${t('Thứ tự file khi gộp','Merge file order')}</strong><small>${t('Kéo file ở danh sách bên trên để đổi thứ tự. Thumbnail hiển thị trang đầu của từng PDF.','Drag files in the list above to change order. Each thumbnail shows the first PDF page.')}</small></div><div class="pdf-v52-meta"><span>${list.length} ${t('file','files')}</span></div></div><div class="pdf-v52-grid pdf-v52-files"></div>`;
+  w.dataset.mergeKey=list.map(sig).join('|');
+  w.innerHTML=`<div class="pdf-v52-head">
+    <div class="pdf-v57-headcopy"><strong>${t('Kéo thumbnail để đổi thứ tự gộp','Drag thumbnails to set merge order')}</strong><small>${t('Thứ tự nhìn thấy chính là thứ tự PDF đầu ra.','The visible order is the final PDF order.')}</small></div>
+    <div class="pdf-v57-headright"><div class="pdf-v52-meta"><span>${list.length} ${t('tệp','files')}</span></div>${toolbarHtml('merge')}</div>
+  </div><div class="pdf-v52-grid pdf-v52-files"></div>`;
+  bindWorkspaceActions('merge');
   const grid=w.querySelector('.pdf-v52-grid');
   for(let i=0;i<list.length;i++){
     const file=list[i],card=document.createElement('article');card.className='pdf-v52-page pdf-v52-file';
+    card._kohaFile=file;
     card.innerHTML=`<div class="pdf-v52-canvasbox"><div class="pdf-v52-skeleton"></div><canvas></canvas></div><footer><span title="${file.name.replace(/"/g,'&quot;')}">${i+1}. ${file.name}</span><b>${formatSize(file.size)}</b></footer>`;
+    bindMergeDrag(card);
     grid.appendChild(card);
     try{
       const doc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
@@ -218,12 +296,12 @@ async function refresh(){
     const key=sig(list[0]);
     if(currentKey===key&&currentDoc&&workspace().querySelector('.pdf-v52-grid')){
       const title=workspace().querySelector('.pdf-v52-head');
-      if(title)title.outerHTML=headerHtml(k,currentDoc.numPages,list[0]);
+      if(title){title.outerHTML=headerHtml(k,currentDoc.numPages,list[0]);bindWorkspaceActions(k)}
       return;
     }
     try{await loadSingle(k,list[0])}
     catch(err){
-      console.error('[PDF preview V52]',err);
+      console.error('[PDF preview V57]',err);
       const w=workspace();w.classList.remove('hidden');w.innerHTML='<div class="pdf-v52-error">'+t('Không thể tạo thumbnail cho PDF này. Công cụ xử lý vẫn có thể dùng bình thường.','Could not create thumbnails for this PDF. The processing tool can still be used.')+'</div>';
     }
   },80);
@@ -248,11 +326,11 @@ function bind(){
     if((PAGE_TOOLS.has(k)||k===MERGE_TOOL)&&list.length){
       const key=k===MERGE_TOOL?list.map(sig).join('|'):sig(list[0]);
       const old=k===MERGE_TOOL?workspace().dataset.mergeKey:currentKey;
-      if(k===MERGE_TOOL&&key!==old){workspace().dataset.mergeKey=key;refresh()}
-      else if(k!==MERGE_TOOL&&key!==currentKey)refresh();
+      if(key!==old)refresh();
     }
   },900);
   refresh();
 }
 window.addEventListener('load',bind);
 window.NLKH_PDFJS_VERSION='6.3.289';
+window.NLKH_PDF_PAGE_UX_V57=true;

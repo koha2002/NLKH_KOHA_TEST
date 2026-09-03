@@ -75,15 +75,109 @@ function addTools(){
     const a=s.querySelector('[value="splitsmart"]'); a?a.insertAdjacentElement('afterend',o):g.appendChild(o);
   }
 }
+const TOOL_GROUPS_V57={
+  organize:['Sắp xếp & trang','Organize & Pages'],
+  improve:['Tối ưu & nhận dạng','Optimize & OCR'],
+  edit:['Chỉnh sửa & đánh dấu','Edit & Mark'],
+  topdf:['Chuyển sang PDF','Convert to PDF'],
+  frompdf:['Xuất từ PDF','Export from PDF'],
+  security:['Bảo mật PDF','PDF Security'],
+  images:['Công cụ hình ảnh','Image Tools']
+};
+const TOOL_META_V57={
+  merge:{g:'organize',vi:'Gộp PDF',en:'Merge PDF',k:'gop noi merge combine join'},
+  split:{g:'organize',vi:'Tách PDF',en:'Split PDF',k:'tach cat chia split ranges'},
+  splitsmart:{g:'organize',vi:'Tách PDF thông minh bằng AI',en:'Smart Split PDF with AI',k:'tach ai smart hoa don hop dong chuong invoice contract'},
+  deletepages:{g:'organize',vi:'Xóa trang PDF',en:'Delete PDF Pages',k:'xoa trang delete remove page'},
+  reorderpages:{g:'organize',vi:'Sắp xếp trang PDF',en:'Reorder PDF Pages',k:'sap xep trang thu tu reorder organize page'},
+  rotate:{g:'organize',vi:'Xoay PDF',en:'Rotate PDF',k:'xoay rotate page'},
+  compress:{g:'improve',vi:'Nén PDF',en:'Compress PDF',k:'nen giam dung luong compress size zip'},
+  pdfocr:{g:'improve',vi:'OCR PDF',en:'OCR PDF',k:'ocr scan nhan dang chu searchable text'},
+  repair:{g:'improve',vi:'Sửa PDF',en:'Repair PDF',k:'sua hong repair corrupt fix'},
+  pdfa:{g:'improve',vi:'PDF → PDF/A',en:'PDF → PDF/A',k:'pdfa luu tru archive long term'},
+  watermark:{g:'edit',vi:'Đóng dấu PDF',en:'Watermark PDF',k:'dong dau watermark ban quyen text image'},
+  pagenumber:{g:'edit',vi:'Đánh số trang',en:'Page Numbers',k:'danh so trang number page'},
+  wordpdf:{g:'topdf',vi:'Word → PDF',en:'Word → PDF',k:'word doc docx office pdf'},
+  powerpointpdf:{g:'topdf',vi:'PowerPoint → PDF',en:'PowerPoint → PDF',k:'powerpoint ppt pptx office pdf'},
+  excelpdf:{g:'topdf',vi:'Excel → PDF',en:'Excel → PDF',k:'excel xls xlsx office pdf'},
+  imagepdf:{g:'topdf',vi:'Ảnh → PDF',en:'Image → PDF',k:'anh hinh jpg png image pdf'},
+  pdfjpg:{g:'frompdf',vi:'PDF → JPG',en:'PDF → JPG',k:'pdf jpg jpeg image export'},
+  extract:{g:'frompdf',vi:'Trích xuất văn bản',en:'Extract Text',k:'trich xuat van ban text extract data'},
+  protect:{g:'security',vi:'Bảo vệ PDF',en:'Protect PDF',k:'bao ve mat khau password encrypt security'},
+  unlock:{g:'security',vi:'Mở khóa PDF',en:'Unlock PDF',k:'mo khoa mat khau password unlock decrypt'},
+  compressimage:{g:'images',vi:'Nén ảnh',en:'Compress Image',k:'nen anh image compress'},
+  resizeimage:{g:'images',vi:'Đổi kích thước ảnh',en:'Resize Image',k:'doi kich thuoc resize image width height'},
+  cropimage:{g:'images',vi:'Cắt ảnh',en:'Crop Image',k:'cat anh crop image'},
+  rotateimage:{g:'images',vi:'Xoay ảnh',en:'Rotate Image',k:'xoay anh rotate image'},
+  convertimage:{g:'images',vi:'Đổi định dạng ảnh',en:'Convert Image',k:'doi dinh dang convert jpg png gif heic'},
+  watermarkimage:{g:'images',vi:'Đóng dấu ảnh',en:'Watermark Image',k:'dong dau anh watermark image'},
+  removebackgroundimage:{g:'images',vi:'Xóa nền ảnh',en:'Remove Image Background',k:'xoa nen background remove image'}
+};
+function normalizeToolQueryV57(v){
+  return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/\s+/g,' ').trim();
+}
+function chooseToolV57(id){
+  const s=el('apiTool');if(!s||!s.querySelector('[value="'+id+'"]'))return;
+  s.value=id;s.dispatchEvent(new Event('change',{bubbles:true}));
+  const q=el('toolSearchV57'),r=el('toolSearchResultsV57');if(q)q.value='';if(r){r.classList.add('hidden');r.innerHTML=''}
+}
+function renderToolFinderV57(){
+  const q=el('toolSearchV57'),box=el('toolSearchResultsV57');if(!q||!box)return;
+  const term=normalizeToolQueryV57(q.value);
+  q.setAttribute('aria-expanded',term?'true':'false');
+  if(!term){box.classList.add('hidden');box.innerHTML='';return}
+  const matches=Object.entries(TOOL_META_V57).map(([id,m])=>{
+    const hay=normalizeToolQueryV57([m.vi,m.en,m.k,TOOL_GROUPS_V57[m.g][0],TOOL_GROUPS_V57[m.g][1]].join(' '));
+    let score=hay.includes(term)?1:0;
+    const name=normalizeToolQueryV57(en()?m.en:m.vi);
+    if(name.startsWith(term))score+=3;else if(name.includes(term))score+=2;
+    return {id,m,score};
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||(en()?a.m.en.localeCompare(b.m.en):a.m.vi.localeCompare(b.m.vi))).slice(0,8);
+  if(!matches.length){box.innerHTML='<div class="tool-finder-v57__empty">'+t('Không tìm thấy công cụ phù hợp.','No matching tool found.')+'</div>';box.classList.remove('hidden');return}
+  box.innerHTML=matches.map((x,i)=>'<button type="button" role="option" data-find-tool="'+x.id+'" data-result-index="'+i+'"><span><strong>'+(en()?x.m.en:x.m.vi)+'</strong><small>'+TOOL_GROUPS_V57[x.m.g][en()?1:0]+'</small></span><i>→</i></button>').join('');
+  box.classList.remove('hidden');
+  box.querySelectorAll('[data-find-tool]').forEach(b=>b.addEventListener('click',()=>chooseToolV57(b.dataset.findTool)));
+}
+function ensureToolFinderV57(){
+  const q=el('toolSearchV57');if(!q||q.dataset.boundV57==='1')return;
+  q.dataset.boundV57='1';
+  q.addEventListener('input',renderToolFinderV57);
+  q.addEventListener('focus',renderToolFinderV57);
+  q.addEventListener('keydown',e=>{
+    const box=el('toolSearchResultsV57'),items=[...box.querySelectorAll('[data-find-tool]')];
+    if(e.key==='Escape'){box.classList.add('hidden');q.blur();return}
+    if(!items.length)return;
+    const active=document.activeElement?.dataset?.resultIndex;
+    let i=Number.isFinite(Number(active))?Number(active):-1;
+    if(e.key==='ArrowDown'){e.preventDefault();items[Math.min(items.length-1,i+1)].focus()}
+    if(e.key==='ArrowUp'){e.preventDefault();items[Math.max(0,i<=0?0:i-1)].focus()}
+    if(e.key==='Enter'&&items[0]){e.preventDefault();chooseToolV57(items[0].dataset.findTool)}
+  });
+  const box=el('toolSearchResultsV57');
+  if(box)box.addEventListener('keydown',e=>{
+    const items=[...box.querySelectorAll('[data-find-tool]')],i=items.indexOf(document.activeElement);
+    if(e.key==='ArrowDown'){e.preventDefault();items[Math.min(items.length-1,i+1)]?.focus()}
+    if(e.key==='ArrowUp'){e.preventDefault();if(i<=0)q.focus();else items[i-1]?.focus()}
+    if(e.key==='Escape'){box.classList.add('hidden');q.focus()}
+    if(e.key==='Enter'&&document.activeElement?.dataset?.findTool)chooseToolV57(document.activeElement.dataset.findTool)
+  });
+  document.addEventListener('click',e=>{if(!e.target.closest?.('#toolFinderV57'))el('toolSearchResultsV57')?.classList.add('hidden')});
+  document.addEventListener('keydown',e=>{
+    if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){e.preventDefault();q.focus()}
+  });
+}
 function localizeToolNames(){
   const s=el('apiTool'); if(!s)return;
-  const labels={
-    splitsmart:['Tách PDF thông minh bằng AI','Smart Split PDF with AI'],
-    pdfocr:['OCR PDF','OCR PDF']
-  };
-  Object.entries(labels).forEach(([k,v])=>{const o=s.querySelector('[value="'+k+'"]');if(o)o.textContent=t(v[0],v[1])});
-  const title=el('selectedToolName'),o=s.options[s.selectedIndex];
-  if(title&&o)title.textContent=o.textContent;
+  Object.entries(TOOL_META_V57).forEach(([id,m])=>{const o=s.querySelector('[value="'+id+'"]');if(o)o.textContent=en()?m.en:m.vi});
+  s.querySelectorAll('optgroup[data-group]').forEach(g=>{const v=TOOL_GROUPS_V57[g.dataset.group];if(v)g.label=v[en()?1:0]});
+  document.querySelectorAll('.quick-tool[data-tool]').forEach(b=>{const m=TOOL_META_V57[b.dataset.tool],strong=b.querySelector('strong');if(m&&strong)strong.textContent=en()?m.en:m.vi});
+  const title=el('selectedToolName'),o=s.options[s.selectedIndex];if(title&&o)title.textContent=o.textContent;
+  const finderLabel=el('toolFinderLabelV57');if(finderLabel)finderLabel.textContent=t('Tìm nhanh công cụ','Find a tool');
+  const q=el('toolSearchV57');if(q)q.placeholder=t('Gõ: gộp, OCR, Word, mật khẩu...','Try: merge, OCR, Word, password...');
+  const browse=document.querySelector('.select-label[for="apiTool"]');if(browse)browse.textContent=t('Duyệt theo nhóm','Browse by category');
+  const intro=document.querySelector('.studio-intro');if(intro)intro.textContent=t('27 công cụ được sắp theo việc bạn muốn làm: trang, tối ưu, chỉnh sửa, chuyển đổi, bảo mật và hình ảnh.','27 tools are organized by what you want to do: pages, optimize, edit, convert, secure, and images.');
+  const metric=document.querySelector('.studio-metrics div:nth-child(2) span');if(metric)metric.textContent=t('Nhóm tác vụ rõ ràng','Clear task groups');
+  ensureToolFinderV57();renderToolFinderV57();
 }
 function placeMode(){
   const s=el('apiTool'),m=document.querySelector('.processing-mode');
