@@ -6,7 +6,7 @@ const PUBLIC_KEY='project_public_b518756fab3a8e6942a9330c23a7859a_YUAga5611529e2
 const CAP={
   compress:{offline:false,online:true},
   merge:{offline:true,online:true},
-  split:{offline:false,online:true},
+  split:{offline:true,online:true},
   splitsmart:{offline:false,online:true},
   pdfocr:{offline:false,online:true},
   unlock:{offline:false,online:true},
@@ -154,15 +154,16 @@ function optionsHtml(k){
   ],'recommended'));
   if(k==='merge')return note('Thêm nhiều PDF rồi kéo sắp xếp ở bảng bên phải. Không có setting thừa.','Add multiple PDFs and drag to reorder them in the right panel. No unnecessary settings.');
   if(k==='split'){
-    const sm=el('splitMode')?.value||'ranges';
-    return field(t('Kiểu tách','Split mode'),select('splitMode',[
-      ['ranges',t('Theo khoảng trang','Page ranges')],
-      ['fixed_range',t('Mỗi N trang','Every N pages')],
-      ['filesize',t('Theo dung lượng tối đa','Maximum file size')]
-    ],sm))+
+    const splitModes=m==='offline'
+      ? [['ranges',t('Theo khoảng trang','Page ranges')],['fixed_range',t('Mỗi N trang','Every N pages')]]
+      : [['ranges',t('Theo khoảng trang','Page ranges')],['fixed_range',t('Mỗi N trang','Every N pages')],['filesize',t('Theo dung lượng tối đa','Maximum file size')]];
+    let sm=el('splitMode')?.value||'ranges';
+    if(!splitModes.some(x=>x[0]===sm))sm='ranges';
+    return field(t('Kiểu tách','Split mode'),select('splitMode',splitModes,sm))+
     (sm==='ranges'?field(t('Khoảng trang','Page ranges'),input('splitRange','text','', 'placeholder="1-3,5,8-10"'),t('Mỗi khoảng tạo thành một PDF riêng.','Each range becomes a separate PDF.')):'')+
     (sm==='fixed_range'?field(t('Số trang mỗi file','Pages per file'),input('splitFixedRange','number','1','min="1" step="1"')):'')+
-    (sm==='filesize'?field(t('Dung lượng tối đa','Maximum file size'),input('splitFilesize','number','10','min="1" step="1"'),t('MB trên mỗi file đầu ra.','MB per output file.')):'');
+    (sm==='filesize'?field(t('Dung lượng tối đa','Maximum file size'),input('splitFilesize','number','10','min="1" step="1"'),t('MB trên mỗi file đầu ra.','MB per output file.')):'')+
+    (m==='offline'?note('Offline tạo nhiều PDF thật ngay trên thiết bị. Chế độ chia theo dung lượng chỉ có ở Online.','Offline creates real multiple PDFs on-device. Maximum-file-size splitting is available Online only.'):'');
   }
   if(k==='unlock')return field(t('Mật khẩu hiện tại','Current password'),input('passwordInput','password','','autocomplete="current-password"'))+
     checkbox('showPassword',t('Hiện mật khẩu','Show password'))+

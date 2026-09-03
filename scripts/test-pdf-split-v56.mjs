@@ -1,0 +1,18 @@
+import fs from "node:fs";
+const idx=fs.readFileSync("public/tool-modules/pdf/index.html","utf8");
+const off=fs.readFileSync("public/tool-modules/pdf/offline-v2.js","utf8");
+const ui=fs.readFileSync("public/tool-modules/pdf/pdf-ui-v50.js","utf8");
+const ok=(v,m)=>{if(!v){console.error("FAIL:",m);process.exitCode=1}else console.log("PASS:",m)};
+ok(idx.includes("offline-v2.js?v=56"),"Offline runtime cache bumped");
+ok(idx.includes("pdf-ui-v50.js?v=56"),"Central UI cache bumped");
+ok(/split:\{offline:true,online:true\}/.test(ui),"Split capability is Offline + Online");
+ok(ui.includes("Maximum-file-size splitting is available Online only."),"Split UI explains Online-only file-size mode");
+ok(off.includes("parseSplitGroups"),"Range groups are parsed independently");
+ok(off.includes("splitMode==='fixed_range'"),"Every-N-pages Offline split supported");
+ok(off.includes("Maximum-file-size splitting is Online-only."),"Offline file-size split is explicitly rejected");
+ok(off.includes("showResults(await splitPdf(files[0]))"),"Offline split returns multiple results");
+ok(off.includes("offlineMultiResultsV56"),"Individual result download list exists");
+ok(off.includes("results.push({blob:new Blob"),"Each split group becomes its own PDF blob");
+ok(!off.includes("-selected-pages-offline"),"Old single selected-pages behavior removed");
+if(process.exitCode)process.exit(process.exitCode);
+console.log("PDF Split V56 scoped checks passed.");
