@@ -176,3 +176,24 @@
   .node strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   .icon { width: 30px; height: 30px; flex-basis: 30px; }
 }
+/* KOHA V20.10: keep the Home orbit moving even when global reduced-motion clamps animations. */
+@media (prefers-reduced-motion: reduce) {
+  .ring {
+    animation-duration: var(--orbit-duration) !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
+
+  .node,
+  .dot {
+    animation-duration: var(--orbit-duration) !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
+
+  .coreHalo {
+    animation-duration: 3.6s !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
+}
