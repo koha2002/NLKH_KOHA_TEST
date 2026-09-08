@@ -71,8 +71,8 @@ function setInput(id,value){
 function managedFields(k){
   const del=el('deletePageRange')?.closest('.nlkh-field');
   const reo=el('reorderPageOrder')?.closest('.nlkh-field');
-  if(del)del.classList.toggle('pdf-v52-hidden-field',k==='deletepages');
-  if(reo)reo.classList.toggle('pdf-v52-hidden-field',k==='reorderpages');
+  if(del)del.classList.remove('pdf-v52-hidden-field');
+  if(reo)reo.classList.remove('pdf-v52-hidden-field');
 }
 function actionButton(action,label){return `<button type="button" data-page-action="${action}">${label}</button>`}
 function toolbarHtml(k){
@@ -116,15 +116,26 @@ function cardShell(pageNum,k){
   if(k==='reorderpages')bindPageDrag(c);
   return c;
 }
-function syncSelectionUi(k){
+function paintSelectionUi(k){
   document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach(c=>{
     const n=Number(c.dataset.page),active=selectedPages.has(n);
     c.classList.toggle(k==='deletepages'?'is-delete':'is-selected',active);
     const s=c.querySelector('.pdf-v52-state');
     if(s)s.textContent=active?(k==='deletepages'?t('XÓA','DELETE'):t('ĐÃ CHỌN','SELECTED')):'';
   });
+}
+function writeSelectionInput(k){
   if(k==='deletepages')setInput('deletePageRange',compressPages(selectedPages));
   if(k==='split')setInput('splitRange',compressPages(selectedPages));
+}
+function syncSelectionUi(k,writeBack=true){
+  paintSelectionUi(k);
+  if(writeBack)writeSelectionInput(k);
+}
+function syncSelectionFromTypedInput(k,value){
+  if(!currentDoc)return;
+  selectedPages=new Set(parseRanges(value,currentDoc.numPages));
+  paintSelectionUi(k);
 }
 function selectPattern(kind){
   if(!currentDoc)return;
@@ -154,6 +165,37 @@ function syncReorderFromDom(){
   document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach((c,i)=>{
     const state=c.querySelector('.pdf-v52-state');
     if(state)state.textContent=`${i+1}`;
+  });
+}
+function parseOrderInput(text,total){
+  const out=[];
+  String(text||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(part=>{
+    if(part.endsWith('-'))return;
+    if(part.includes('-')){
+      const bits=part.split('-');
+      if(bits.length!==2)return;
+      const a=Number(bits[0]),b=Number(bits[1]);
+      if(!a||!b)return;
+      const step=a<=b?1:-1;
+      for(let n=a;step>0?n<=b:n>=b;n+=step)if(n>=1&&n<=total&&!out.includes(n))out.push(n);
+    }else{
+      const n=Number(part);if(n>=1&&n<=total&&!out.includes(n))out.push(n);
+    }
+  });
+  return out;
+}
+function applyTypedReorder(value){
+  if(!currentDoc)return;
+  const first=parseOrderInput(value,currentDoc.numPages);
+  if(!first.length)return;
+  const seen=new Set(first);
+  const order=[...first,...Array.from({length:currentDoc.numPages},(_,i)=>i+1).filter(n=>!seen.has(n))];
+  const grid=workspace().querySelector('.pdf-v52-grid');if(!grid)return;
+  const cards=new Map([...grid.querySelectorAll('.pdf-v52-page:not(.pdf-v52-file)')].map(c=>[Number(c.dataset.page),c]));
+  order.forEach(n=>{const c=cards.get(n);if(c)grid.appendChild(c)});
+  reorderPages=order;
+  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach((c,i)=>{
+    const state=c.querySelector('.pdf-v52-state');if(state)state.textContent=`${i+1}`;
   });
 }
 function resetPageOrder(){
@@ -251,7 +293,7 @@ async function loadSingle(k,file){
   if(k==='deletepages')parseRanges(el('deletePageRange')?.value,doc.numPages).forEach(n=>selectedPages.add(n));
   reorderPages=Array.from({length:doc.numPages},(_,i)=>i+1);
   for(let n=1;n<=doc.numPages;n++)grid.appendChild(cardShell(n,k));
-  if(k==='split'||k==='deletepages')syncSelectionUi(k);
+  if(k==='split'||k==='deletepages')syncSelectionUi(k,false);
   if(k==='reorderpages')syncReorderFromDom();
   observeCards(doc,myGen);
 }
@@ -310,8 +352,25 @@ function bind(){
   el('fileInput')?.addEventListener('change',()=>setTimeout(refresh,40));
   el('apiTool')?.addEventListener('change',()=>{currentKey='';currentDoc=null;setTimeout(refresh,80)});
   document.addEventListener('input',e=>{
-    if(e.target?.id==='splitRange'&&currentDoc&&tool()==='split'){
-      selectedPages=new Set(parseRanges(e.target.value,currentDoc.numPages));syncSelectionUi('split');
+    if(!currentDoc)return;
+    if(e.target?.id==='splitRange'&&tool()==='split'){
+      syncSelectionFromTypedInput('split',e.target.value);
+      return;
+    }
+    if(e.target?.id==='deletePageRange'&&tool()==='deletepages'){
+      syncSelectionFromTypedInput('deletepages',e.target.value);
+      return;
+    }
+  });
+  document.addEventListener('change',e=>{
+    if(e.target?.id==='reorderPageOrder'&&currentDoc&&tool()==='reorderpages'){
+      applyTypedReorder(e.target.value);
+    }
+  });
+  document.addEventListener('keydown',e=>{
+    if(e.target?.id==='reorderPageOrder'&&e.key==='Enter'&&currentDoc&&tool()==='reorderpages'){
+      e.preventDefault();
+      applyTypedReorder(e.target.value);
     }
   });
   document.addEventListener('click',e=>{
