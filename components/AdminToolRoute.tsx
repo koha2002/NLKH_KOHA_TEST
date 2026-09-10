@@ -151,7 +151,11 @@ export function AdminToolRoute({
   const rawSrc = tool.hasInlineHtml
     ? `/tool-modules/_admin/${tool.slug}/index.html`
     : `/tool-modules/${tool.slug}/index.html`;
-  const src = `${rawSrc}?lang=${encodeURIComponent(language)}`;
+  // PDF Studio keeps File objects, selected tool, previews and task settings in iframe memory.
+  // ToolFrame already synchronizes documentElement.lang in-place, so changing ?lang here
+  // would unnecessarily reload the PDF iframe and destroy that session state.
+  const src =
+    tool.slug === "pdf" ? rawSrc : `${rawSrc}?lang=${encodeURIComponent(language)}`;
 
   return (
     <main>

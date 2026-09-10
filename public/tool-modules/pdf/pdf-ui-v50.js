@@ -400,7 +400,7 @@ function optionsHtml(k){
 }
 function processLabel(k){
   const m={
-    compress:['Nén PDF','Compress PDF'],merge:['Gộp PDF','Merge PDF'],split:['Tách PDF','Split PDF'],
+    compress:['Nén PDF','Compress PDF'],merge:['Gộp PDF','Merge PDF'],split:['Tách PDF','Split PDF'],tilepages:['Chia nhỏ trang','Tile PDF pages'],
     splitsmart:['Phân tích & tách PDF','Analyze & split PDF'],pdfocr:['OCR PDF','OCR PDF'],
     unlock:['Mở khóa PDF','Unlock PDF'],protect:['Bảo vệ PDF','Protect PDF'],rotate:['Xoay PDF','Rotate PDF'],
     watermark:['Đóng dấu PDF','Watermark PDF'],pdfa:['Chuyển sang PDF/A','Convert to PDF/A'],validatepdfa:['Kiểm tra PDF/A','Validate PDF/A'],
@@ -450,6 +450,31 @@ function bindOptions(k){
     n.addEventListener('change',()=>{if(typeof window.updateImagePreview==='function')try{window.updateImagePreview()}catch(_){}});
   });
 }
+function captureOptionStateV63(){
+  const state=[];
+  document.querySelectorAll('#toolOptions input,#toolOptions select,#toolOptions textarea').forEach((n,i)=>{
+    if(n.type==='file')return;
+    const key=n.id?`id:${n.id}`:(n.name?`name:${n.name}|value:${n.value}`:`index:${i}`);
+    state.push({key,value:n.value,checked:'checked'in n?n.checked:null});
+  });
+  return state;
+}
+function restoreOptionStateV63(state){
+  if(!Array.isArray(state))return;
+  const controls=[...document.querySelectorAll('#toolOptions input,#toolOptions select,#toolOptions textarea')];
+  state.forEach(s=>{
+    let n=null;
+    if(s.key.startsWith('id:'))n=document.getElementById(s.key.slice(3));
+    else if(s.key.startsWith('name:')){
+      const body=s.key.slice(5),cut=body.indexOf('|value:'),name=cut>=0?body.slice(0,cut):body,value=cut>=0?body.slice(cut+7):'';
+      n=controls.find(x=>x.name===name&&x.value===value)||null;
+    }else if(s.key.startsWith('index:'))n=controls[Number(s.key.slice(6))]||null;
+    if(!n||n.type==='file')return;
+    if(s.checked!==null&&'checked'in n)n.checked=s.checked;
+    if(!['checkbox','radio'].includes(n.type))n.value=s.value;
+  });
+  if(tool()==='htmlpdf')syncProcessReadyV59();
+}
 function renderOptions(k){
   if(PROTECTED_UI.has(k))return;
   const box=el('toolOptions'); if(!box)return;
@@ -467,14 +492,18 @@ function resetFilesOnly(){
 function sync(reason=''){
   if(renderQueued)return; renderQueued=true;
   setTimeout(()=>{
-    renderQueued=false; addTools();placeMode();localizeToolNames();
+    renderQueued=false;
+    const preserved=reason==='lang'?captureOptionStateV63():null;
+    addTools();placeMode();localizeToolNames();
     const k=tool(),changed=k!==lastTool;
     if(changed&&lastTool)resetFilesOnly();
     lastTool=k;
     renderCapability(changed);
     applyFileConfig(k);
     const txt=el('processButtonText'); if(txt)txt.textContent=processLabel(k);
-    renderOptions(k);
+    const ocrOwnsLang=reason==='lang'&&k==='pdfocr';
+    if(!ocrOwnsLang)renderOptions(k);
+    if(preserved&&!ocrOwnsLang)restoreOptionStateV63(preserved);
     localizeToolNames();
   },0);
 }
@@ -835,7 +864,7 @@ function isOcr(){return $('apiTool')?.value==='pdfocr'}
 function selected(){return new Set(Array.from(document.querySelectorAll('input[name="ocrLang"]:checked')).map(x=>x.value))}
 function setSelected(codes){
   const wanted=new Set(codes);
-  document.querySelectorAll('#ocrLangGridV53 input[name="ocrLang"]').forEach(x=>x.checked=wanted.has(x.value));
+  document.querySelectorAll('#ocrLangGridV53 input[name="ocrLang"],#ocrLangMoreGridV53 input[name="ocrLang"]').forEach(x=>x.checked=wanted.has(x.value));
   updateCount();
 }
 function updateCount(){
@@ -844,9 +873,16 @@ function updateCount(){
 }
 function filter(){
   const q=String($('ocrLangSearchV53')?.value||'').trim().toLowerCase();
-  document.querySelectorAll('#ocrLangGridV53 .ocr-v53-lang').forEach(item=>{
-    item.hidden=!!q&&!item.dataset.search.includes(q);
+  let moreMatch=false;
+  document.querySelectorAll('#ocrLangGridV53 .ocr-v53-lang,#ocrLangMoreGridV53 .ocr-v53-lang').forEach(item=>{
+    const match=!q||item.dataset.search.includes(q);
+    item.hidden=!match;
+    if(match&&item.closest('#ocrLangMoreGridV53'))moreMatch=true;
   });
+  if(q&&moreMatch){
+    $('ocrMoreV53')?.classList.remove('hidden');
+    const b=$('ocrMoreToggleV53');if(b)b.innerHTML=`${tx('Thu gọn','Show less')} <span>↑</span>`;
+  }
 }
 function render(){
   if(!isOcr())return;

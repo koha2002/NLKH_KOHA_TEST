@@ -2,7 +2,7 @@ import * as pdfjsLib from './vendor/pdf.mjs';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc=new URL('./vendor/pdf.worker.mjs',import.meta.url).href;
 
-const PAGE_TOOLS=new Set(['split','deletepages','reorderpages','rotate','pdfjpg']);
+const PAGE_TOOLS=new Set(['split','tilepages','deletepages','reorderpages','rotate','pdfjpg']);
 const MERGE_TOOL='merge';
 let generation=0;
 let currentDoc=null;
@@ -79,6 +79,7 @@ function toolbarHtml(k){
   if(k==='deletepages')return `<div class="pdf-v57-actions">${actionButton('odd',t('Chọn trang lẻ','Select odd'))}${actionButton('even',t('Chọn trang chẵn','Select even'))}${actionButton('clear',t('Bỏ chọn','Clear'))}</div>`;
   if(k==='reorderpages')return `<div class="pdf-v57-actions">${actionButton('reset-order',t('Khôi phục thứ tự','Reset order'))}</div>`;
   if(k==='split')return `<div class="pdf-v57-actions">${actionButton('clear',t('Bỏ chọn nhanh','Clear selection'))}</div>`;
+  if(k==='tilepages')return `<div class="pdf-v57-actions">${actionButton('tile-all',t('Tất cả trang','All pages'))}${actionButton('tile-clear',t('Bỏ chọn','Clear'))}</div>`;
   if(k==='merge')return `<div class="pdf-v57-actions">${actionButton('reset-merge',t('Khôi phục thứ tự file','Reset file order'))}</div>`;
   return '';
 }
@@ -86,6 +87,8 @@ function headerHtml(k,count,file){
   const copy={
     split:[t('Chọn trang để tạo nhanh các khoảng tách','Select pages to quickly build split ranges'),
            t('Click thumbnail để thêm/bỏ trang; các trang liền nhau tự gộp thành một khoảng.','Click thumbnails to add/remove pages; consecutive pages become one range.')],
+    tilepages:[t('Xem trước và chọn trang cần chia nhỏ','Preview and select pages to tile'),
+               t('Chọn “Tất cả trang” hoặc “Tùy chọn trang”. Ở chế độ tùy chọn, click thumbnail để chọn nhanh.','Choose “All pages” or “Custom pages”. In custom mode, click thumbnails for quick selection.')],
     deletepages:[t('Chọn trang cần xóa','Select pages to delete'),
                  t('Click thumbnail hoặc dùng chọn nhanh trang lẻ/chẵn.','Click thumbnails or use odd/even quick selection.')],
     reorderpages:[t('Kéo thả để sắp xếp trang','Drag to reorder pages'),
@@ -107,9 +110,12 @@ function cardShell(pageNum,k){
   c.draggable=k==='reorderpages';
   c.innerHTML=`<div class="pdf-v52-canvasbox"><div class="pdf-v52-skeleton"></div><canvas></canvas></div>
     <footer><span>${t('Trang','Page')} ${pageNum}</span><b class="pdf-v52-state"></b></footer>`;
-  if(k==='split'||k==='deletepages'){
+  if(k==='split'||k==='deletepages'||k==='tilepages'){
     c.addEventListener('click',()=>{
-      if(selectedPages.has(pageNum))selectedPages.delete(pageNum);else selectedPages.add(pageNum);
+      if(k==='tilepages'&&el('tilePageScopeV63')?.value==='all'){
+        selectedPages.clear();
+        selectedPages.add(pageNum);
+      }else if(selectedPages.has(pageNum))selectedPages.delete(pageNum);else selectedPages.add(pageNum);
       syncSelectionUi(k);
     });
   }
@@ -121,12 +127,53 @@ function paintSelectionUi(k){
     const n=Number(c.dataset.page),active=selectedPages.has(n);
     c.classList.toggle(k==='deletepages'?'is-delete':'is-selected',active);
     const s=c.querySelector('.pdf-v52-state');
-    if(s)s.textContent=active?(k==='deletepages'?t('XÓA','DELETE'):t('ĐÃ CHỌN','SELECTED')):'';
+    if(s)s.textContent=active?(k==='deletepages'?t('XÓA','DELETE'):k==='tilepages'?t('CHIA','TILE'):t('ĐÃ CHỌN','SELECTED')):'';
   });
+}
+function setTileCustomRange(value){
+  const scope=el('tilePageScopeV63');
+  if(scope&&scope.value!=='custom'){
+    scope.value='custom';
+    scope.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  setInput('tilePagesV62',value);
 }
 function writeSelectionInput(k){
   if(k==='deletepages')setInput('deletePageRange',compressPages(selectedPages));
   if(k==='split')setInput('splitRange',compressPages(selectedPages));
+  if(k==='tilepages'){
+    const value=compressPages(selectedPages);
+    setTileCustomRange(value);
+  }
+}
+function parseTileRanges(text,total){
+  const out=[];
+  String(text||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(part=>{
+    if(part.endsWith('-')){
+      const n=Number(part.slice(0,-1));if(n>=1&&n<=total)out.push(n);return;
+    }
+    if(part.includes('-')){
+      const bits=part.split('-');if(bits.length!==2)return;
+      const a=bits[0]==='end'?total:Number(bits[0]),b=bits[1]==='end'?total:Number(bits[1]);
+      if(!a||!b)return;
+      const step=a<=b?1:-1;
+      for(let n=a;step>0?n<=b:n>=b;n+=step)if(n>=1&&n<=total)out.push(n);
+    }else{
+      const n=part==='end'?total:Number(part);if(n>=1&&n<=total)out.push(n);
+    }
+  });
+  return [...new Set(out)];
+}
+function syncTileSelectionFromControls(){
+  if(!currentDoc||tool()!=='tilepages')return;
+  const scope=el('tilePageScopeV63')?.value||'all';
+  selectedPages.clear();
+  if(scope==='all'){
+    for(let n=1;n<=currentDoc.numPages;n++)selectedPages.add(n);
+  }else{
+    parseTileRanges(el('tilePagesV62')?.value||'',currentDoc.numPages).forEach(n=>selectedPages.add(n));
+  }
+  paintSelectionUi('tilepages');
 }
 function syncSelectionUi(k,writeBack=true){
   paintSelectionUi(k);
@@ -243,6 +290,11 @@ function bindWorkspaceActions(k){
     const a=b.dataset.pageAction;
     if(a==='clear'){selectedPages.clear();syncSelectionUi(k)}
     if(a==='odd'||a==='even')selectPattern(a);
+    if(a==='tile-all'){
+      const scope=el('tilePageScopeV63');if(scope){scope.value='all';scope.dispatchEvent(new Event('change',{bubbles:true}))}
+      syncTileSelectionFromControls();
+    }
+    if(a==='tile-clear'){selectedPages.clear();setTileCustomRange('');paintSelectionUi('tilepages')}
     if(a==='reset-order')resetPageOrder();
     if(a==='reset-merge')resetMergeOrder();
   }));
@@ -291,9 +343,14 @@ async function loadSingle(k,file){
   selectedPages.clear();
   if(k==='split')parseRanges(el('splitRange')?.value,doc.numPages).forEach(n=>selectedPages.add(n));
   if(k==='deletepages')parseRanges(el('deletePageRange')?.value,doc.numPages).forEach(n=>selectedPages.add(n));
+  if(k==='tilepages'){
+    const scope=el('tilePageScopeV63')?.value||'all';
+    if(scope==='all')for(let n=1;n<=doc.numPages;n++)selectedPages.add(n);
+    else parseTileRanges(el('tilePagesV62')?.value||'',doc.numPages).forEach(n=>selectedPages.add(n));
+  }
   reorderPages=Array.from({length:doc.numPages},(_,i)=>i+1);
   for(let n=1;n<=doc.numPages;n++)grid.appendChild(cardShell(n,k));
-  if(k==='split'||k==='deletepages')syncSelectionUi(k,false);
+  if(k==='split'||k==='deletepages'||k==='tilepages')syncSelectionUi(k,false);
   if(k==='reorderpages')syncReorderFromDom();
   observeCards(doc,myGen);
 }
@@ -339,6 +396,11 @@ async function refresh(){
     if(currentKey===key&&currentDoc&&workspace().querySelector('.pdf-v52-grid')){
       const title=workspace().querySelector('.pdf-v52-head');
       if(title){title.outerHTML=headerHtml(k,currentDoc.numPages,list[0]);bindWorkspaceActions(k)}
+      document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach(c=>{
+        const n=Number(c.dataset.page),label=c.querySelector('footer span');
+        if(label)label.textContent=`${t('Trang','Page')} ${n}`;
+      });
+      if(k==='split'||k==='deletepages'||k==='tilepages')paintSelectionUi(k);
       return;
     }
     try{await loadSingle(k,list[0])}
@@ -361,11 +423,22 @@ function bind(){
       syncSelectionFromTypedInput('deletepages',e.target.value);
       return;
     }
+    if(e.target?.id==='tilePagesV62'&&tool()==='tilepages'){
+      selectedPages=new Set(parseTileRanges(e.target.value,currentDoc.numPages));
+      paintSelectionUi('tilepages');
+      return;
+    }
   });
   document.addEventListener('change',e=>{
     if(e.target?.id==='reorderPageOrder'&&currentDoc&&tool()==='reorderpages'){
       applyTypedReorder(e.target.value);
     }
+    if(e.target?.id==='tilePageScopeV63'&&currentDoc&&tool()==='tilepages'){
+      setTimeout(syncTileSelectionFromControls,0);
+    }
+  });
+  document.addEventListener('tilepages:controls',()=>{
+    if(currentDoc&&tool()==='tilepages')setTimeout(syncTileSelectionFromControls,0);
   });
   document.addEventListener('keydown',e=>{
     if(e.target?.id==='reorderPageOrder'&&e.key==='Enter'&&currentDoc&&tool()==='reorderpages'){

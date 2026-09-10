@@ -43,7 +43,15 @@ const P={
 "Đã chọn tệp. Sẵn sàng để xử lý.":"File selected. Ready to process.",
 "Vui lòng chọn ít nhất một tệp.":"Please select at least one file.",
 "Xóa trang PDF (Offline)":"Delete PDF pages (Offline)",
-"Sắp xếp trang PDF (Offline)":"Reorder PDF pages (Offline)"
+"Sắp xếp trang PDF (Offline)":"Reorder PDF pages (Offline)",
+"Gõ: gộp, OCR, Word, mật khẩu...":"Try: merge, OCR, Word, password...",
+"Tìm nhanh công cụ":"Find a tool",
+"Duyệt theo nhóm":"Browse by category",
+"Chia nhỏ trang PDF":"Tile PDF Pages",
+"Trang cần chia":"Pages to tile",
+"Phạm vi trang":"Page range",
+"Tất cả trang":"All pages",
+"Tùy chọn trang":"Custom pages"
 };
 
 const original=new WeakMap(),attrs=new WeakMap();
@@ -62,6 +70,8 @@ function tr(s){
     .replace(/^Đang tải lên tệp (\d+)\/(\d+)/,"Uploading file $1/$2")
     .replace(/^Đã tải kết quả Offline\.$/,"Offline result downloaded.");
 }
+const DYNAMIC_ROOTS='#toolOptions,#pdfPageWorkspaceV52,#toolFinderV57,#apiTool,.quick-tools,#selectedToolName';
+
 function walk(n,useEn){
   if(n.nodeType===3){
     if(!original.has(n))original.set(n,n.nodeValue);
@@ -72,6 +82,7 @@ function walk(n,useEn){
   }
   if(n.nodeType!==1)return;
   const el=n;
+  if(el.matches?.(DYNAMIC_ROOTS))return;
   if(!attrs.has(el)){
     const o={};
     ["placeholder","title","aria-label"].forEach(a=>{if(el.hasAttribute(a))o[a]=el.getAttribute(a)});
