@@ -7,6 +7,7 @@ const CAP={
   compress:{offline:false,online:true},
   merge:{offline:true,online:true},
   split:{offline:true,online:true},
+  tilepages:{offline:true,online:false},
   splitsmart:{offline:false,online:true},
   pdfocr:{offline:false,online:true},
   unlock:{offline:false,online:true},
@@ -39,7 +40,7 @@ const CAP={
 
 const API_ALIAS={wordpdf:'officepdf',powerpointpdf:'officepdf',excelpdf:'officepdf'};
 const OFFICE=new Set(['wordpdf','powerpointpdf','excelpdf']);
-const PROTECTED_UI=new Set(['watermark','pagenumber','cropimage']);
+const PROTECTED_UI=new Set(['watermark','pagenumber','cropimage','tilepages']);
 let lastTool='';
 let renderQueued=false;
 
@@ -104,6 +105,7 @@ const TOOL_GROUPS_V57={
 const TOOL_META_V57={
   merge:{g:'organize',vi:'Gộp PDF',en:'Merge PDF',k:'gop noi merge combine join'},
   split:{g:'organize',vi:'Tách PDF',en:'Split PDF',k:'tach cat chia split ranges'},
+  tilepages:{g:'organize',vi:'Chia nhỏ trang PDF',en:'Tile PDF Pages',k:'chia nho trang tile poster a0 a1 a2 a3 a4 a5 a6 2 4 6 8 paper grid'},
   splitsmart:{g:'organize',vi:'Tách PDF thông minh bằng AI',en:'Smart Split PDF with AI',k:'tach ai smart hoa don hop dong chuong invoice contract'},
   deletepages:{g:'organize',vi:'Xóa trang PDF',en:'Delete PDF Pages',k:'xoa trang delete remove page'},
   reorderpages:{g:'organize',vi:'Sắp xếp trang PDF',en:'Reorder PDF Pages',k:'sap xep trang thu tu reorder organize page'},
@@ -196,7 +198,7 @@ function localizeToolNames(){
   const finderLabel=el('toolFinderLabelV57');if(finderLabel)finderLabel.textContent=t('Tìm nhanh công cụ','Find a tool');
   const q=el('toolSearchV57');if(q)q.placeholder=t('Gõ: gộp, OCR, Word, mật khẩu...','Try: merge, OCR, Word, password...');
   const browse=document.querySelector('.select-label[for="apiTool"]');if(browse)browse.textContent=t('Duyệt theo nhóm','Browse by category');
-  const intro=document.querySelector('.studio-intro');if(intro)intro.textContent=t('31 công cụ được sắp theo việc bạn muốn làm: trang, tối ưu, chỉnh sửa, chuyển đổi, bảo mật và hình ảnh.','31 tools are organized by what you want to do: pages, optimize, edit, convert, secure, and images.');
+  const intro=document.querySelector('.studio-intro');if(intro)intro.textContent=t('32 công cụ được sắp theo việc bạn muốn làm: trang, tối ưu, chỉnh sửa, chuyển đổi, bảo mật và hình ảnh.','32 tools are organized by what you want to do: pages, optimize, edit, convert, secure, and images.');
   const metric=document.querySelector('.studio-metrics div:nth-child(2) span');if(metric)metric.textContent=t('Nhóm tác vụ rõ ràng','Clear task groups');
   ensureToolFinderV57();renderToolFinderV57();
 }
