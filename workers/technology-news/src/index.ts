@@ -6924,6 +6924,39 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // NLKH_AUTH_V3_START_ENDPOINT
+    if (
+      url.pathname === "/auth/start" &&
+      request.method === "POST"
+    ) {
+      const state =
+        crypto.randomUUID();
+
+      await env.CONFIG.put(
+        `technology-news-auth-state-v3:${state}`,
+        "1",
+        {
+          expirationTtl: 300,
+        },
+      );
+
+      return Response.json(
+        {
+          ok: true,
+          state,
+          expiresIn: 300,
+        },
+        {
+          headers: {
+            "cache-control":
+              "no-store",
+            "Set-Cookie":
+              `nlkh_automation_auth_state=${encodeURIComponent(state)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=300`,
+          },
+        },
+      );
+    }
+
     if (url.pathname === "/session" && request.method === "POST") {
       // NLKH_AUTH_V1_FORM_SESSION
       // Giữ tương thích Bearer flow cũ, đồng thời hỗ trợ form POST
@@ -6948,71 +6981,12 @@ export default {
         request;
 
       if (formFlow) {
-        // NLKH_AUTH_V2_ORIGIN_FALLBACK
-        // Origin cụ thể phải nằm trong allow-list.
-        // Chỉ khi Origin thiếu/null mới fallback sang Referer của website.
-        const allowedOrigins =
-          new Set([
-            "https://nguyenlekhanhhoa.com",
-            "https://www.nguyenlekhanhhoa.com",
-          ]);
-
-        const origin =
-          String(
-            request.headers.get("Origin") ||
-            "",
-          ).trim();
-
-        const referer =
-          String(
-            request.headers.get("Referer") ||
-            "",
-          ).trim();
-
-        let refererOrigin =
+        // NLKH_AUTH_V3_ONE_TIME_STATE
+        // Không dựa vào Origin/Referer vì Chrome có thể gửi Origin=null
+        // và bỏ Referer ở navigation POST. Dùng state một lần + cookie
+        // do chính Automation tạo trước khi mở website.
+        let authState =
           "";
-
-        try {
-          refererOrigin =
-            referer
-              ? new URL(referer).origin
-              : "";
-        } catch {
-          refererOrigin = "";
-        }
-
-        const hasConcreteOrigin =
-          Boolean(origin) &&
-          origin !== "null";
-
-        const trustedSource =
-          hasConcreteOrigin
-            ? allowedOrigins.has(origin)
-            : allowedOrigins.has(
-                refererOrigin,
-              );
-
-        if (!trustedSource) {
-          const diagnostic =
-            [
-              "Forbidden auth source.",
-              `Origin=${origin || "(missing)"}`,
-              `RefererOrigin=${refererOrigin || "(missing)"}`,
-            ].join("\n");
-
-          return new Response(
-            diagnostic,
-            {
-              status: 403,
-              headers: {
-                "content-type":
-                  "text/plain; charset=UTF-8",
-                "cache-control":
-                  "no-store",
-              },
-            },
-          );
-        }
 
         try {
           const form =
@@ -7022,6 +6996,13 @@ export default {
             String(
               form.get(
                 "access_token",
+              ) || "",
+            ).trim();
+
+          authState =
+            String(
+              form.get(
+                "auth_state",
               ) || "",
             ).trim();
         } catch {
@@ -7039,9 +7020,12 @@ export default {
           );
         }
 
-        if (!accessToken) {
+        if (
+          !accessToken ||
+          !authState
+        ) {
           return new Response(
-            "Thiếu access token.",
+            "Thiếu access token hoặc auth state.",
             {
               status: 401,
               headers: {
@@ -7053,6 +7037,59 @@ export default {
             },
           );
         }
+
+        const cookieState =
+          getCookie(
+            request,
+            "nlkh_automation_auth_state",
+          );
+
+        if (
+          !cookieState ||
+          cookieState !== authState
+        ) {
+          return new Response(
+            "Phiên xác thực không khớp. Hãy đóng popup và bấm Xác thực Automation lại.",
+            {
+              status: 403,
+              headers: {
+                "content-type":
+                  "text/plain; charset=UTF-8",
+                "cache-control":
+                  "no-store",
+              },
+            },
+          );
+        }
+
+        const stateKey =
+          `technology-news-auth-state-v3:${authState}`;
+
+        const pendingState =
+          await env.CONFIG.get(
+            stateKey,
+          );
+
+        if (pendingState !== "1") {
+          return new Response(
+            "Phiên xác thực đã hết hạn hoặc đã được sử dụng.",
+            {
+              status: 403,
+              headers: {
+                "content-type":
+                  "text/plain; charset=UTF-8",
+                "cache-control":
+                  "no-store",
+              },
+            },
+          );
+        }
+
+        // One-time: consume trước khi xác minh identity.
+        // Nếu token lỗi, người dùng chỉ cần mở flow mới.
+        await env.CONFIG.delete(
+          stateKey,
+        );
 
         const headers =
           new Headers(
@@ -7984,12 +8021,61 @@ export default {
     return body;
   }
 
-  $("loginAdmin").addEventListener("click", () => {
-    window.open(
-      WEBSITE_ORIGIN + "/automation-auth",
+  $("loginAdmin").addEventListener("click", async () => {
+    // NLKH_AUTH_V3_START_STATE
+    // Mở popup đồng bộ trước để không bị popup blocker chặn trong lúc await.
+    const popup = window.open(
+      "about:blank",
       "nlkhAutomationAuth",
       "width=600,height=650"
     );
+
+    if (!popup) {
+      $("authStatus").textContent =
+        "Trình duyệt đang chặn popup. Hãy cho phép popup rồi thử lại.";
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "/auth/start",
+        {
+          method: "POST",
+          headers: {
+            "Accept": "application/json"
+          }
+        }
+      );
+
+      const body =
+        await response.json().catch(() => ({}));
+
+      if (
+        !response.ok ||
+        !body.state
+      ) {
+        throw new Error(
+          body.error ||
+          ("HTTP " + response.status)
+        );
+      }
+
+      popup.location.href =
+        WEBSITE_ORIGIN +
+        "/automation-auth?state=" +
+        encodeURIComponent(body.state);
+    } catch (error) {
+      try {
+        popup.close();
+      } catch {}
+
+      $("authStatus").textContent =
+        "Không tạo được phiên xác thực: " +
+        String(
+          error?.message ||
+          error
+        );
+    }
   });
 
   $("logoutAdmin").addEventListener("click", async () => {

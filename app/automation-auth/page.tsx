@@ -10,6 +10,25 @@ export default function AutomationAuthPage() {
 
   useEffect(() => {
     void (async () => {
+      // NLKH_AUTH_V3_STATE_HANDOFF
+      const authState =
+        new URLSearchParams(
+          window.location.search,
+        )
+          .get("state")
+          ?.trim() || "";
+
+      if (
+        !/^[0-9a-f-]{36}$/i.test(
+          authState,
+        )
+      ) {
+        setMessage(
+          "Phiên xác thực Automation không hợp lệ hoặc đã hết hạn. Hãy đóng cửa sổ và bấm Xác thực Automation lại.",
+        );
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -35,7 +54,13 @@ export default function AutomationAuthPage() {
       token.name = "access_token";
       token.value = session.access_token;
 
+      const state = document.createElement("input");
+      state.type = "hidden";
+      state.name = "auth_state";
+      state.value = authState;
+
       form.appendChild(token);
+      form.appendChild(state);
       document.body.appendChild(form);
       form.submit();
     })();
