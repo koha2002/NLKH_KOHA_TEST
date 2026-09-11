@@ -6948,18 +6948,60 @@ export default {
         request;
 
       if (formFlow) {
+        // NLKH_AUTH_V2_ORIGIN_FALLBACK
+        // Origin cụ thể phải nằm trong allow-list.
+        // Chỉ khi Origin thiếu/null mới fallback sang Referer của website.
+        const allowedOrigins =
+          new Set([
+            "https://nguyenlekhanhhoa.com",
+            "https://www.nguyenlekhanhhoa.com",
+          ]);
+
         const origin =
           String(
             request.headers.get("Origin") ||
             "",
-          );
+          ).trim();
 
-        if (
-          origin !==
-          "https://nguyenlekhanhhoa.com"
-        ) {
+        const referer =
+          String(
+            request.headers.get("Referer") ||
+            "",
+          ).trim();
+
+        let refererOrigin =
+          "";
+
+        try {
+          refererOrigin =
+            referer
+              ? new URL(referer).origin
+              : "";
+        } catch {
+          refererOrigin = "";
+        }
+
+        const hasConcreteOrigin =
+          Boolean(origin) &&
+          origin !== "null";
+
+        const trustedSource =
+          hasConcreteOrigin
+            ? allowedOrigins.has(origin)
+            : allowedOrigins.has(
+                refererOrigin,
+              );
+
+        if (!trustedSource) {
+          const diagnostic =
+            [
+              "Forbidden auth source.",
+              `Origin=${origin || "(missing)"}`,
+              `RefererOrigin=${refererOrigin || "(missing)"}`,
+            ].join("\n");
+
           return new Response(
-            "Forbidden",
+            diagnostic,
             {
               status: 403,
               headers: {
