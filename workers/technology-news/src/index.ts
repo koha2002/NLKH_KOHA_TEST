@@ -1963,10 +1963,47 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     );
   }
 
-  // Không tạo Draft rỗng hoặc gần như rỗng.
-  if (contentVi.length < 1200) {
+  // NLKH_V590_DRAFT_QUALITY_GATE
+  // Ngưỡng tăng theo lượng dữ liệu nguồn: nguồn càng giàu dữ kiện thì draft càng phải đầy đủ.
+  const sourceChars =
+    Math.max(
+      0,
+      Number(ai.source_chars || 0),
+    );
+
+  const minContentChars =
+    sourceChars >= 7000
+      ? 5000
+      : sourceChars >= 3500
+        ? 4000
+        : 3200;
+
+  const minSections =
+    sourceChars >= 3500
+      ? 4
+      : 3;
+
+  const viSections =
+    (contentVi.match(/^##\s+/gm) || []).length;
+
+  const enSections =
+    (contentEn.match(/^##\s+/gm) || []).length;
+
+  if (contentVi.length < minContentChars) {
     throw new Error(
-      `Không tạo được Draft: content_vi quá ngắn (${contentVi.length} ký tự; yêu cầu >= 1200)`,
+      `Không tạo được Draft: content_vi còn sơ sài (${contentVi.length} ký tự; yêu cầu >= ${minContentChars} theo nguồn ${sourceChars} ký tự)`,
+    );
+  }
+
+  if (contentEn.length < minContentChars) {
+    throw new Error(
+      `Không tạo được Draft: content_en còn sơ sài (${contentEn.length} ký tự; yêu cầu >= ${minContentChars})`,
+    );
+  }
+
+  if (viSections < minSections || enSections < minSections) {
+    throw new Error(
+      `Không tạo được Draft: cấu trúc bài chưa đủ sâu (VI ${viSections}, EN ${enSections}; yêu cầu >= ${minSections} heading ##)`,
     );
   }
 
@@ -3005,8 +3042,8 @@ async function validateImageCandidatesV582(
     candidates
   ) {
     if (
-      checked >= 5 ||
-      accepted.length >= 4
+      checked >= 8 ||
+      accepted.length >= 6
     ) {
       break;
     }
@@ -3126,13 +3163,15 @@ function inlineImageTarget(
     ).length;
 
   const wanted =
-    length >= 5200
-      ? 4
-      : length >= 2800
-        ? 3
-        : length >= 1200
-          ? 2
-          : 1;
+    length >= 7000
+      ? 5
+      : length >= 5000
+        ? 4
+        : length >= 3200
+          ? 3
+          : length >= 1800
+            ? 2
+            : 1;
 
   return Math.min(
     available,
@@ -4243,6 +4282,17 @@ async function generateDraft(
     );
   }
 
+  const sourceChars =
+    sourceArticle.trim().length;
+
+  // NLKH_V590_SOURCE_QUALITY_GATE
+  // Nguồn quá ngắn thường chỉ là teaser/anti-bot shell. Không cho AI kéo dài bằng suy diễn.
+  if (sourceChars < 1200) {
+    throw new Error(
+      `Nội dung nguồn quá ngắn để viết bài chất lượng (${sourceChars} ký tự; yêu cầu >= 1200).`,
+    );
+  }
+
   const editorialSource =
     await sourceForEditorial(
       env,
@@ -4365,6 +4415,9 @@ NGUYÊN TẮC BIÊN TẬP
 - Độ dài phải do lượng thông tin thực tế của nguồn quyết định.
 - Viết đủ dài để truyền tải trọn vẹn những dữ kiện có giá trị; không rút ngắn chỉ để đạt một độ dài cố định.
 - Đồng thời không kéo dài bằng lặp ý hoặc câu vô nghĩa.
+- MỨC CHẤT LƯỢNG: với nguồn có đủ dữ kiện, bài thông thường nên đạt khoảng 5.000–8.000 ký tự nội dung; đây là mục tiêu độ phủ thông tin, KHÔNG được bịa hoặc lặp để kéo dài.
+- Khi nguồn đủ dữ liệu, triển khai ít nhất 5 phần nội dung có ý nghĩa bằng heading ##; mỗi phần phải thêm dữ kiện/phân tích nguồn, không tạo heading rỗng.
+- Phải giải thích rõ: chuyện gì xảy ra/sản phẩm là gì, chi tiết kỹ thuật hoặc cơ chế, số liệu/thông số/benchmark nếu có, bối cảnh hoặc tác động thực tế, hạn chế/điểm cần lưu ý nếu nguồn nêu, và kết luận cụ thể.
 - Giữ các cấu hình, thông số, benchmark, giá, phương pháp thử, ưu/nhược điểm, bối cảnh và kết luận khi nguồn có.
 - Không bịa dữ kiện, con số, trích dẫn hoặc thử nghiệm.
 - Không sao chép nguyên văn các đoạn dài.
@@ -4409,6 +4462,9 @@ EDITORIAL RULES
 - Article length must be determined by the amount of meaningful source information.
 - Write as much as needed to preserve useful source-supported detail; do not shorten merely to hit an arbitrary length.
 - Do not pad or repeat ideas.
+- QUALITY TARGET: when the source contains enough facts, a normal article should usually reach about 5,000–8,000 characters of substantive content. This is an information-coverage target; NEVER invent or repeat material to reach it.
+- When source depth allows, use at least 5 meaningful ## sections. Every section must add source-supported facts or analysis; never create empty filler headings.
+- Clearly cover what happened/what the product is, technical mechanism or details, numbers/specifications/benchmarks when present, practical context or impact, limitations/caveats when the source provides them, and a concrete conclusion.
 - Preserve specifications, benchmarks, pricing, test methodology, strengths, weaknesses, context and conclusions when supported by the source.
 - Never invent facts, numbers, quotes or testing.
 - Rewrite editorially instead of copying long passages.
@@ -4450,8 +4506,8 @@ ${editorialSource}
               role: "system",
               content:
                 vi
-                  ? "NLKH_V541_LANGUAGE_RULES: Biên tập chính xác, đầy đủ, không bịa, không ép độ dài bài theo quota. Toàn bộ bản VI phải là tiếng Việt tự nhiên: tiêu đề mục, đoạn văn, bảng, nhãn, chú thích ảnh và kết luận đều bằng tiếng Việt; chỉ giữ nguyên tên riêng, thương hiệu, model và viết tắt kỹ thuật bắt buộc. Không để câu giải thích hoặc heading tiếng Anh trong content_vi. Trả đúng marker text."
-                  : "NLKH_V541_LANGUAGE_RULES: Edit accurately and comprehensively. Do not impose an article-length quota. Never invent facts. The entire EN version, including headings, tables, labels and image captions, must be English. Return marker text only.",
+                  ? "NLKH_V590_QUALITY_RULES: Biên tập chính xác, đầy đủ, không bịa. Khai thác hết dữ kiện có giá trị và không rút gọn khi nguồn còn thông tin quan trọng. Toàn bộ bản VI phải là tiếng Việt tự nhiên: tiêu đề mục, đoạn văn, bảng, nhãn, chú thích ảnh và kết luận đều bằng tiếng Việt; chỉ giữ nguyên tên riêng, thương hiệu, model và viết tắt kỹ thuật bắt buộc. Không để câu giải thích hoặc heading tiếng Anh trong content_vi. Trả đúng marker text."
+                  : "NLKH_V590_QUALITY_RULES: Edit accurately and comprehensively. Preserve all meaningful source-supported detail and do not prematurely shorten a source-rich article. Never invent facts. The entire EN version, including headings, tables, labels and image captions, must be English. Return marker text only.",
             },
             {
               role: "user",
