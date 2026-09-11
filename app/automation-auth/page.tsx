@@ -19,24 +19,25 @@ export default function AutomationAuthPage() {
         return;
       }
 
-      if (!window.opener) {
-        setMessage("Hãy mở trang này từ NLKH Automation.");
-        return;
-      }
+      // NLKH_AUTH_V1_FORM_HANDOFF
+      // Không phụ thuộc window.opener/postMessage: COOP có thể cắt opener
+      // giữa website và subdomain Automation.
+      setMessage("Đang chuyển phiên đăng nhập sang NLKH Automation...");
 
-      window.opener.postMessage(
-        {
-          type: "nlkh-automation-auth",
-          accessToken: session.access_token,
-        },
-        AUTOMATION_ORIGIN,
-      );
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = `${AUTOMATION_ORIGIN}/session`;
+      form.target = "_self";
+      form.style.display = "none";
 
-      setMessage("Xác thực thành công. Cửa sổ sẽ tự đóng.");
+      const token = document.createElement("input");
+      token.type = "hidden";
+      token.name = "access_token";
+      token.value = session.access_token;
 
-      window.setTimeout(() => {
-        window.close();
-      }, 500);
+      form.appendChild(token);
+      document.body.appendChild(form);
+      form.submit();
     })();
   }, []);
 

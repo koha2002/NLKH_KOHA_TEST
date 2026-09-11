@@ -6925,25 +6925,222 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/session" && request.method === "POST") {
-      const identity = await getAutomationIdentity(request, env);
+      // NLKH_AUTH_V1_FORM_SESSION
+      // Giữ tương thích Bearer flow cũ, đồng thời hỗ trợ form POST
+      // từ website để không phụ thuộc window.opener/postMessage.
+      const contentType =
+        String(
+          request.headers.get("content-type") ||
+          "",
+        ).toLowerCase();
+
+      const formFlow =
+        contentType.includes(
+          "application/x-www-form-urlencoded",
+        ) ||
+        contentType.includes(
+          "multipart/form-data",
+        );
+
+      let accessToken =
+        "";
+      let identityRequest =
+        request;
+
+      if (formFlow) {
+        const origin =
+          String(
+            request.headers.get("Origin") ||
+            "",
+          );
+
+        if (
+          origin !==
+          "https://nguyenlekhanhhoa.com"
+        ) {
+          return new Response(
+            "Forbidden",
+            {
+              status: 403,
+              headers: {
+                "content-type":
+                  "text/plain; charset=UTF-8",
+                "cache-control":
+                  "no-store",
+              },
+            },
+          );
+        }
+
+        try {
+          const form =
+            await request.formData();
+
+          accessToken =
+            String(
+              form.get(
+                "access_token",
+              ) || "",
+            ).trim();
+        } catch {
+          return new Response(
+            "Dữ liệu xác thực không hợp lệ.",
+            {
+              status: 400,
+              headers: {
+                "content-type":
+                  "text/plain; charset=UTF-8",
+                "cache-control":
+                  "no-store",
+              },
+            },
+          );
+        }
+
+        if (!accessToken) {
+          return new Response(
+            "Thiếu access token.",
+            {
+              status: 401,
+              headers: {
+                "content-type":
+                  "text/plain; charset=UTF-8",
+                "cache-control":
+                  "no-store",
+              },
+            },
+          );
+        }
+
+        const headers =
+          new Headers(
+            request.headers,
+          );
+
+        headers.set(
+          "Authorization",
+          `Bearer ${accessToken}`,
+        );
+
+        identityRequest =
+          new Request(
+            request.url,
+            {
+              method: "POST",
+              headers,
+            },
+          );
+      } else {
+        const auth =
+          request.headers.get(
+            "Authorization",
+          ) || "";
+
+        if (
+          !auth.startsWith(
+            "Bearer ",
+          )
+        ) {
+          return Response.json(
+            {
+              error:
+                "Missing access token",
+            },
+            { status: 401 },
+          );
+        }
+
+        accessToken =
+          auth.slice(7).trim();
+      }
+
+      const identity =
+        await getAutomationIdentity(
+          identityRequest,
+          env,
+        );
 
       if (!identity) {
+        if (formFlow) {
+          return new Response(
+            `<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NLKH Automation</title>
+</head>
+<body style="font:16px/1.5 system-ui,sans-serif;padding:32px">
+  <h1>Không thể xác thực Automation</h1>
+  <p>Tài khoản không có quyền Automation hoặc phiên đăng nhập đã hết hạn.</p>
+  <p>Bạn có thể đóng cửa sổ này và thử lại.</p>
+</body>
+</html>`,
+            {
+              status: 403,
+              headers: {
+                "content-type":
+                  "text/html; charset=UTF-8",
+                "cache-control":
+                  "no-store",
+              },
+            },
+          );
+        }
+
         return Response.json(
-          { error: "Tài khoản không có quyền Automation." },
+          {
+            error:
+              "Tài khoản không có quyền Automation.",
+          },
           { status: 403 },
         );
       }
 
-      const auth = request.headers.get("Authorization") || "";
+      const sessionCookie =
+        `nlkh_automation_session=${encodeURIComponent(accessToken)}; ` +
+        "Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600";
 
-      if (!auth.startsWith("Bearer ")) {
-        return Response.json(
-          { error: "Missing access token" },
-          { status: 401 },
+      if (formFlow) {
+        const displayName =
+          htmlEscape(
+            identity.displayName ||
+            identity.email ||
+            "Admin",
+          );
+
+        return new Response(
+          `<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Xác thực NLKH Automation</title>
+</head>
+<body style="font:16px/1.5 system-ui,sans-serif;padding:32px">
+  <h1>Xác thực thành công</h1>
+  <p>Đã xác thực: ${displayName}</p>
+  <p>Cửa sổ này sẽ tự đóng.</p>
+  <script>
+    window.setTimeout(function () {
+      window.close();
+    }, 450);
+  </script>
+</body>
+</html>`,
+          {
+            status: 200,
+            headers: {
+              "content-type":
+                "text/html; charset=UTF-8",
+              "cache-control":
+                "no-store",
+              "Set-Cookie":
+                sessionCookie,
+            },
+          },
         );
       }
-
-      const accessToken = auth.slice(7).trim();
 
       return Response.json(
         {
@@ -6951,14 +7148,14 @@ export default {
           user: {
             id: identity.id,
             email: identity.email,
-            displayName: identity.displayName,
+            displayName:
+              identity.displayName,
           },
         },
         {
           headers: {
             "Set-Cookie":
-              `nlkh_automation_session=${encodeURIComponent(accessToken)}; ` +
-              "Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600",
+              sessionCookie,
           },
         },
       );
@@ -7943,6 +8140,13 @@ export default {
     } finally {
       button.disabled = false;
     }
+  });
+
+  // NLKH_AUTH_V1_RECHECK_ON_FOCUS
+  // Cookie được đặt trên Automation domain sau form handoff.
+  // Khi popup đóng, cửa sổ chính nhận focus và cập nhật trạng thái.
+  window.addEventListener("focus", () => {
+    void checkAuth();
   });
 
   void checkAuth();
