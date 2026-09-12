@@ -34,8 +34,11 @@ const V55_DRAFT_REPAIR_KEY = "technology-news-v55-draft-repair";
 const V55_SOURCE_PRESET_KEY = "technology-news-v572-source-preset";
 const V55_SOURCE_PRESET_START_VN = "2026-08-13";
 const SOURCE_ROTATION_KEY = "technology-news-source-rotation-v572";
-const MAX_SOURCES_PER_RUN = 4;
+// NLKH_V591_SUBREQUEST_BUDGET
+// Giữ invocation dưới giới hạn subrequest bằng cách chia nguồn theo vòng xoay nhỏ hơn.
+const MAX_SOURCES_PER_RUN = 3;
 const MAX_ITEMS_PER_SCANNED_SOURCE = 10;
+const MAX_AI_ATTEMPTS_PER_RUN = 2;
 
 const DEFAULT_SOURCES: Source[] = [
   // ==========================================================
@@ -3042,8 +3045,8 @@ async function validateImageCandidatesV582(
     candidates
   ) {
     if (
-      checked >= 8 ||
-      accepted.length >= 6
+      checked >= 6 ||
+      accepted.length >= 5
     ) {
       break;
     }
@@ -3163,15 +3166,13 @@ function inlineImageTarget(
     ).length;
 
   const wanted =
-    length >= 7000
-      ? 5
-      : length >= 5000
-        ? 4
-        : length >= 3200
-          ? 3
-          : length >= 1800
-            ? 2
-            : 1;
+    length >= 5000
+      ? 4
+      : length >= 3200
+        ? 3
+        : length >= 1800
+          ? 2
+          : 1;
 
   return Math.min(
     available,
@@ -6423,38 +6424,18 @@ function renderImageReviewPanelV582(
   `;
 }
 async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
-  let existingImageRepair: any = {
+  // NLKH_V591_SKIP_AUTO_OLD_IMAGE_REPAIR
+  // Không sửa bài cũ trong cùng invocation tạo bài mới.
+  // Việc này trước đây tiêu tốn thêm một vòng source fetch + image review + media ingest.
+  // Dashboard vẫn giữ chức năng "Kiểm tra & sửa ảnh" để chạy riêng khi cần.
+  const existingImageRepair: any = {
     attempted: 0,
     candidates: 0,
     repaired: [],
     failed: [],
+    skipped: true,
+    reason: "separate-manual-image-repair",
   };
-
-  try {
-    existingImageRepair =
-      await repairLowImageArticlesV579(
-        env,
-        1,
-      );
-  } catch (error: any) {
-    existingImageRepair = {
-      attempted: 0,
-      candidates: 0,
-      repaired: [],
-      failed: [
-        {
-          stage: "repair_boot",
-          error: clip(
-            String(
-              error?.message ||
-              error,
-            ),
-            900,
-          ),
-        },
-      ],
-    };
-  }
   const existingDraftRepair = {
     attempted: 0,
     repaired: [],
@@ -6540,7 +6521,10 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
   }> = [];
 
   for (const candidate of candidates) {
-    if (created.length >= settings.maxDraftsPerRun) {
+    if (
+      created.length >= settings.maxDraftsPerRun ||
+      aiAttempted >= MAX_AI_ATTEMPTS_PER_RUN
+    ) {
       break;
     }
 
