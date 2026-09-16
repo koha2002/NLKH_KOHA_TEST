@@ -33,7 +33,29 @@ export function ToolFrame({ src, title, tall = false, flush = false, importTarge
     const handleFrameMessage = (event: MessageEvent) => {
       const frameWindow = frameRef.current?.contentWindow;
       if (event.source !== frameWindow || event.data?.type !== "tool-frame:resize") return;
+
       resizeFrameRef.current(true);
+
+      // Quiz doi man hinh ngay trong iframe. Iframe tu scroll len dau khong lam
+      // host page doi vi tri, nen neu nguoi dung dang o cuoi danh sach mon thi
+      // viewport co the bi giu o vi tri cu sau khi iframe thu chieu cao.
+      if (importTarget === "quiz") {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const frame = frameRef.current;
+          if (!frame) return;
+
+          const headerHeight =
+            document.querySelector("header")?.getBoundingClientRect().height ?? 0;
+          const top =
+            frame.getBoundingClientRect().top + window.scrollY - headerHeight;
+
+          window.scrollTo({
+            top: Math.max(0, top),
+            left: 0,
+            behavior: "auto",
+          });
+        }));
+      }
     };
 
     window.addEventListener("message", handleFrameMessage);
@@ -42,7 +64,7 @@ export function ToolFrame({ src, title, tall = false, flush = false, importTarge
       resizeObserverRef.current?.disconnect();
       if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
     };
-  }, []);
+  }, [importTarget]);
 
   useEffect(() => {
     if (!importTarget) return;
