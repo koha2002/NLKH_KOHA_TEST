@@ -85,7 +85,7 @@ export default function DataPage(){
    if(storage==="r2"&&!mediaId)throw new Error(vi?"Hãy chọn file để upload.":"Choose a file to upload.");
    if(storage==="link"&&!url.trim())throw new Error(vi?"Hãy nhập URL.":"URL is required.");
    const loc=edit?(vi?{title_vi:title.trim(),description_vi:description.trim()}:{title_en:title.trim(),description_en:description.trim()}):(vi?{title_vi:title.trim(),description_vi:description.trim(),title_en:"",description_en:""}:{title_vi:title.trim(),title_en:title.trim(),description_vi:description.trim(),description_en:description.trim()});
-   const payload:any={collection_id:current.id,...loc,storage_mode:storage,item_type:storage==="r2"?(file?.name.toLowerCase().endsWith(".json")||edit?.media_assets?.original_name?.toLowerCase().endsWith(".json")?"quiz_json":"document"):"link",external_url:storage==="link"?url.trim():null,media_id:storage==="r2"?mediaId:null,object_key:storage==="r2"?objectKey:null,visibility:"private",visible:true};
+   const payload:any={collection_id:current.id,...loc,storage_mode:storage,item_type:storage==="r2"?"document":"link",external_url:storage==="link"?url.trim():null,media_id:storage==="r2"?mediaId:null,object_key:storage==="r2"?objectKey:null,visibility:"private",visible:true};
    if(edit){const{error}=await supabase.from("data_items").update(payload).eq("id",edit.id);if(error)throw error}
    else{const{error}=await supabase.from("data_items").insert({...payload,sort_order:totalItems+1});if(error)throw error}
    resetEditor();await loadItems(current.id,page);setMessage(vi?"Đã lưu trong thư mục.":"Saved in folder.");
