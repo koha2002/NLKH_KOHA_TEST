@@ -1509,9 +1509,12 @@ async function getAutomationIdentity(
     ? relation[0]?.permissions ?? []
     : relation?.permissions ?? [];
 
-  // Giữ đúng tiêu chí đang dùng để hiện menu Admin/Automation:
-  // active + có ít nhất một permission.
-  if (!permissions.length) {
+  // Automation tin tức chỉ dành cho tài khoản được phép quản lý Tin tức.
+  // "*" giữ tương thích với vai trò quản trị toàn quyền.
+  if (
+    !permissions.includes("*") &&
+    !permissions.includes("news.manage")
+  ) {
     return null;
   }
 
@@ -1907,7 +1910,7 @@ async function resolveTechnologyCategoryId(
         (row: any) =>
           String(row?.slug || "").toLowerCase() ===
           "congnghe",
-      ) || rows[0];
+      );
 
     return preferred?.id
       ? String(preferred.id)
@@ -2049,10 +2052,12 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     if (attempt === 20) throw new Error(`Không tìm được slug duy nhất cho ${slugBase}`);
   }
   const tags = normalizeTags(ai.tags);
+  const categoryId =
+    await resolveTechnologyCategoryId(env);
 
   const article = {
     slug,
-    category_id: null,
+    category_id: categoryId,
     title_vi: titleVi,
     title_en: titleEn || "",
     subtitle_vi: clip(ai.subtitle_vi, 180) || "",
