@@ -61,28 +61,48 @@ export async function uploadR2(file: File, options: {
   collectionId?: string;
 } = {}) {
   const sha256 = await sha256File(file);
-  const prepared = await invokeEdge<any>("r2-file", {
-    action: "prepare-upload",
-    usage_type: options.usageType || "data",
-    folder: options.folder || (options.usageType === "avatar" ? "avatars" : "data"),
-    visibility: options.visibility || (options.usageType === "avatar" ? "public" : "private"),
-    usage_note: options.usageNote || "",
-    item_id: options.itemId || null,
-    collection_id: options.collectionId || null,
-    original_name: file.name,
-    mime_type: file.type || "application/octet-stream",
-    size_bytes: file.size,
-    sha256,
-  });
+  const isJson = file.name.toLowerCase().endsWith(".json");
+  const uploadMime = isJson ? "application/octet-stream" : (file.type || "application/octet-stream");
+
+  let prepared: any;
+  try {
+    prepared = await invokeEdge<any>("r2-file", {
+      action: "prepare-upload",
+      usage_type: options.usageType || "data",
+      folder: options.folder || (options.usageType === "avatar" ? "avatars" : "data"),
+      visibility: options.visibility || (options.usageType === "avatar" ? "public" : "private"),
+      usage_note: options.usageNote || "",
+      item_id: options.itemId || null,
+      collection_id: options.collectionId || null,
+      original_name: file.name,
+      mime_type: uploadMime,
+      size_bytes: file.size,
+      sha256,
+    });
+  } catch (error) {
+    throw new Error(`R2 prepare-upload: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   if (prepared.duplicate) return prepared.asset;
-  const put = await fetch(prepared.url, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
-  });
-  if (!put.ok) throw new Error(`Upload R2 thất bại ở bước PUT: HTTP ${put.status}`);
-  const completed = await invokeEdge<any>("r2-file", { action: "complete-upload", media_id: prepared.asset.id });
-  return completed.asset;
+
+  let put: Response;
+  try {
+    put = await fetch(prepared.url, {
+      method: "PUT",
+      headers: { "Content-Type": uploadMime },
+      body: file,
+    });
+  } catch (error) {
+    throw new Error(`R2 PUT network: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!put.ok) throw new Error(`R2 PUT: HTTP ${put.status} (${uploadMime})`);
+
+  try {
+    const completed = await invokeEdge<any>("r2-file", { action: "complete-upload", media_id: prepared.asset.id });
+    return completed.asset;
+  } catch (error) {
+    throw new Error(`R2 complete-upload: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export function initials(name?: string, email?: string) {
