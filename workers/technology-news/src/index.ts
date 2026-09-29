@@ -1969,8 +1969,10 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     );
   }
 
-  // NLKH_V590_DRAFT_QUALITY_GATE
-  // Ngưỡng tăng theo lượng dữ liệu nguồn: nguồn càng giàu dữ kiện thì draft càng phải đầy đủ.
+  // NLKH_V592_DRAFT_QUALITY_GATE
+  // Giữ quality gate nhưng tránh loại oan draft tốt chỉ vì model không đạt
+  // một quota 5.000 ký tự cố định. Ngưỡng tối thiểu tăng theo độ giàu của nguồn,
+  // còn chiều sâu vẫn được kiểm soát riêng bằng heading, VI/EN và source gate.
   const sourceChars =
     Math.max(
       0,
@@ -1978,11 +1980,13 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     );
 
   const minContentChars =
-    sourceChars >= 7000
-      ? 5000
-      : sourceChars >= 3500
-        ? 4000
-        : 3200;
+    sourceChars >= 10000
+      ? 3600
+      : sourceChars >= 7000
+        ? 3400
+        : sourceChars >= 3500
+          ? 3000
+          : 2600;
 
   const minSections =
     sourceChars >= 3500
