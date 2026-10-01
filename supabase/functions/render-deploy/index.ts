@@ -59,9 +59,17 @@ Deno.serve(async req=>{
   }
 
   const{target}=await req.json();
-  if(target!=="frontend")return json(req,{error:"Unsupported target"},400);
-
   const hook=Deno.env.get("RENDER_FRONTEND_DEPLOY_HOOK");
+
+  if(internal&&target==="probe"){
+   return json(req,{
+    ok:true,
+    internal:true,
+    ready:Boolean(hook)
+   });
+  }
+
+  if(target!=="frontend")return json(req,{error:"Unsupported target"},400);
   if(!hook)return json(req,{error:"Chưa cấu hình RENDER_FRONTEND_DEPLOY_HOOK"},500);
 
   const r=await fetch(hook,{method:"POST"});
