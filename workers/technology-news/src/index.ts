@@ -149,12 +149,14 @@ type Settings = {
   maxDraftsPerRun: number;
   relevanceThreshold: number;
   automationEnabled: boolean;
+  publishMode: "review" | "auto";
   sources: Source[];
 };
 const DEFAULT_SETTINGS: Settings = {
   maxDraftsPerRun: 1,
   relevanceThreshold: 30,
   automationEnabled: true,
+  publishMode: "review",
   sources: DEFAULT_SOURCES,
 };
 
@@ -1240,6 +1242,11 @@ function normalizeSettings(input: any): Settings {
         ? input.automationEnabled
         : DEFAULT_SETTINGS.automationEnabled,
 
+    publishMode:
+      input?.publishMode === "auto"
+        ? "auto"
+        : "review",
+
     sources:
       sources.length
         ? sources
@@ -1325,6 +1332,61 @@ async function getLastRun(env: Env) {
   } catch {
     return null;
   }
+}
+
+function b64uEncode(bytes: Uint8Array): string {
+  let raw = "";
+  for (const byte of bytes) raw += String.fromCharCode(byte);
+  return btoa(raw)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+async function triggerFrontendPublish(env: Env) {
+  const secret = String(env.SUPABASE_SERVICE_ROLE_KEY || "");
+  if (!secret) throw new Error("Thiếu SUPABASE_SERVICE_ROLE_KEY");
+
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+  const path = "/functions/v1/render-deploy";
+  const ts = String(Math.floor(Date.now() / 1000));
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = new Uint8Array(
+    await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(`${ts}\n${path}`),
+    ),
+  );
+
+  const response = await fetch(base + path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-nlkh-publish-ts": ts,
+      "x-nlkh-publish-signature": b64uEncode(signature),
+    },
+    body: JSON.stringify({
+      target: "frontend",
+      source: "technology-news-automation",
+    }),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `render-deploy HTTP ${response.status}: ${text.slice(0,800)}`,
+    );
+  }
+
+  return text ? JSON.parse(text) : { ok: true };
 }
 
 // NLKH_MANUAL_FULL_BACKUP_V3_KV
@@ -6514,6 +6576,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
   candidates.sort((a, b) => b.score - a.score);
 
   const created: any[] = [];
+  const autoPublishedArticleIds: string[] = [];
 
   let duplicateDraftsSkipped = 0;
   let retryingPreviousFailures = 0;
@@ -6784,6 +6847,34 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
           ),
         });
       }
+      let finalStatus: "draft" | "published" = "draft";
+
+      if (
+        settings.publishMode === "auto" &&
+        draft.articleId
+      ) {
+        await sb(
+          env,
+          `news_articles?id=eq.${encodeURIComponent(String(draft.articleId))}`,
+          {
+            method: "PATCH",
+            headers: {
+              Prefer: "return=minimal",
+            },
+            body: JSON.stringify({
+              status: "published",
+              published_at: new Date().toISOString(),
+            }),
+          },
+        );
+
+        autoPublishedArticleIds.push(
+          String(draft.articleId),
+        );
+
+        finalStatus = "published";
+      }
+
       await sb(
         env,
         `technology_news_ingest?source_url=eq.${encodeURIComponent(candidate.item.link)}`,
@@ -6810,6 +6901,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
       created.push({
         source: candidate.item.source,
         score: candidate.score,
+        status: finalStatus,
         ...draft,
       });
     } catch (e: any) {
@@ -6844,13 +6936,93 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
       );
     }
   }
+  let frontendDeployTriggered = false;
+  let publishError = "";
+
+  if (
+    settings.publishMode === "auto" &&
+    autoPublishedArticleIds.length
+  ) {
+    try {
+      await triggerFrontendPublish(env);
+      frontendDeployTriggered = true;
+    } catch (error: any) {
+      publishError =
+        String(
+          error?.message ||
+          error,
+        );
+
+      processingErrors.push({
+        source: "Automation",
+        url: "",
+        stage: "frontend_publish",
+        error: clip(
+          publishError,
+          1000,
+        ),
+      });
+
+      for (const articleId of autoPublishedArticleIds) {
+        try {
+          await sb(
+            env,
+            `news_articles?id=eq.${encodeURIComponent(articleId)}`,
+            {
+              method: "PATCH",
+              headers: {
+                Prefer: "return=minimal",
+              },
+              body: JSON.stringify({
+                status: "draft",
+              }),
+            },
+          );
+        } catch (rollbackError: any) {
+          processingErrors.push({
+            source: "Automation",
+            url: articleId,
+            stage: "publish_rollback",
+            error: clip(
+              String(
+                rollbackError?.message ||
+                rollbackError,
+              ),
+              1000,
+            ),
+          });
+        }
+      }
+
+      for (const row of created) {
+        if (
+          autoPublishedArticleIds.includes(
+            String(row.articleId || ""),
+          )
+        ) {
+          row.status = "draft";
+        }
+      }
+    }
+  }
+
+  const autoPublished =
+    frontendDeployTriggered
+      ? autoPublishedArticleIds.length
+      : 0;
+
+  const draftsCreated =
+    created.filter(
+      (row) => row.status !== "published",
+    ).length;
+
   const enabledSources =
     settings.sources.filter(
       (source) => source.enabled !== false,
     );
 
   const result = {
-    ok: true,
+    ok: !publishError,
     model: MODEL,
 
     configuredSources:
@@ -6872,8 +7044,17 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
     aiFailed,
     draftWriteFailed,
 
-    draftsCreated:
+    articlesCreated:
       created.length,
+
+    draftsCreated,
+
+    autoPublished,
+
+    frontendDeployTriggered,
+
+    publishError:
+      publishError || null,
 
     existingImageRepair,
     existingDraftRepair,
@@ -7527,8 +7708,8 @@ export default {
   <section class="card">
     <h2>Automation settings</h2>
     <p class="section-help">
-      Cấu hình cách hệ thống thu thập và tạo bản nháp tin công nghệ.
-      Tất cả bài viết chỉ được tạo ở trạng thái Draft; hệ thống không tự xuất bản.
+      Cấu hình cách hệ thống thu thập, tạo bài và xuất bản tin công nghệ.
+      Bạn có thể giữ bước kiểm duyệt thủ công hoặc cho phép tự đăng sau khi bài vượt các kiểm tra tự động.
     </p>
 
     <div class="grid">
@@ -7560,6 +7741,26 @@ export default {
         <span class="example">
           Ví dụ: tin có tổng điểm 34 và ngưỡng là 30 → tin được AI xử lý.
           Nếu ngưỡng tăng lên 40 → tin đó bị bỏ qua.
+        </span>
+      </label>
+
+      <label>
+        Chế độ xuất bản
+        <select id="publishMode">
+          <option value="review" ${settings.publishMode !== "auto" ? "selected" : ""}>
+            Qua kiểm duyệt (Draft)
+          </option>
+          <option value="auto" ${settings.publishMode === "auto" ? "selected" : ""}>
+            Tự đăng sau khi đạt kiểm tra tự động
+          </option>
+        </select>
+        <span class="help">
+          <strong>Qua kiểm duyệt:</strong> bài dừng ở Draft để bạn xem trước.
+          <strong>Tự đăng:</strong> bài chỉ được Published sau khi vượt quality gate,
+          kiểm tra ngôn ngữ và pipeline ảnh; sau đó Automation tự yêu cầu Render build lại frontend.
+        </span>
+        <span class="example">
+          Nếu bước publish frontend lỗi, bài của lượt đó được đưa về Draft thay vì để trạng thái Published nhưng chưa lên web.
         </span>
       </label>
     </div>
@@ -7654,15 +7855,15 @@ export default {
       <strong>Lưu cấu hình:</strong> lưu toàn bộ thiết lập hiện tại.
       Các lần chạy sau sẽ dùng cấu hình mới.<br />
       <strong>Chạy ngay:</strong> chạy thu thập tin + AI ngay lập tức.
-      Bài tạo ra luôn ở trạng thái Draft, không tự xuất bản.
+      Kết quả sẽ dừng ở Draft hoặc tự đăng theo Chế độ xuất bản đã chọn.
     </div>
 
     <div id="message"></div>
 
     <p class="note">
       Save settings và Run now chỉ hoạt động với tài khoản đã đăng nhập,
-      trạng thái active và có quyền quản trị. Mọi bài Automation tạo ra
-      luôn ở trạng thái Draft để người quản trị kiểm tra trước khi xuất bản.
+      trạng thái active và có quyền news.manage. Chế độ Tự đăng vẫn giữ toàn bộ
+      quality gate và kiểm tra ảnh tự động; chỉ bỏ bước duyệt thủ công.
     </p>
   </section>
 
@@ -8133,6 +8334,9 @@ export default {
           automationEnabled:
             $("enabled").checked,
 
+          publishMode:
+            $("publishMode").value,
+
           sources: readSources()
         })
       });
@@ -8147,6 +8351,9 @@ export default {
 
       $("enabled").checked =
         body.settings.automationEnabled;
+
+      $("publishMode").value =
+        body.settings.publishMode || "review";
     } catch (e) {
       message.textContent =
         e.message || String(e);
@@ -8224,8 +8431,10 @@ export default {
       );
 
       message.textContent =
-        "Hoàn tất. Draft đã tạo: " +
-        (body.draftsCreated ?? 0);
+        "Hoàn tất. Đã tạo: " +
+        (body.articlesCreated ?? body.draftsCreated ?? 0) +
+        " · tự đăng: " +
+        (body.autoPublished ?? 0);
 
       $("lastRun").textContent =
         JSON.stringify(body, null, 2);
@@ -8251,6 +8460,9 @@ export default {
 
           '<div class="key">Số bản nháp đã tạo</div>' +
           '<div>' + (body.draftsCreated ?? 0) + '</div>' +
+
+          '<div class="key">Số bài tự đăng</div>' +
+          '<div>' + (body.autoPublished ?? 0) + '</div>' +
 
           '<div class="key">Số nguồn gặp lỗi</div>' +
           '<div>' + errors + '</div>' +
