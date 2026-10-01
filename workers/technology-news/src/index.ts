@@ -1343,7 +1343,10 @@ function b64uEncode(bytes: Uint8Array): string {
     .replace(/=+$/g, "");
 }
 
-async function triggerFrontendPublish(env: Env) {
+async function callFrontendPublishBridge(
+  env: Env,
+  target: "frontend" | "probe",
+) {
   const secret = String(env.SUPABASE_SERVICE_ROLE_KEY || "");
   if (!secret) throw new Error("Thiếu SUPABASE_SERVICE_ROLE_KEY");
 
@@ -1374,7 +1377,7 @@ async function triggerFrontendPublish(env: Env) {
       "x-nlkh-publish-signature": b64uEncode(signature),
     },
     body: JSON.stringify({
-      target: "frontend",
+      target,
       source: "technology-news-automation",
     }),
   });
@@ -1387,6 +1390,20 @@ async function triggerFrontendPublish(env: Env) {
   }
 
   return text ? JSON.parse(text) : { ok: true };
+}
+
+async function triggerFrontendPublish(env: Env) {
+  return await callFrontendPublishBridge(
+    env,
+    "frontend",
+  );
+}
+
+async function probeFrontendPublish(env: Env) {
+  return await callFrontendPublishBridge(
+    env,
+    "probe",
+  );
 }
 
 // NLKH_MANUAL_FULL_BACKUP_V3_KV
@@ -8520,11 +8537,36 @@ export default {
 
     if (url.pathname === "/health") {
       const settings = await getSettings(env);
+      let autoPublishReady: boolean | null = null;
+      let autoPublishProbeError = "";
+
+      if (
+        url.searchParams.get("deep") === "1"
+      ) {
+        try {
+          const probe =
+            await probeFrontendPublish(env);
+
+          autoPublishReady =
+            probe?.ready === true;
+        } catch (error: any) {
+          autoPublishReady = false;
+          autoPublishProbeError =
+            String(
+              error?.message ||
+              error,
+            );
+        }
+      }
+
       return Response.json({
         ok: true,
         service: "technology-news",
         mode: "work",
         model: MODEL,
+        autoPublishReady,
+        autoPublishProbeError:
+          autoPublishProbeError || null,
         ...settings,
       });
     }
