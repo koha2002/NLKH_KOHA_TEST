@@ -38,7 +38,7 @@ const SOURCE_ROTATION_KEY = "technology-news-source-rotation-v572";
 // Giữ invocation dưới giới hạn subrequest bằng cách chia nguồn theo vòng xoay nhỏ hơn.
 const MAX_SOURCES_PER_RUN = 3;
 const MAX_ITEMS_PER_SCANNED_SOURCE = 10;
-const MAX_AI_ATTEMPTS_PER_RUN = 2;
+const MAX_AI_ATTEMPTS_PER_RUN = 5;
 
 const DEFAULT_SOURCES: Source[] = [
   // ==========================================================
@@ -2068,6 +2068,15 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
           ? 3000
           : 2600;
 
+  // NLKH_V593_DRAFT_LENGTH_TOLERANCE
+  // Keep the configured quality target, but allow a small 5% margin so a
+  // substantively complete article is not rejected for a few dozen characters.
+  // Structural depth, bilingual checks and source-quality gates still apply.
+  const minAcceptedContentChars =
+    Math.ceil(
+      minContentChars * 0.95,
+    );
+
   const minSections =
     sourceChars >= 3500
       ? 4
@@ -2079,15 +2088,15 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
   const enSections =
     (contentEn.match(/^##\s+/gm) || []).length;
 
-  if (contentVi.length < minContentChars) {
+  if (contentVi.length < minAcceptedContentChars) {
     throw new Error(
-      `Không tạo được Draft: content_vi còn sơ sài (${contentVi.length} ký tự; yêu cầu >= ${minContentChars} theo nguồn ${sourceChars} ký tự)`,
+      `Không tạo được Draft: content_vi còn sơ sài (${contentVi.length} ký tự; ngưỡng chấp nhận >= ${minAcceptedContentChars}, mục tiêu ${minContentChars}, nguồn ${sourceChars} ký tự)`,
     );
   }
 
-  if (contentEn.length < minContentChars) {
+  if (contentEn.length < minAcceptedContentChars) {
     throw new Error(
-      `Không tạo được Draft: content_en còn sơ sài (${contentEn.length} ký tự; yêu cầu >= ${minContentChars})`,
+      `Không tạo được Draft: content_en còn sơ sài (${contentEn.length} ký tự; ngưỡng chấp nhận >= ${minAcceptedContentChars}, mục tiêu ${minContentChars})`,
     );
   }
 
@@ -7732,11 +7741,12 @@ export default {
 
     <div class="grid">
       <label>
-        Số bài nháp tối đa mỗi lần chạy
+        Số bài tối đa mỗi lần chạy
         <input id="maxDrafts" type="number" min="1" max="20"
           value="${settings.maxDraftsPerRun}" />
         <span class="help">
-          Đây là số bài tối đa Automation được phép tạo trong một lần chạy.
+          Đây là số bài tối đa Automation được phép tạo trong một lần chạy,
+          bất kể đang ở chế độ Draft hay Tự đăng.
           <strong>Khuyên dùng 1 khi kiểm tra</strong>; khi hệ thống ổn định có thể
           tăng lên <strong>3–5</strong>.
           Nếu không có đủ tin đạt điều kiện thì hệ thống sẽ tạo ít hơn con số này.
