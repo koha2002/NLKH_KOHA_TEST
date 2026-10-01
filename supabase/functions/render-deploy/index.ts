@@ -121,12 +121,14 @@ function b64uDecode(value:string){
 async function verifyInternalPublishRequest(req:Request){
  try{
   const ts=req.headers.get("x-nlkh-publish-ts")||"";
+  const target=req.headers.get("x-nlkh-publish-target")||"";
   const signature=req.headers.get("x-nlkh-publish-signature")||"";
   const epoch=Number(ts);
 
   if(
    !Number.isFinite(epoch)||
    Math.abs(Math.floor(Date.now()/1000)-epoch)>90||
+   !["frontend","probe"].includes(target)||
    !signature
   ){
    return false;
@@ -148,7 +150,7 @@ async function verifyInternalPublishRequest(req:Request){
    "HMAC",
    key,
    b64uDecode(signature),
-   enc.encode(`${ts}\n${new URL(req.url).pathname}`)
+   enc.encode(`${ts}\n${target}`)
   );
  }catch{
   return false;
@@ -188,6 +190,13 @@ Deno.serve(async req=>{
 
   const{target}=await req.json();
   const hook=Deno.env.get("RENDER_FRONTEND_DEPLOY_HOOK");
+
+  if(
+   internal&&
+   req.headers.get("x-nlkh-publish-target")!==target
+  ){
+   return json(req,{error:"Signed publish target mismatch"},403);
+  }
 
   if(internal&&target==="probe"){
    return json(req,{
