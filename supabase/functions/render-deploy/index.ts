@@ -1,5 +1,3 @@
-import{createClient}from"npm:@supabase/supabase-js@2";
-
 const publishPermissions=["site.manage","content.manage","news.manage","tools.manage","seo.manage"];
 
 function serviceSecret(){
@@ -14,48 +12,62 @@ function publicKey(){
  try{return JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS")||"{}").default||""}catch{return""}
 }
 
-function adminClient(){
- const url=Deno.env.get("SUPABASE_URL")!,key=serviceSecret();
- if(!url||!key)throw new Error("Missing Supabase service secret");
- return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
-}
-
-function callerClient(req:Request){
- const url=Deno.env.get("SUPABASE_URL")!,key=publicKey();
- if(!url||!key)throw new Error("Missing Supabase public key");
- return createClient(
-  url,
-  key,
-  {
-   global:{
-    headers:{
-     Authorization:req.headers.get("Authorization")||""
-    }
-   },
-   auth:{
-    persistSession:false,
-    autoRefreshToken:false
-   }
-  }
- );
-}
-
 async function caller(req:Request){
- const c=callerClient(req);
- const{data:{user}}=await c.auth.getUser();
- if(!user)return{user:null,profile:null,permissions:[] as string[]};
- const admin=adminClient();
- const{data:profile}=await admin
-  .from("profiles")
-  .select("id,email,role_id,status,roles(permissions)")
-  .eq("id",user.id)
-  .maybeSingle();
- const role=(profile as any)?.roles;
- return{
-  user,
-  profile,
-  permissions:Array.isArray(role?.permissions)?role.permissions:[]
- };
+ const url=String(Deno.env.get("SUPABASE_URL")||"").replace(/\/$/,"");
+ const anon=publicKey();
+ const service=serviceSecret();
+ const authorization=req.headers.get("Authorization")||"";
+
+ if(!url||!anon||!service||!authorization.startsWith("Bearer ")){
+  return{user:null,profile:null,permissions:[] as string[]};
+ }
+
+ const userResponse=await fetch(url+"/auth/v1/user",{
+  headers:{
+   apikey:anon,
+   Authorization:authorization
+  }
+ });
+
+ if(!userResponse.ok){
+  return{user:null,profile:null,permissions:[] as string[]};
+ }
+
+ const user:any=await userResponse.json();
+ if(!user?.id){
+  return{user:null,profile:null,permissions:[] as string[]};
+ }
+
+ const profileUrl=
+  url+
+  "/rest/v1/profiles?select=id,email,role_id,status,roles(permissions)&id=eq."+
+  encodeURIComponent(String(user.id))+
+  "&limit=1";
+
+ const profileResponse=await fetch(profileUrl,{
+  headers:{
+   apikey:service,
+   Authorization:"Bearer "+service,
+   Accept:"application/json"
+  }
+ });
+
+ if(!profileResponse.ok){
+  throw new Error(
+   "Profile lookup failed HTTP "+
+   profileResponse.status+
+   ": "+
+   (await profileResponse.text()).slice(0,500)
+  );
+ }
+
+ const rows:any=await profileResponse.json();
+ const profile=Array.isArray(rows)?rows[0]||null:null;
+ const relation=(profile as any)?.roles;
+ const role=Array.isArray(relation)?relation[0]:relation;
+ const permissions=Array.isArray(role?.permissions)?role.permissions:[];
+
+ return{user,profile,permissions};
 }
 
 function hasPermission(ctx:any,p:string){
@@ -76,6 +88,7 @@ function corsHeaders(req:Request){
   allowed.includes(origin)
    ?(origin||"*")
    :(allowed[0]||"*");
+
  return{
   "Access-Control-Allow-Origin":allowOrigin,
   "Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-scheduler-secret",
@@ -110,13 +123,18 @@ async function verifyInternalPublishRequest(req:Request){
   const ts=req.headers.get("x-nlkh-publish-ts")||"";
   const signature=req.headers.get("x-nlkh-publish-signature")||"";
   const epoch=Number(ts);
+
   if(
    !Number.isFinite(epoch)||
    Math.abs(Math.floor(Date.now()/1000)-epoch)>90||
    !signature
-  )return false;
+  ){
+   return false;
+  }
+
   const secret=serviceSecret();
   if(!secret)return false;
+
   const enc=new TextEncoder();
   const key=await crypto.subtle.importKey(
    "raw",
@@ -125,13 +143,16 @@ async function verifyInternalPublishRequest(req:Request){
    false,
    ["verify"]
   );
+
   return await crypto.subtle.verify(
    "HMAC",
    key,
    b64uDecode(signature),
    enc.encode(`${ts}\n${new URL(req.url).pathname}`)
   );
- }catch{return false}
+ }catch{
+  return false;
+ }
 }
 
 Deno.serve(async req=>{
@@ -147,6 +168,7 @@ Deno.serve(async req=>{
   if(!internal){
    const ctx=await caller(req);
    role=String(ctx?.profile?.role_id||"");
+
    allowed=ctx?.profile?.status==="active"&&(
     role==="owner"||
     role==="admin"||
