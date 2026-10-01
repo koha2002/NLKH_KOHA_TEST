@@ -1365,7 +1365,7 @@ async function callFrontendPublishBridge(
     await crypto.subtle.sign(
       "HMAC",
       key,
-      encoder.encode(`${ts}\n${path}`),
+      encoder.encode(`${ts}\n${target}`),
     ),
   );
 
@@ -1374,6 +1374,7 @@ async function callFrontendPublishBridge(
     headers: {
       "Content-Type": "application/json",
       "x-nlkh-publish-ts": ts,
+      "x-nlkh-publish-target": target,
       "x-nlkh-publish-signature": b64uEncode(signature),
     },
     body: JSON.stringify({
