@@ -29,6 +29,7 @@
   animation: orbitSpin var(--orbit-duration) linear infinite;
   animation-direction: var(--orbit-direction);
   will-change: transform;
+  pointer-events: none;
 }
 
 .ring:nth-of-type(even) {
@@ -49,6 +50,7 @@
 
 .node {
   z-index: 4;
+  pointer-events: auto;
   min-height: 48px;
   min-width: 94px;
   padding: 7px 11px 7px 8px;
