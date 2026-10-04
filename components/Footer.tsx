@@ -24,6 +24,11 @@ export function Footer() {
       ? site.footer_intro_en || site.footer_intro_vi
       : site.footer_intro_vi;
   const year = new Date().getFullYear();
+  const hasSocialEmail = adminSocial.some(
+    (item: SocialItem) =>
+      String(item.platform || "").toLowerCase() === "email" ||
+      String(item.url || "").toLowerCase().startsWith("mailto:"),
+  );
   const copyright = String(
     site.copyright_text || `© ${year} Nguyễn Lê Khánh Hòa`,
   ).replace(/©\s*\d{4}/, `© ${year}`);
@@ -53,7 +58,9 @@ export function Footer() {
 
         <div>
           <h2>{t.footer.connect}</h2>
-          {site.contact_email ? <a href={`mailto:${site.contact_email}`}>Email</a> : null}
+          {site.contact_email && !hasSocialEmail ? (
+            <a href={`mailto:${site.contact_email}`}>Email</a>
+          ) : null}
           {adminSocial.map((item: SocialItem) => (
             <a
               className={styles.linkWithIcon}
