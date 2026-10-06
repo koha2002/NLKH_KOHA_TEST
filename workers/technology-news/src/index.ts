@@ -34,6 +34,7 @@ const V55_DRAFT_REPAIR_KEY = "technology-news-v55-draft-repair";
 const V55_SOURCE_PRESET_KEY = "technology-news-v572-source-preset";
 const V55_SOURCE_PRESET_START_VN = "2026-08-13";
 const SOURCE_ROTATION_KEY = "technology-news-source-rotation-v572";
+const AUTO_CATEGORY_REPAIR_KEY = "technology-news-auto-category-repair-v594";
 // NLKH_V591_SUBREQUEST_BUDGET
 // Giữ invocation dưới giới hạn subrequest bằng cách chia nguồn theo vòng xoay nhỏ hơn.
 const MAX_SOURCES_PER_RUN = 3;
@@ -1971,32 +1972,507 @@ async function loadCreatedUrlHistory(
 }
 
 
-async function resolveTechnologyCategoryId(
+type NewsCategoryRowV594 = {
+  id?: string;
+  slug?: string;
+  name_vi?: string;
+  name_en?: string;
+  description_vi?: string;
+  description_en?: string;
+  visible?: boolean;
+  sort_order?: number;
+};
+
+type AutoCategoryDecisionV594 = {
+  id: string | null;
+  slug: string | null;
+  reason: string;
+  confident: boolean;
+  electricalScore: number;
+  technologyScore: number;
+};
+
+function normalizeCategoryTextV594(value: unknown): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function scoreCategoryPhrasesV594(
+  text: string,
+  phrases: Array<[string, number]>,
+): number {
+  const padded = ` ${text} `;
+  let score = 0;
+
+  for (const [phrase, weight] of phrases) {
+    const normalized =
+      normalizeCategoryTextV594(phrase);
+
+    if (
+      normalized &&
+      padded.includes(` ${normalized} `)
+    ) {
+      score += weight;
+    }
+  }
+
+  return score;
+}
+
+const ELECTRICAL_CATEGORY_TERMS_V594: Array<[string, number]> = [
+  ["hệ thống điện", 10],
+  ["power system", 10],
+  ["electric power system", 10],
+  ["lưới điện", 10],
+  ["power grid", 10],
+  ["electric grid", 10],
+  ["electrical grid", 10],
+  ["tổn thất điện năng", 10],
+  ["tổn thất điện", 9],
+  ["energy loss", 9],
+  ["power loss", 9],
+  ["line loss", 9],
+  ["electricity loss", 9],
+  ["truyền tải điện", 8],
+  ["power transmission", 8],
+  ["transmission grid", 8],
+  ["phân phối điện", 8],
+  ["power distribution", 8],
+  ["distribution network", 7],
+  ["trạm biến áp", 8],
+  ["substation", 8],
+  ["máy biến áp", 6],
+  ["transformer", 6],
+  ["bảo vệ rơ le", 7],
+  ["relay protection", 7],
+  ["protective relay", 7],
+  ["smart grid", 8],
+  ["grid modernization", 7],
+  ["hvdc", 7],
+  ["switchgear", 6],
+  ["circuit breaker", 5],
+  ["điện lực", 5],
+  ["electric utility", 5],
+  ["power utility", 5],
+  ["utility grid", 5],
+  ["chất lượng điện năng", 7],
+  ["power quality", 7],
+  ["công suất phản kháng", 6],
+  ["reactive power", 6],
+  ["ngắn mạch", 6],
+  ["short circuit", 6],
+  ["mất điện", 5],
+  ["blackout", 5],
+  ["outage", 4],
+  ["năng lượng tái tạo", 3],
+  ["renewable energy", 3],
+  ["điện mặt trời", 3],
+  ["solar power", 3],
+  ["điện gió", 3],
+  ["wind power", 3],
+  ["power plant", 4],
+  ["generation capacity", 3],
+  ["grid", 3],
+  ["electricity", 2],
+  ["transmission", 2],
+  ["distribution", 2],
+];
+
+const TECHNOLOGY_CATEGORY_TERMS_V594: Array<[string, number]> = [
+  ["trí tuệ nhân tạo", 6],
+  ["artificial intelligence", 6],
+  ["machine learning", 5],
+  ["ai", 5],
+  ["bán dẫn", 6],
+  ["semiconductor", 6],
+  ["transistor", 6],
+  ["fet", 6],
+  ["gan", 5],
+  ["mosfet", 6],
+  ["igbt", 6],
+  ["bộ xử lý", 6],
+  ["processor", 6],
+  ["cpu", 6],
+  ["gpu", 6],
+  ["chip", 5],
+  ["soc", 5],
+  ["laptop", 6],
+  ["smartphone", 6],
+  ["máy tính", 4],
+  ["computer", 4],
+  ["ssd", 6],
+  ["pcie", 6],
+  ["memory", 4],
+  ["ram", 4],
+  ["storage", 4],
+  ["phần mềm", 6],
+  ["software", 6],
+  ["cybersecurity", 6],
+  ["bảo mật", 4],
+  ["cloud", 4],
+  ["browser", 4],
+  ["windows", 5],
+  ["linux", 5],
+  ["android", 5],
+  ["robot", 4],
+  ["data center", 2],
+  ["server", 3],
+  ["qualcomm", 5],
+  ["intel", 5],
+  ["nvidia", 5],
+  ["amd", 5],
+  ["apple", 4],
+  ["làm mát", 3],
+  ["cooling", 3],
+];
+
+async function loadVisibleNewsCategoriesV594(
   env: Env,
-): Promise<string | null> {
+): Promise<NewsCategoryRowV594[]> {
   try {
     const rows: any =
       await sb(
         env,
-        "news_categories?select=id,slug,visible,sort_order&visible=eq.true&order=sort_order.asc",
+        "news_categories?select=id,slug,name_vi,name_en,description_vi,description_en,visible,sort_order&visible=eq.true&order=sort_order.asc",
       );
 
-    if (!Array.isArray(rows) || !rows.length) {
-      return null;
+    return Array.isArray(rows)
+      ? rows
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function chooseAutomaticCategoryV594(
+  categories: NewsCategoryRowV594[],
+  item: FeedItem,
+  ai: any,
+): AutoCategoryDecisionV594 {
+  const source =
+    normalizeCategoryTextV594(
+      item?.source || "",
+    );
+
+  const text =
+    normalizeCategoryTextV594(
+      [
+        item?.source,
+        item?.title,
+        item?.summary,
+        ai?.title_vi,
+        ai?.title_en,
+        ai?.subtitle_vi,
+        ai?.subtitle_en,
+        ai?.excerpt_vi,
+        ai?.excerpt_en,
+        ...(Array.isArray(ai?.tags)
+          ? ai.tags
+          : []),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+
+  let electricalScore =
+    scoreCategoryPhrasesV594(
+      text,
+      ELECTRICAL_CATEGORY_TERMS_V594,
+    );
+
+  let technologyScore =
+    scoreCategoryPhrasesV594(
+      text,
+      TECHNOLOGY_CATEGORY_TERMS_V594,
+    );
+
+  if (source.startsWith("electrical ")) {
+    electricalScore += 4;
+  }
+
+  if (source.startsWith("tech ")) {
+    technologyScore += 3;
+  }
+
+  let desiredSlug = "congnghe";
+  let reason = "default-technology";
+  let confident = false;
+
+  if (
+    electricalScore >= 8 &&
+    electricalScore >=
+      technologyScore + 2
+  ) {
+    desiredSlug = "kythuatdien";
+    reason = "electrical-content";
+    confident = true;
+  } else if (
+    technologyScore >= 6 &&
+    technologyScore >=
+      electricalScore
+  ) {
+    desiredSlug = "congnghe";
+    reason = "technology-content";
+    confident = true;
+  } else if (
+    electricalScore >= 6 &&
+    technologyScore <= 3
+  ) {
+    desiredSlug = "kythuatdien";
+    reason = "electrical-source-and-content";
+    confident = true;
+  }
+
+  const bySlug =
+    new Map(
+      categories.map(
+        (row) => [
+          String(
+            row?.slug || "",
+          ).toLowerCase(),
+          row,
+        ],
+      ),
+    );
+
+  const preferred =
+    bySlug.get(desiredSlug);
+
+  const fallback =
+    preferred ||
+    bySlug.get("congnghe") ||
+    bySlug.get("kythuatdien") ||
+    categories[0];
+
+  return {
+    id:
+      fallback?.id
+        ? String(fallback.id)
+        : null,
+    slug:
+      fallback?.slug
+        ? String(fallback.slug)
+        : null,
+    reason:
+      preferred
+        ? reason
+        : `${reason}-fallback`,
+    confident:
+      Boolean(preferred) &&
+      confident,
+    electricalScore,
+    technologyScore,
+  };
+}
+
+async function resolveAutomaticCategoryV594(
+  env: Env,
+  item: FeedItem,
+  ai: any,
+): Promise<AutoCategoryDecisionV594> {
+  const categories =
+    await loadVisibleNewsCategoriesV594(
+      env,
+    );
+
+  return chooseAutomaticCategoryV594(
+    categories,
+    item,
+    ai,
+  );
+}
+
+async function repairRecentAutomationCategoriesV594(
+  env: Env,
+  limit = 20,
+) {
+  try {
+    const alreadyApplied =
+      await env.CONFIG.get(
+        AUTO_CATEGORY_REPAIR_KEY,
+      );
+
+    if (alreadyApplied) {
+      return {
+        attempted: 0,
+        changed: [],
+        changedPublishedIds: [],
+        skipped: true,
+        reason:
+          "one-time-category-repair-already-applied",
+      };
     }
 
-    const preferred =
-      rows.find(
-        (row: any) =>
-          String(row?.slug || "").toLowerCase() ===
-          "congnghe",
+    const categories =
+      await loadVisibleNewsCategoriesV594(
+        env,
       );
 
-    return preferred?.id
-      ? String(preferred.id)
-      : null;
-  } catch {
-    return null;
+    if (!categories.length) {
+      return {
+        attempted: 0,
+        changed: [],
+        changedPublishedIds: [],
+        skipped: true,
+        reason:
+          "no-visible-news-categories",
+      };
+    }
+
+    const rows: any =
+      await sb(
+        env,
+        `news_articles?select=id,category_id,title_vi,title_en,subtitle_vi,subtitle_en,excerpt_vi,excerpt_en,source_name,source_url,tags,status,created_at&author_name=eq.NLKH%20Technology&source_url=not.is.null&order=created_at.desc&limit=${Math.max(1,Math.min(30,limit))}`,
+      );
+
+    const articles =
+      Array.isArray(rows)
+        ? rows
+        : [];
+
+    const changed: any[] = [];
+    const changedPublishedIds: string[] = [];
+
+    for (const row of articles) {
+      const item: FeedItem = {
+        source:
+          String(
+            row?.source_name || "",
+          ),
+        title:
+          String(
+            row?.title_en ||
+            row?.title_vi ||
+            "",
+          ),
+        link:
+          String(
+            row?.source_url || "",
+          ),
+        summary:
+          String(
+            row?.excerpt_en ||
+            row?.excerpt_vi ||
+            "",
+          ),
+        publishedAt:
+          row?.created_at ||
+          null,
+      };
+
+      const decision =
+        chooseAutomaticCategoryV594(
+          categories,
+          item,
+          row,
+        );
+
+      if (
+        !decision.confident ||
+        !decision.id ||
+        String(
+          row?.category_id || "",
+        ) === decision.id
+      ) {
+        continue;
+      }
+
+      const articleId =
+        String(row.id || "");
+
+      if (!articleId) {
+        continue;
+      }
+
+      await sb(
+        env,
+        `news_articles?id=eq.${encodeURIComponent(articleId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            Prefer:
+              "return=minimal",
+          },
+          body: JSON.stringify({
+            category_id:
+              decision.id,
+          }),
+        },
+      );
+
+      changed.push({
+        articleId,
+        title:
+          row?.title_vi ||
+          row?.title_en ||
+          "",
+        fromCategoryId:
+          row?.category_id ||
+          null,
+        toCategoryId:
+          decision.id,
+        categorySlug:
+          decision.slug,
+        reason:
+          decision.reason,
+        electricalScore:
+          decision.electricalScore,
+        technologyScore:
+          decision.technologyScore,
+      });
+
+      if (
+        row?.status ===
+        "published"
+      ) {
+        changedPublishedIds.push(
+          articleId,
+        );
+      }
+    }
+
+    await env.CONFIG.put(
+      AUTO_CATEGORY_REPAIR_KEY,
+      JSON.stringify({
+        appliedAt:
+          new Date().toISOString(),
+        attempted:
+          articles.length,
+        changed,
+      }),
+    );
+
+    return {
+      attempted:
+        articles.length,
+      changed,
+      changedPublishedIds,
+      skipped: false,
+    };
+  } catch (error: any) {
+    return {
+      attempted: 0,
+      changed: [],
+      changedPublishedIds: [],
+      skipped: true,
+      reason:
+        "category-repair-error",
+      error:
+        clip(
+          String(
+            error?.message ||
+            error,
+          ),
+          1000,
+        ),
+    };
   }
 }
 async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
@@ -2145,8 +2621,21 @@ async function writeDraft(env: Env, item: FeedItem, ai: any, score: number) {
     if (attempt === 20) throw new Error(`Không tìm được slug duy nhất cho ${slugBase}`);
   }
   const tags = normalizeTags(ai.tags);
+  const categoryDecision =
+    await resolveAutomaticCategoryV594(
+      env,
+      item,
+      {
+        ...ai,
+        title_vi: titleVi,
+        title_en: titleEn,
+        excerpt_vi: excerptVi,
+        excerpt_en: excerptEn,
+        tags,
+      },
+    );
   const categoryId =
-    await resolveTechnologyCategoryId(env);
+    categoryDecision.id;
 
   const article = {
     slug,
@@ -6540,6 +7029,11 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
     failed: [],
     remaining: 0,
   };
+  const categoryRepair =
+    await repairRecentAutomationCategoriesV594(
+      env,
+      20,
+    );
   const candidates: Array<{ item: FeedItem; score: number }> = [];
   const sourceErrors: Array<{ source: string; error: string }> = [];
 
@@ -6966,9 +7460,19 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
   let frontendDeployTriggered = false;
   let publishError = "";
 
+  const repairedPublishedCategoryIds =
+    Array.isArray(
+      categoryRepair?.changedPublishedIds,
+    )
+      ? categoryRepair.changedPublishedIds
+      : [];
+
   if (
-    settings.publishMode === "auto" &&
-    autoPublishedArticleIds.length
+    (
+      settings.publishMode === "auto" &&
+      autoPublishedArticleIds.length
+    ) ||
+    repairedPublishedCategoryIds.length
   ) {
     try {
       await triggerFrontendPublish(env);
@@ -7085,6 +7589,7 @@ async function scan(env: Env, settings: Settings = DEFAULT_SETTINGS) {
 
     existingImageRepair,
     existingDraftRepair,
+    categoryRepair,
     created,
     sourceErrors,
     sourceDiagnostics,
