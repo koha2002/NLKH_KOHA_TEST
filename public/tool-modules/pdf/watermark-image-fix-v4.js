@@ -193,7 +193,7 @@ function render(){
   schedulePreview();
 }
 function bind(){
-  document.querySelectorAll('[data-wm-mode]').forEach(b=>b.onclick=()=>{saveState();state.mode=b.dataset.wmMode;render()});
+  document.querySelectorAll('[data-wm-mode]').forEach(b=>b.onclick=()=>{saveState();state.mode=b.dataset.wmMode;const mode=el('watermarkMode');if(mode)mode.value=state.mode;render()});
   const img=el('watermarkImageInput');if(img)img.onchange=e=>{
     const f=e.target.files?.[0];if(!f)return;
     if(!/^image\/(png|jpeg)$/i.test(f.type)&&!/\.(png|jpe?g)$/i.test(f.name)){setStatus('Ảnh dấu chỉ hỗ trợ PNG/JPG.','Stamp image must be PNG/JPG.','error');return}
