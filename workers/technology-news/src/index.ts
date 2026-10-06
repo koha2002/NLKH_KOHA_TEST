@@ -2173,6 +2173,8 @@ function chooseAutomaticCategoryV594(
         ai?.subtitle_en,
         ai?.excerpt_vi,
         ai?.excerpt_en,
+        ai?.content_vi,
+        ai?.content_en,
         ...(Array.isArray(ai?.tags)
           ? ai.tags
           : []),
@@ -2329,7 +2331,7 @@ async function repairRecentAutomationCategoriesV594(
     const rows: any =
       await sb(
         env,
-        `news_articles?select=id,category_id,title_vi,title_en,subtitle_vi,subtitle_en,excerpt_vi,excerpt_en,source_name,source_url,tags,status,created_at&author_name=eq.NLKH%20Technology&source_url=not.is.null&order=created_at.desc&limit=${Math.max(1,Math.min(30,limit))}`,
+        `news_articles?select=id,category_id,title_vi,title_en,subtitle_vi,subtitle_en,excerpt_vi,excerpt_en,content_vi,content_en,source_name,source_url,tags,status,created_at&author_name=eq.NLKH%20Technology&source_url=not.is.null&order=created_at.desc&limit=${Math.max(1,Math.min(30,limit))}`,
       );
 
     const articles =
