@@ -9,3 +9,4 @@ out/
 *.log
 tsconfig.tsbuildinfo
 .DS_Store
+supabase/.temp/
