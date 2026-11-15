@@ -1,0 +1,2400 @@
+
+===== FILE: CHANGELOG.md =====
+# CHANGELOG
+
+Gộp từ các file HOTFIX cũ. Lịch sử đầy đủ vẫn nằm trong Git.
+
+---
+
+# NLKH_KOHA V4.1 Hotfix
+
+Hotfix này sửa 3 vấn đề sau khi chạy local:
+
+- Sửa chữ tiếng Việt bị mojibake bằng cách để `sync-admin-cms.mjs` tự đọc `.env.local` và sinh lại dữ liệu UTF-8 từ Supabase.
+- Hiện nút **Đăng nhập** rõ ràng trên desktop thay cho nút tròn ký hiệu mơ hồ.
+- Kho phần mềm không đọc `public/content/software.json` trong source nữa. Metadata đọc trực tiếp từ Supabase; icon/cover/file tải lấy từ Cloudflare R2 bằng media ID + signed URL. Admin Software được chuyển sang R2-only.
+
+## Áp dụng
+
+Giải nén và copy nội dung hotfix đè vào root repo `D:\NEW_CODE\NLKH_KOHA_TEST`.
+
+Sau đó ở root repo chạy:
+
+```powershell
+Remove-Item .\public\content\software.json -Force -ErrorAction SilentlyContinue
+node .\scripts\sync-admin-cms.mjs
+npx.cmd supabase@latest db push --dry-run
+```
+
+Dry-run phải chỉ thấy migration `202608100003_software_r2_only.sql`. Nếu đúng:
+
+```powershell
+npx.cmd supabase@latest db push
+```
+
+Sau đó build lại:
+
+```powershell
+Remove-Item .\.next -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item .\out -Recurse -Force -ErrorAction SilentlyContinue
+npm.cmd run build
+
+cd admin
+npm.cmd run build
+cd ..
+```
+
+Cuối cùng chạy local:
+
+```powershell
+npm.cmd run dev
+```
+
+Mở PowerShell khác:
+
+```powershell
+cd D:\NEW_CODE\NLKH_KOHA_TEST\admin
+npm.cmd run dev
+```
+
+Frontend: `http://localhost:3000`
+Admin: `http://localhost:5174`
+
+Nếu bảng Software trong Admin chưa có mục nào thì `/software` ngoài frontend phải trống. Chỉ sau khi tạo software trong Admin, upload icon/file lên R2 và bật `Hiển thị`, frontend mới hiện mục đó.
+
+
+---
+
+# NLKH_KOHA V4.2 — Software download: Link hoặc R2
+
+Hotfix này thay đổi riêng luồng **Kho phần mềm**:
+
+- Metadata phần mềm: Supabase.
+- Icon/cover nhỏ: Cloudflare R2.
+- File cài đặt/file tải: người quản trị chọn một trong hai:
+  - **Liên kết ngoài**: Google Drive, OneDrive, MediaFire, website hãng, CDN khác…
+  - **Cloudflare R2**: upload trực tiếp.
+- Không lưu file cài đặt trong source Git.
+- Khi đổi từ R2 sang Link, `download_media_id` được gỡ khỏi bản ghi phần mềm (asset R2 vẫn nằm trong thư viện cho tới khi quản trị tự xóa).
+- Khi đổi từ Link sang R2, `download_url` được đặt `NULL`.
+- Với `authenticated` + Link ngoài: website yêu cầu đăng nhập trước khi mở link, nhưng bản thân URL bên ngoài vẫn do dịch vụ lưu trữ đó kiểm soát.
+
+## Áp dụng
+
+Copy toàn bộ nội dung ZIP vào root repo `NLKH_KOHA_TEST`, ghi đè file cũ.
+
+Sau đó:
+
+```powershell
+npx.cmd supabase@latest db push --dry-run
+```
+
+Phải thấy migration:
+
+`202608100004_software_link_or_r2.sql`
+
+Nếu đúng:
+
+```powershell
+npx.cmd supabase@latest db push
+```
+
+Sau đó build/test lại frontend + admin.
+
+
+---
+
+# NLKH KOHA V4.3 — Password recovery + change password
+
+Copy the contents of this overlay into the repository root after V4.2.
+
+## Added
+- Login: "Quên mật khẩu?" flow using Supabase `resetPasswordForEmail()`.
+- New public route: `/account/reset-password`.
+- Account page: password change form for authenticated users.
+- Password change verifies the current password by signing in again, then calls `updateUser({ password })`.
+
+## Supabase redirect URL
+Add these to Authentication -> URL Configuration -> Redirect URLs:
+- `http://localhost:3000/account/reset-password`
+- `https://nguyenlekhanhhoa.com/account/reset-password`
+
+Keep the existing callback URLs as well.
+
+No database migration is required for this hotfix.
+
+
+---
+
+# HOTFIX V4.4 — Frontend VI/EN + Admin Save Toast + Publish UX
+
+## Sửa gì
+- Đồng bộ VI/EN cho các phần frontend V4 đã bị hardcode tiếng Việt: Header/account menu, Login/Register/Forgot password, Account/Change password, Reset password, Auth callback, News list/article/comments, CMS content access states, Data workspace, Software errors, CV PDF errors, dynamic tool access state.
+- Giữ ngôn ngữ theo `LanguageProvider`/localStorage hiện có.
+- Login tôn trọng `?next=/...` sau khi đăng nhập.
+- Admin: sau khi bấm Lưu trong TableManager có toast nổi `Đã lưu thay đổi thành công`.
+- Data permission và API secret cũng có toast save.
+- Nút `Xuất bản frontend` có trạng thái đang chạy, confirm giải thích khi nào cần bấm, toast thành công/lỗi rõ hơn.
+- Vite Admin cố định `localhost:5174` + `strictPort:true`, tránh tự nhảy 5175 làm lệch CORS.
+
+## Vì sao nút Xuất bản trước đó báo Failed to fetch
+Ảnh kiểm tra cho thấy Admin đang chạy ở `http://localhost:5175`, trong khi cấu hình ALLOWED_ORIGINS trước đó dùng `http://localhost:5174`. Browser chặn request Edge Function khi CORS origin không khớp. V4.4 cố định port 5174.
+
+## Khi nào cần Xuất bản frontend
+CẦN sau khi lưu: Cấu hình chung, Menu/Footer, Tool, CV, Tin tức, SEO, Redirect, hoặc tạo/đổi route Trang nội dung.
+THƯỜNG KHÔNG CẦN: Software, Data, tài khoản/quyền, thư viện R2 riêng lẻ, vì các phần này đọc runtime. Nếu ảnh R2 được gán vào một mục build-time (menu/CV/news/tool/site), hãy Publish sau khi lưu mục đó.
+
+## Render Deploy Hook
+Nút Publish chỉ hoạt động khi frontend Static Site trên Render đã tồn tại và Supabase Edge Function secret có `RENDER_FRONTEND_DEPLOY_HOOK`.
+
+
+---
+
+# V4.4.1 CV build fix
+
+Fixes the TypeScript narrowing regression in `app/cv/page.tsx` introduced by V4.4.
+
+Copy this overlay onto the repository root, then rebuild.
+
+
+---
+
+# HOTFIX V4.5 — UUID empty value on Admin save
+
+Fixes `invalid input syntax for type uuid: ""` when saving forms that contain optional R2/media or relation fields with no selection.
+
+Cause: browser form values use an empty string for an unselected field, while PostgreSQL UUID/FK columns require `NULL`.
+
+Changed file:
+- `admin/src/components/TableManager.jsx`
+
+No database migration is required.
+
+
+---
+
+# HOTFIX V4.6 — Nhập dữ liệu NLKH_KOHA + Redirect 3 miền qua Cloudflare
+
+## Mục tiêu
+
+1. Không nhập tay từng phần mềm/dữ liệu cũ.
+2. Metadata chuyển sang Supabase; ảnh/PDF nhỏ chuyển sang Cloudflare R2.
+3. Installer/phần mềm lớn đang là Google Drive/OneDrive/link ngoài: giữ **Link**, không tải về R2.
+4. Code chạy vẫn ở Git/source.
+5. Admin quản lý redirect giữa:
+   - `koha.io.vn`
+   - `nguyenlekhanhhoa.com`
+   - `nguyenlekhanhhoa.name.vn`
+   và đồng bộ Cloudflare Bulk Redirects bằng một nút.
+
+## Những gì importer lấy từ repo cũ
+
+- `public/content/software.json` → `software_categories` + `software_items`.
+- `public/software-icons/*` được tham chiếu → R2 + `media_assets`.
+- `public/content/cv/profile.json` → `cv_profiles` + `cv_sections`.
+- `public/profile.jpg`, CV PDF → R2.
+- `public/content/access/resources.json` → `data_collections` + `data_items` dạng Link.
+- favicon/logo/cv-preview nhỏ → thư viện R2.
+
+### Cố tình KHÔNG nhập
+
+- `public/content/access/accounts.json` password: web cũ để plaintext, không đưa sang hệ mới. Tạo/cấp quyền bằng Supabase Auth.
+- `public/tool-modules/**`: đây là code Quiz/PDF/COMTRADE (HTML/CSS/JS/vendor), phải ở Git để build/chạy frontend.
+- `app/`, `components/`, `lib/`, `styles/`, scripts build, Supabase functions/migrations: code, không phải R2.
+
+## Cài đặt
+
+Copy hotfix vào root `D:\NEW_CODE\NLKH_KOHA_TEST`.
+
+### 1. Migration
+
+```powershell
+cd D:\NEW_CODE\NLKH_KOHA_TEST
+npx.cmd supabase@latest db push --dry-run
+```
+
+Phải thấy:
+
+```text
+202608100005_legacy_import_cloudflare_redirects.sql
+```
+
+Sau đó:
+
+```powershell
+npx.cmd supabase@latest db push
+```
+
+### 2. Deploy 2 Edge Functions mới
+
+```powershell
+npx.cmd supabase@latest functions deploy legacy-import --use-docker
+npx.cmd supabase@latest functions deploy cloudflare-redirect-sync --use-docker
+```
+
+### 3. Cloudflare API Token cho Redirect
+
+Cloudflare → My Profile / API Tokens → Create Token → Custom Token.
+
+Permissions ở cấp Account:
+
+- `Account > Bulk URL Redirects > Edit`
+- `Account > Account Filter Lists > Edit`
+
+Scope: chỉ account đang chứa 3 domain.
+
+Lấy **Account ID** của Cloudflare, rồi set Supabase secrets:
+
+```powershell
+npx.cmd supabase@latest secrets set `
+  CLOUDFLARE_ACCOUNT_ID="ACCOUNT_ID_CUA_BAN" `
+  CLOUDFLARE_API_TOKEN="TOKEN_CUA_BAN" `
+  REDIRECT_ALLOWED_HOSTS="koha.io.vn,nguyenlekhanhhoa.com,nguyenlekhanhhoa.name.vn" `
+  REDIRECT_DEFAULT_TARGET_HOST="nguyenlekhanhhoa.com" `
+  CLOUDFLARE_REDIRECT_LIST_NAME="nlkh_admin_redirects"
+```
+
+Không đưa token Cloudflare vào `VITE_*`, `NEXT_PUBLIC_*`, `.env` public hoặc GitHub.
+
+Sau khi set secrets không bắt buộc deploy lại chỉ vì secret, nhưng nếu function chưa deploy thì deploy theo bước 2.
+
+### 4. Nhập dữ liệu cũ
+
+Admin → **Nhập dữ liệu cũ**.
+
+1. Bấm `Xem trước dữ liệu cũ`.
+2. Kiểm tra số phần mềm/icon/CV/tài liệu.
+3. Bấm `Nhập vào Supabase + R2`.
+
+Importer có thể chạy lại: software/category dùng slug để cập nhật; media dùng SHA-256 để tái sử dụng ID nếu file trùng.
+
+> CV khi import sẽ thay nội dung CV hiện tại bằng dữ liệu từ repo cũ. Nếu đã sửa CV mới, bỏ tick CV trước khi chạy.
+
+### 5. Redirect cả miền cũ sang .com
+
+Admin → Redirect:
+
+- Miền nguồn: `koha.io.vn`
+- Đường dẫn nguồn: `/`
+- Chuyển tới: `https://nguyenlekhanhhoa.com/`
+- Loại: `301`
+- Kích hoạt: ON
+- Bao gồm subdomain: ON nếu muốn `www`/subdomain phù hợp
+- Khớp mọi path con: ON
+- Giữ phần path phía sau: ON
+- Giữ query string: ON
+
+Lưu → bấm **Đồng bộ Cloudflare**.
+
+Ví dụ sau sync:
+
+- `https://koha.io.vn/` → `https://nguyenlekhanhhoa.com/`
+- `https://koha.io.vn/tools/pdf?x=1` → `https://nguyenlekhanhhoa.com/tools/pdf?x=1`
+
+Có thể tạo rule tương tự từ `nguyenlekhanhhoa.name.vn` sang `.com`, hoặc chuyển ngược giữa 3 miền nếu thực sự cần.
+
+### 6. DNS bắt buộc
+
+Hostname nguồn phải có DNS record được **Proxy qua Cloudflare (orange cloud)** thì Bulk Redirect mới bắt request tại Cloudflare Edge.
+
+### 7. Build
+
+```powershell
+npm.cmd run build
+cd admin
+npm.cmd run build
+cd ..
+```
+
+Sau đó commit/push branch đang deploy.
+
+## Ghi chú CV/R2
+
+V4.6 bổ sung `photoMediaId` trong dữ liệu CV và frontend xin signed URL từ `r2-file`, nên ảnh CV có thể nằm trong bucket R2 private. PDF CV đã dùng cơ chế này từ V4 trước.
+
+Favicon/OG trong `<head>` cần URL public ở thời điểm build. V4.6 vẫn upload các asset thương hiệu nhỏ vào thư viện R2, nhưng chỉ tự gắn favicon nếu `R2_PUBLIC_BASE_URL` đã cấu hình. Không tự bật public cả bucket.
+
+
+---
+
+# V4.6.1 — Legacy import error/report fix
+
+Sửa lỗi Admin chỉ hiện `[object Object]` khi Edge Function trả về lỗi dạng object.
+
+## Thay đổi
+- `admin/src/pages/LegacyImport.jsx`: hiển thị lỗi có message/details/hint/code, lưu report kể cả khi import partial.
+- `supabase/functions/legacy-import/index.ts`:
+  - serialize PostgREST/AWS errors thành thông báo đọc được;
+  - import theo từng stage (software/CV/data/brand media), một stage lỗi không làm mất report của các stage còn lại;
+  - software/data import theo từng item, item lỗi được ghi vào report thay vì dừng cả 25 mục;
+  - upload R2 lỗi sẽ đánh dấu media `failed` thay vì để `pending` không rõ nguyên nhân;
+  - có thể chạy lại an toàn: software/category dùng slug; media reuse theo SHA-256; data legacy dùng `legacy_id`.
+  - CV tắt `published` của profile khác trước khi bật profile đang import, tránh lỗi unique published.
+
+## Cài
+Copy đè vào root repo, sau đó:
+
+```powershell
+cd D:\NEW_CODE\NLKH_KOHA_TEST\admin
+npm.cmd run build
+cd ..
+npx.cmd supabase@latest functions deploy legacy-import --use-docker
+git add -A
+git commit -m "Fix legacy import errors and partial reporting"
+git push origin admin-v4
+```
+
+Đợi Render Admin deploy xong, vào `/migration`, bấm Preview rồi Import lại. Nếu có lỗi, report phía dưới sẽ ghi chính xác stage/item nào lỗi.
+
+Không có migration database mới.
+
+
+---
+
+# V4.6.2 — CV legacy import fix
+
+Sửa lỗi `23502 null value in column description_vi of relation cv_sections` khi import CV legacy.
+
+Nguyên nhân: bulk insert nhiều loại CV section có tập key khác nhau; các cột text NOT NULL bị gửi thành NULL ở một số row. V4.6.2 chuẩn hóa mọi section thành đầy đủ các cột text với chuỗi rỗng thay vì NULL.
+
+Không có migration database mới. Chỉ cần copy file, deploy lại `legacy-import`, rồi chạy lại riêng stage CV (bỏ tick Software/Data/Brand Media nếu đã import thành công).
+
+
+---
+
+# V4.7 — Favicon + cuộn Admin độc lập
+
+## Sửa
+
+1. Khôi phục favicon của website cũ thành `public/favicon.png`.
+2. `lib/admin-seo.ts` dùng `/favicon.png` khi `site.favicon_url` chưa có URL public.
+3. Admin desktop có **2 vùng cuộn độc lập**:
+   - menu/sidebar trái cuộn riêng;
+   - nội dung bên phải cuộn riêng;
+   - footer sidebar (Xuất bản / Đăng xuất) luôn ở cuối sidebar;
+   - header Admin sticky trong vùng nội dung.
+4. Mobile vẫn dùng cuộn trang bình thường.
+
+## Áp dụng
+
+Giải nén hotfix. Mở PowerShell tại root repo `NLKH_KOHA_TEST`, rồi chạy script từ thư mục hotfix, ví dụ:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "D:\Downloads\NLKH_KOHA_V4_7_FAVICON_ADMIN_SCROLL_FIX\APPLY_V4_7.ps1"
+```
+
+Hoặc copy thư mục hotfix vào root repo rồi chạy:
+
+```powershell
+.\NLKH_KOHA_V4_7_FAVICON_ADMIN_SCROLL_FIX\APPLY_V4_7.ps1
+```
+
+Sau đó:
+
+```powershell
+npm.cmd run build
+cd admin
+npm.cmd run build
+cd ..
+```
+
+Commit/push branch `admin-v4` để Render deploy.
+
+## Kiểm tra
+
+- `https://nguyenlekhanhhoa.com/favicon.png` phải mở được icon.
+- Chrome cache favicon khá lâu: sau deploy hãy đóng tab cũ, mở tab mới; nếu cần hard refresh.
+- Admin: đặt chuột lên menu trái và lăn → chỉ menu trái cuộn. Đặt chuột vào nội dung phải và lăn → chỉ nội dung phải cuộn.
+
+
+---
+
+# V4.7.1 — Favicon + Admin Brand Fix
+
+- Thêm favicon riêng cho Admin (`admin/public/favicon.png`).
+- Giữ favicon frontend ở `public/favicon.png`.
+- Cắt bớt vùng trong suốt của favicon để biểu tượng nhìn đầy hơn trong tab trình duyệt.
+- Thêm cache-busting `?v=471` cho favicon Admin.
+- Tăng chữ thương hiệu `NLKH / ADMIN` ở sidebar Admin.
+- Không thay đổi database, Supabase hay R2.
+
+## Cài đặt
+
+Giải nén thư mục này vào root repo, rồi chạy:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\NLKH_KOHA_V4_7_1_FAVICON_BRAND_FIX\APPLY_V4_7_1.ps1"
+npm.cmd run build
+cd admin
+npm.cmd run build
+cd ..
+```
+
+Sau khi push/deploy, đóng tab cũ và mở tab mới hoặc Ctrl+F5 vì Chrome cache favicon rất lâu.
+
+===== FILE: README.md =====
+# NLKH Portal — nguyenlekhanhhoa.com
+
+Website cá nhân của Nguyễn Lê Khánh Hòa: hồ sơ, công cụ chạy trên trình duyệt, kho phần mềm, tin tức. Nội dung được quản lý bằng một Admin riêng, không cần sửa code cho việc thường ngày.
+
+## Kiến trúc
+
+| Phần | Công nghệ | Thư mục | Nơi chạy |
+|---|---|---|---|
+| Website công khai | Next.js 16 (static export) | `app/`, `components/`, `lib/`, `styles/` | Render Static Site `nguyen-le-khanh-hoa` |
+| Admin | Vite + React 19 | `admin/` | Render Static Site `nlkh-admin` |
+| Công cụ (Quiz, PDF, COMTRADE, Remove Background) | HTML/JS chạy ngay trong trình duyệt | `public/tool-modules/` | Nhúng vào website qua iframe |
+| Backend | Supabase: Postgres, Auth, RLS, Edge Functions | `supabase/` | Supabase |
+| Tệp, ảnh | Cloudflare R2 qua Edge Function `r2-file` | — | Cloudflare |
+| Thu thập tin công nghệ | Worker | `workers/technology-news/` | — |
+| Lịch chạy định kỳ | GitHub Actions, 15 phút một lần | `.github/workflows/` | GitHub |
+
+Cấu hình deploy nằm trong `render.yaml`. Redirect thật được xử lý ở Cloudflare.
+
+## Nhánh
+
+`admin-v4` là nhánh đang chạy thật. Các nhánh `backup/*` chỉ là bản sao lưu, không cần đụng tới.
+
+## Chạy trên máy (Node.js 22.13 trở lên)
+
+    Copy-Item .env.example .env.local
+    npm install
+    npm run dev                 # http://localhost:3000
+
+    cd admin
+    Copy-Item .env.example .env.local
+    npm install
+    npm run dev                 # http://localhost:5174
+
+## Trước khi push
+
+    npm run build
+    npx tsc --noEmit
+    npm run test:comtrade
+    npm run test:pdf
+    cd admin; npm run build
+
+## Việc nào làm ở đâu
+
+- Nội dung, menu, SEO, tin tức, CV, phần mềm, redirect, API key: làm trong Admin, sau đó bấm **Xuất bản frontend**.
+- Công cụ mới hoặc giao diện mới: cần sửa code. Xem `docs/README_CU.md`, mục "Tạo tool mới".
+
+## Lưu ý
+
+- `data/admin-generated.ts` do `scripts/sync-admin-cms.mjs` sinh lúc build. Không sửa tay. Giữ trong Git làm bản dự phòng khi thiếu biến môi trường.
+- Không commit `.env*`, service-role key, R2 secret hay API key. Thư mục `supabase/.temp/` đã được ignore.
+
+## Tài liệu
+
+- `docs/DEPLOY_A_Z.md`: cài máy mới, Supabase, R2, GitHub, Render, domain, scheduler.
+- `docs/DEPLOY_ADMIN_V4_A_Z.md`: triển khai Admin V4.
+- `docs/HUONG_DAN_QUAN_TRI_SOURCE.md`: hướng dẫn từng màn hình Admin.
+- `docs/README_ADMIN_V4.md`: các tính năng Admin V4.
+- `docs/README_CU.md`: README cũ (hướng dẫn tạo tool và API).
+- `CHANGELOG.md`: nhật ký các bản vá.
+
+===== FILE: docs/DEPLOY_ADMIN_V4_A_Z.md =====
+# Deploy A–Z — NLKH_KOHA Admin V4
+
+## Kiến trúc sau nâng cấp
+
+```text
+nguyenlekhanhhoa.com
+  -> Render Static Site
+  -> Next.js static export từ root repo
+
+admin.nguyenlekhanhhoa.com
+  -> Render Static Site
+  -> Vite/React trong admin/
+
+Supabase
+  -> Auth + Postgres + RLS + Edge Functions
+
+Cloudflare R2
+  -> ảnh / favicon / OG / CV / data / media / comment archive
+```
+
+Repo gốc `NLKH_KOHA` hiện đã là static Next export. Bản V4 **không chuyển frontend sang Web Service** và không làm frontend ngủ đông; chỉ bổ sung Supabase/R2 và tách Admin thành Static Site riêng.
+
+---
+
+## 0. Máy Windows mới: cài công cụ cần thiết
+
+Mở PowerShell và cài Git + Node.js LTS:
+
+```powershell
+winget install --id Git.Git -e
+winget install --id OpenJS.NodeJS.LTS -e
+```
+
+Đóng PowerShell, mở lại rồi kiểm tra:
+
+```powershell
+git --version
+node --version
+npm.cmd --version
+npx.cmd supabase@latest --version
+```
+
+Bản hướng dẫn dùng `npx.cmd supabase@latest ...` nên không cần cài Supabase CLI global. Nếu máy đã có Git/Node thì bỏ qua phần cài tương ứng.
+
+---
+
+## 1. Tạo branch test, không đụng production ngay
+
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force D:\NEW_CODE
+Set-Location D:\NEW_CODE
+
+git clone https://github.com/koha2002/NLKH_KOHA.git
+Set-Location .\NLKH_KOHA
+
+git checkout -b admin-v4
+```
+
+Giải nén `NLKH_KOHA_ADMIN_V4_OVERLAY.zip`.
+
+Copy **toàn bộ nội dung bên trong ZIP** vào root:
+
+```text
+D:\NEW_CODE\NLKH_KOHA\
+```
+
+Chọn Merge/Replace.
+
+Đây là overlay nên những file gốc không nằm trong ZIP vẫn giữ nguyên.
+
+---
+
+## 2. Cài dependency và build local
+
+Root frontend:
+
+```powershell
+Set-Location D:\NEW_CODE\NLKH_KOHA
+npm.cmd install
+npm.cmd run build
+```
+
+Admin:
+
+```powershell
+Set-Location D:\NEW_CODE\NLKH_KOHA\admin
+npm.cmd install
+npm.cmd run build
+```
+
+Nếu cả hai build thành công mới tiếp tục.
+
+---
+
+## 3. Tạo Supabase project
+
+Tạo project Supabase mới nếu bạn chưa có project database cho Admin V4.
+
+Lấy:
+
+```text
+Project URL
+Publishable key (sb_publishable_...)
+```
+
+Browser chỉ dùng **publishable key**. Không đưa secret/service key vào `NEXT_PUBLIC_*` hoặc `VITE_*`.
+
+---
+
+## 4. Chạy migrations
+
+Supabase Dashboard -> SQL Editor.
+
+Nếu project mới hoàn toàn, chạy theo đúng thứ tự file trong:
+
+```text
+supabase/migrations/
+```
+
+Thứ tự hiện có:
+
+```text
+202608090001_initial_cms.sql
+202608090002_content_pages_access.sql
+202608100001_static_split.sql
+202608100002_admin_ux_v4.sql
+```
+
+Nếu project cũ đã chạy ba file đầu thì chỉ chạy migration mới chưa chạy. Không chạy lại bừa migration đã áp dụng trên production.
+
+Sau khi chạy, kiểm tra có bảng:
+
+```text
+profiles
+roles
+site_settings
+navigation_items
+seo_entries
+tools
+news_articles
+news_comments
+software_items
+data_items
+user_data_access
+media_assets
+api_integrations
+scheduled_api_jobs
+cv_profiles
+cv_sections
+```
+
+---
+
+## 5. Tạo tài khoản Owner
+
+Đăng ký bằng email Owner đã cấu hình trong migration/project.
+
+Kiểm tra `profiles`:
+
+```text
+role_id = owner
+status = active
+```
+
+Role `owner` cần permission `*`.
+
+Nếu user đã tồn tại từ trước, sửa profile chứ không tạo Auth user trùng email.
+
+---
+
+## 6. Supabase Auth URL
+
+Supabase -> Authentication -> URL Configuration.
+
+Production Site URL:
+
+```text
+https://nguyenlekhanhhoa.com
+```
+
+Redirect allow list:
+
+```text
+http://localhost:3000/auth/callback/
+http://localhost:5174/auth/callback
+https://<frontend-test>.onrender.com/auth/callback/
+https://<admin-test>.onrender.com/auth/callback
+https://nguyenlekhanhhoa.com/auth/callback/
+https://admin.nguyenlekhanhhoa.com/auth/callback
+```
+
+URL dùng trong `redirectTo/emailRedirectTo` phải nằm trong allow list.
+
+### Email rate limit
+
+Supabase built-in email provider có hạn mức rất thấp. Trước khi mở đăng ký thật:
+
+```text
+Authentication -> SMTP -> Custom SMTP
+Authentication -> Rate Limits
+```
+
+Cấu hình SMTP riêng rồi chỉnh rate limit phù hợp. Không giải quyết rate limit bằng cách đưa service-role key vào frontend.
+
+---
+
+## 7. Cloudflare R2
+
+Tạo hoặc dùng bucket hiện có, ví dụ:
+
+```text
+nlkh-media
+```
+
+Tạo R2 API credentials có quyền đọc/ghi object cho bucket này.
+
+Bạn cần:
+
+```text
+R2_ACCOUNT_ID
+R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY
+R2_BUCKET_NAME
+```
+
+### Public custom domain
+
+Nếu muốn OG/favicon/avatar/public image có URL ổn định, gắn custom domain cho bucket, ví dụ:
+
+```text
+files.nguyenlekhanhhoa.com
+```
+
+Giá trị này dùng cho:
+
+```text
+R2_PUBLIC_BASE_URL=https://files.nguyenlekhanhhoa.com
+```
+
+Private download/upload vẫn dùng presigned URL S3 API ở Edge Function; không dùng custom domain cho presigned URL.
+
+### CORS
+
+R2 -> bucket -> Settings -> CORS.
+
+Có file mẫu:
+
+```text
+R2_CORS.example.json
+```
+
+Trong lúc test có thể thêm origin test Render. Production tối thiểu phải có Admin origin cho `PUT` upload.
+
+---
+
+## 8. Edge Function Secrets
+
+Supabase -> Edge Functions -> Secrets.
+
+Các biến `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS` được hosted Supabase cung cấp mặc định. Không tự copy secret key vào frontend.
+
+Tạo thêm:
+
+```text
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5174,https://nguyenlekhanhhoa.com,https://admin.nguyenlekhanhhoa.com
+
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET_NAME=nlkh-media
+R2_PUBLIC_BASE_URL=https://files.nguyenlekhanhhoa.com
+
+INTEGRATION_SECRETS_KEY=<chuỗi ngẫu nhiên >= 32 ký tự>
+SCHEDULER_SECRET=<chuỗi ngẫu nhiên dài>
+COMMENT_HASH_SALT=<chuỗi ngẫu nhiên riêng>
+```
+
+`INTEGRATION_SECRETS_KEY` dùng AES-GCM mã hóa API secret lưu trong DB.
+
+`SCHEDULER_SECRET` chỉ là shared secret cloud. Có thể tạo trong Admin bằng nút Web Crypto. Máy tính tắt không làm nó mất hiệu lực.
+
+---
+
+## 9. Deploy Edge Functions
+
+Cài Supabase CLI theo hướng dẫn chính thức hiện tại, sau đó từ root repo:
+
+```powershell
+npx.cmd supabase@latest login
+npx.cmd supabase@latest link --project-ref YOUR_PROJECT_REF
+
+npx.cmd supabase@latest functions deploy r2-file
+npx.cmd supabase@latest functions deploy integration-secret
+npx.cmd supabase@latest functions deploy integration-proxy
+npx.cmd supabase@latest functions deploy schedule-runner
+npx.cmd supabase@latest functions deploy render-deploy
+npx.cmd supabase@latest functions deploy news-comment
+```
+
+`supabase/config.toml` đặt built-in `verify_jwt=false`; các function tự kiểm tra user/session/permission trong code để tương thích publishable/secret API key mới.
+
+---
+
+## 10. Env local root frontend
+
+Tạo `.env.local` ở root:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_ADMIN_URL=http://localhost:5174
+NLKH_CMS_SYNC_REQUIRED=false
+```
+
+Chạy:
+
+```powershell
+npm.cmd run dev
+```
+
+Frontend: `http://localhost:3000`.
+
+---
+
+## 11. Env local Admin
+
+```powershell
+Set-Location admin
+Copy-Item .env.example .env
+notepad .env
+```
+
+Điền:
+
+```env
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+VITE_SITE_URL=http://localhost:3000
+VITE_ADMIN_URL=http://localhost:5174
+```
+
+Chạy:
+
+```powershell
+npm.cmd run dev
+```
+
+Admin: `http://localhost:5174`.
+
+---
+
+## 12. Test Admin local
+
+Kiểm tra trước khi push:
+
+```text
+Cấu hình chung: OG + favicon upload R2
+Menu/Footer: parent dropdown + icon R2
+Trang nội dung: required/optional/error đúng ô
+SEO: tooltip + OG R2
+Redirect
+Tool: thêm tool + preview inline HTML
+News: cover R2 + comment moderation
+Software: icon/cover + nguồn Link/R2 + public/auth download
+Data: Link/R2 + permission matrix
+CV: một profile + section + photo/PDF
+Users: avatar + permission checkbox
+Media: R2 ID/preview/replace/delete/dedupe
+API: secret + lịch chạy
+PDF: Offline / Online
+```
+
+---
+
+## 13. Push branch test
+
+```powershell
+Set-Location D:\NEW_CODE\NLKH_KOHA
+
+git status
+git add .
+git commit -m "feat: admin v4 r2 cms permissions and pdf offline-online"
+git push -u origin admin-v4
+```
+
+Giữ `main` nguyên để rollback.
+
+---
+
+## 14. Deploy TEST trên Render trước
+
+Để không đụng website production, tạo thủ công hai Static Site test từ branch `admin-v4`.
+
+### Frontend test
+
+```text
+Service type: Static Site
+Repository: koha2002/NLKH_KOHA
+Branch: admin-v4
+Root Directory: để trống
+Build Command: npm install && npm run build
+Publish Directory: out
+```
+
+Environment:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+NEXT_PUBLIC_SITE_URL=https://<frontend-test>.onrender.com
+NEXT_PUBLIC_ADMIN_URL=https://<admin-test>.onrender.com
+NLKH_CMS_SYNC_REQUIRED=true
+```
+
+### Admin test
+
+```text
+Service type: Static Site
+Repository: koha2002/NLKH_KOHA
+Branch: admin-v4
+Root Directory: admin
+Build Command: npm install && npm run build
+Publish Directory: dist
+```
+
+Environment:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_PUBLISHABLE_KEY
+VITE_SITE_URL=https://<frontend-test>.onrender.com
+VITE_ADMIN_URL=https://<admin-test>.onrender.com
+```
+
+Admin cần SPA rewrite:
+
+```text
+Source: /*
+Destination: /index.html
+Action: Rewrite
+```
+
+`render.yaml` đã chứa cấu hình tương đương cho production/Blueprint.
+
+---
+
+## 15. Cập nhật allowed origins test
+
+Trong khi test thêm URL test vào:
+
+```text
+Supabase Auth Redirect URLs
+ALLOWED_ORIGINS
+R2 CORS
+```
+
+Nếu thiếu, upload R2/Auth callback có thể fail dù code đúng.
+
+---
+
+## 16. Render Deploy Hook
+
+Frontend test/prod -> Settings -> Deploy Hook.
+
+Copy hook frontend, lưu trong Supabase Edge Function Secret:
+
+```text
+RENDER_FRONTEND_DEPLOY_HOOK=...
+```
+
+Đây là secret. Không đặt trong `NEXT_PUBLIC_*`, `VITE_*` hoặc commit GitHub.
+
+Admin nút **Xuất bản frontend** gọi `render-deploy` Edge Function, Edge Function mới gọi Deploy Hook.
+
+Khi sửa nội dung build-time như CV/SEO/Tool/News/Software/Menu, bấm Publish để static output build lại.
+
+---
+
+## 17. Scheduler
+
+Workflow cloud nằm ở:
+
+```text
+.github/workflows/supabase-scheduler.yml
+```
+
+GitHub repo -> Settings -> Secrets and variables -> Actions:
+
+```text
+SUPABASE_SCHEDULE_RUNNER_URL=https://YOUR_PROJECT.supabase.co/functions/v1/schedule-runner
+SCHEDULER_SECRET=<cùng giá trị đã lưu Supabase>
+```
+
+Workflow kiểm tra job định kỳ trên cloud. Máy tính cá nhân không liên quan.
+
+Lưu ý GitHub scheduled workflow chạy trên default branch. Trước production hãy merge workflow vào `main`. Với repo public, GitHub có thể tự disable scheduled workflow nếu repo không có activity trong thời gian dài; nếu scheduler là nhiệm vụ quan trọng, kiểm tra tab Actions định kỳ hoặc chuyển trigger sang Supabase pg_cron/cron cloud riêng.
+
+---
+
+## 18. Test R2 kỹ
+
+Trong Admin:
+
+1. Upload một PNG vào OG.
+2. Ghi lại ID, ví dụ `R2-000001`.
+3. Logout/login lại -> ID + preview phải vẫn còn.
+4. Upload lại đúng cùng file -> hệ thống phải báo dùng lại ID cũ.
+5. Thay file giữ ID -> nơi dùng ID cập nhật file.
+6. Chọn ID thư viện cũ -> không tăng object mới.
+7. Xóa ID đang được dùng -> hệ thống phải chặn và chỉ nơi đang dùng.
+8. Xóa bắt buộc -> references được gỡ/ẩn an toàn.
+
+---
+
+## 19. Test Data permission
+
+Tạo user test, để `active`.
+
+Trong Admin -> Dữ liệu & quyền:
+
+- tích nhiều tài liệu;
+- test `Chỉ đọc`;
+- test `Thêm mới`;
+- test `Full`.
+
+Đăng nhập user ở frontend `/data/`:
+
+- Read chỉ mở được;
+- Add có thể tạo mục mới trong nhóm được cấp nhưng không sửa/xóa mục cũ;
+- Full có nút Sửa/Xóa.
+
+Khi user Full xóa mục, object R2 vật lý không tự xóa để tránh ảnh hưởng asset dùng chung; Admin Media quản lý xóa vật lý.
+
+---
+
+## 19.1. Test Software tải bằng R2
+
+Trong Admin -> Phần mềm:
+
+1. Chọn `Nguồn file tải = Cloudflare R2`.
+2. Chọn `Quyền tải = Cần đăng nhập`.
+3. Upload file ngay trong form và lưu.
+4. Publish frontend.
+5. Mở `/software` khi logout: nút yêu cầu đăng nhập.
+6. Login rồi tải: frontend gọi Edge Function để lấy signed URL R2; file không cần nhúng URL private vào JSON public.
+
+Với phần mềm tải công khai, có thể chọn R2 Public hoặc link ngoài.
+
+---
+
+## 20. Test News comment
+
+Bật `Cho bình luận` ở một bài Published.
+
+Người đọc gửi comment:
+
+```text
+status = pending
+r2_object_key = null
+```
+
+Admin -> Tin tức -> Bình luận -> Duyệt:
+
+```text
+status = approved
+r2_object_key = comments/<slug>/<comment-id>.json
+```
+
+Lúc này comment mới được view public và có archive JSON R2.
+
+Từ chối = không hiển thị; nếu trước đó từng duyệt thì R2 archive bị gỡ.
+
+---
+
+## 20.1. Test quyền PDF CV
+
+Trong Admin -> CV:
+
+- `Hiển thị hồ sơ` chỉ bật/tắt trang CV.
+- `Quyền tải file PDF CV = Công khai`: khách tải được.
+- `Cần đăng nhập`: khách được chuyển tới Login, user đăng nhập mới nhận signed URL R2.
+- `Ẩn nút tải PDF`: CV vẫn hiển thị nhưng không có nút tải.
+
+---
+
+## 21. Test PDF Online/Offline
+
+Mở `/tools/pdf/`.
+
+Trên đầu phải có:
+
+```text
+Offline | Online
+```
+
+Online phải vẫn chạy iLovePDF flow gốc trong `public/tool-modules/pdf/module.js`.
+
+Offline test:
+
+```text
+Merge PDF
+Split page range
+Rotate PDF
+Text watermark
+Page number
+Image -> PDF
+Compress/resize/crop/rotate/convert/watermark image
+```
+
+Những chức năng không tương đương browser sẽ nhắc chuyển Online thay vì giả vờ xử lý.
+
+---
+
+## 22. Chuyển production
+
+Chỉ khi test branch ổn:
+
+```powershell
+git checkout main
+git pull --rebase origin main
+git merge admin-v4
+git push origin main
+```
+
+Frontend production Render hiện tại của `NLKH_KOHA` đã là Static Site. Cập nhật Environment của service production:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+NEXT_PUBLIC_SITE_URL=https://nguyenlekhanhhoa.com
+NEXT_PUBLIC_ADMIN_URL=https://admin.nguyenlekhanhhoa.com
+NLKH_CMS_SYNC_REQUIRED=true
+```
+
+Tạo Admin production Static Site:
+
+```text
+Branch: main
+Root Directory: admin
+Build: npm install && npm run build
+Publish: dist
+```
+
+---
+
+## 23. Domain Admin + Cloudflare
+
+Render Admin -> Custom Domains:
+
+```text
+admin.nguyenlekhanhhoa.com
+```
+
+Cloudflare DNS trỏ `admin` tới hostname `.onrender.com` Admin.
+
+Trong lúc Render verify/cấp certificate, để Proxy status **DNS only**. Khi Render báo domain verified/certificate OK mới cân nhắc bật proxy.
+
+Frontend `nguyenlekhanhhoa.com` giữ service static hiện tại.
+
+---
+
+## 24. Production env cuối
+
+### Frontend Render
+
+```text
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+NEXT_PUBLIC_SITE_URL=https://nguyenlekhanhhoa.com
+NEXT_PUBLIC_ADMIN_URL=https://admin.nguyenlekhanhhoa.com
+NLKH_CMS_SYNC_REQUIRED=true
+```
+
+### Admin Render
+
+```text
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+VITE_SITE_URL=https://nguyenlekhanhhoa.com
+VITE_ADMIN_URL=https://admin.nguyenlekhanhhoa.com
+```
+
+### ALLOWED_ORIGINS
+
+```text
+https://nguyenlekhanhhoa.com,https://admin.nguyenlekhanhhoa.com
+```
+
+### R2 CORS
+
+Giữ Admin production origin; thêm frontend origin nếu một flow browser thật sự cần request R2 cross-origin trực tiếp.
+
+---
+
+## 25. Backup/rollback
+
+Không xóa branch `admin-v4` ngay sau merge.
+
+Nếu production có lỗi nặng:
+
+```powershell
+git log --oneline
+git revert <commit-v4>
+git push origin main
+```
+
+Hoặc trong Render deploy lại commit production cũ.
+
+Database migration cần rollback riêng; không xóa bảng/dữ liệu chỉ vì frontend rollback.
+
+---
+
+## 26. Redirect thật 301/308
+
+Build tạo HTML fallback redirect, nhưng static HTML trả HTTP 200 trước khi browser chuyển.
+
+Nếu đổi URL quan trọng cho SEO, sau khi tạo redirect trong Admin hãy tạo thêm rule tương ứng ở Cloudflare/Render để CDN trả HTTP 301/308 thật.
+
+===== FILE: docs/DEPLOY_A_Z.md =====
+# Triển khai A–Z: máy mới → Supabase/R2 → GitHub → Render
+
+Tài liệu này dành cho Windows/PowerShell và source NLKH_KOHA. Website này phải deploy dưới dạng Node Web Service, không phải Render Static Site.
+
+## 0. Các dịch vụ
+
+| Dịch vụ | Dùng cho | Có thể đổi tên miền sau? |
+|---|---|---:|
+| GitHub | Lưu source và chạy scheduler | Có |
+| Render Web Service | Chạy Next.js server/API | Có |
+| Supabase | Database, Auth, RLS, API Vault | Có |
+| Cloudflare R2 | Ảnh, icon, PDF, JSON và tài liệu | Có |
+| Cloudflare DNS | Tên miền, SSL/proxy | Có |
+
+Database và tệp không gắn chết vào domain. Có thể làm trên miền test rồi trỏ sang miền chính.
+
+## 1. Cài máy Windows mới
+
+Mở PowerShell bằng tài khoản bình thường:
+
+~~~powershell
+winget install --id Git.Git -e
+winget install --id OpenJS.NodeJS.LTS -e
+~~~
+
+Đóng toàn bộ PowerShell rồi mở lại:
+
+~~~powershell
+git --version
+node --version
+npm.cmd --version
+~~~
+
+Node cần từ 22.13 trở lên.
+
+Nếu npm báo npm.ps1 cannot be loaded vì Execution Policy, dùng npm.cmd và npx.cmd như tài liệu này. Không cần tắt bảo mật PowerShell.
+
+## 2. Lấy đúng repository Git
+
+~~~powershell
+New-Item -ItemType Directory -Force D:\NEW_CODE
+Set-Location D:\NEW_CODE
+git clone https://github.com/koha2002/NLKH_KOHA.git
+Set-Location D:\NEW_CODE\NLKH_KOHA
+git remote -v
+git status
+~~~
+
+Nếu git status báo not a git repository, thư mục đang đứng chỉ là file giải nén. Cách an toàn:
+
+1. Clone repo như trên để có thư mục .git.
+2. Chép source mới vào trong thư mục vừa clone, chọn ghi đè.
+3. Không xóa thư mục .git.
+4. Chạy lại git status.
+
+## 3. Tạo và cấu hình Supabase
+
+### 3.1 Tạo project
+
+Tạo một project Supabase cho môi trường test/chính. Lưu lại:
+
+- Project URL.
+- anon/public key.
+- service_role key.
+
+service_role chỉ được đặt trong Render/.env.local; không đưa lên GitHub và không dùng trong code trình duyệt.
+
+### 3.2 Chạy database migration
+
+Mở Supabase → SQL Editor. Chạy nguyên tệp theo đúng thứ tự:
+
+1. supabase/migrations/202608090001_initial_cms.sql
+2. supabase/migrations/202608090002_content_pages_access.sql
+
+Migration tạo bảng, RLS, vai trò, quyền, dữ liệu mẫu, trigger user và lịch keepalive.
+
+Email owner mặc định là khanhhoa2002.hh@gmail.com. Đăng ký đúng địa chỉ này để trigger gán role owner. Nếu muốn thay email owner, sửa email trong migration trước khi tạo database mới.
+
+### 3.3 Cấu hình Auth URL
+
+Supabase → Authentication → URL Configuration:
+
+- Site URL: domain đang test, ví dụ https://ten-test.onrender.com
+- Redirect URLs:
+  - http://localhost:3000/auth/callback
+  - https://ten-test.onrender.com/auth/callback
+  - https://nguyenlekhanhhoa.com/auth/callback
+
+Khi đổi domain chỉ cập nhật danh sách này, không di chuyển database.
+
+### 3.4 Xác thực email
+
+Trong giai đoạn test có thể dùng email mặc định của Supabase, nhưng bị giới hạn gửi. Khi public nên cấu hình Custom SMTP.
+
+Gmail cá nhân dùng được để thử bằng App Password nếu tài khoản bật xác minh hai bước. Để ổn định và tránh giới hạn, nên dùng dịch vụ SMTP giao dịch hoặc email theo domain. Dù dùng provider nào, người dùng vẫn đăng ký trong website và Supabase gửi email xác thực.
+
+### 3.5 Tạo user owner
+
+Sau khi website chạy:
+
+1. Mở /login.
+2. Đăng ký khanhhoa2002.hh@gmail.com.
+3. Bấm link xác thực trong email.
+4. Đăng nhập và mở /admin.
+
+User thường được tạo trạng thái pending. Owner/Admin vào Quản lý người dùng để duyệt và phân vai trò.
+
+## 4. Cloudflare R2
+
+### 4.1 Tạo bucket và token
+
+Cloudflare → Storage & databases → R2 Object Storage:
+
+1. Create bucket, ví dụ nlkh-media.
+2. Manage R2 API Tokens.
+3. Tạo token có quyền Object Read & Write trên bucket.
+4. Lưu Account ID, Access Key ID, Secret Access Key.
+
+Không đưa ba giá trị này vào frontend.
+
+### 4.2 Public URL
+
+Có thể:
+
+- dùng custom domain cho bucket public; hoặc
+- giữ bucket private và tải qua /api/media/id.
+
+Ảnh website công khai nên có public base URL. Tệp được cấp riêng phải đặt visibility private.
+
+### 4.3 CORS cho upload trực tiếp
+
+Trong CORS bucket, cho phép các origin thực sự sử dụng:
+
+~~~json
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "https://ten-test.onrender.com",
+      "https://nguyenlekhanhhoa.com"
+    ],
+    "AllowedMethods": ["GET", "PUT", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+~~~
+
+Khi đổi domain, thêm origin mới vào CORS.
+
+## 5. Cấu hình local
+
+~~~powershell
+Set-Location D:\NEW_CODE\NLKH_KOHA
+Copy-Item .env.example .env.local
+notepad .env.local
+~~~
+
+Điền:
+
+~~~dotenv
+SITE_URL=http://localhost:3000
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_SUPABASE_URL=https://PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+INTEGRATION_SECRETS_KEY=chuoi-ngau-nhien-dai-khong-doi-sau-khi-da-luu-api
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET_NAME=nlkh-media
+R2_PUBLIC_BASE_URL=https://media.example.com
+SCHEDULER_SECRET=mot-chuoi-ngau-nhien-dai
+OWNER_EMAIL=khanhhoa2002.hh@gmail.com
+~~~
+
+Nếu bucket private hoàn toàn, R2_PUBLIC_BASE_URL có thể để trống.
+
+## 6. Cài và kiểm tra local
+
+~~~powershell
+npm.cmd install
+npm.cmd run lint
+npx.cmd tsc --noEmit
+npm.cmd run test:comtrade
+npm.cmd run build
+npm.cmd run dev
+~~~
+
+Kiểm tra:
+
+- /api/health trả trạng thái thành công.
+- đăng ký/xác thực/đăng nhập.
+- /admin mở được với owner.
+- tải thử một ảnh lên R2.
+- tạo bài nháp, app, dữ liệu, SEO và redirect.
+- Quiz chọn được JSON được cấp.
+- PDF chạy local.
+
+## 7. Đưa source lên GitHub
+
+Trước khi commit:
+
+~~~powershell
+git status
+git add .
+git commit -m "Hoan thien backend va admin"
+git pull --rebase origin main
+git push origin main
+git status
+~~~
+
+Kết quả cuối đúng là:
+
+~~~text
+Your branch is up to date with 'origin/main'.
+nothing to commit, working tree clean
+~~~
+
+Nếu push bị fetch first, dùng đúng thứ tự:
+
+~~~powershell
+git pull --rebase origin main
+git push origin main
+~~~
+
+Nếu rebase báo unstaged changes, commit thay đổi trước hoặc dùng git stash; không dùng reset --hard.
+
+## 8. Deploy Render
+
+### Cách 1 — Blueprint
+
+Render → New → Blueprint → chọn repository. render.yaml đã khai báo:
+
+- runtime: Node
+- build: npm ci && npm run build
+- start: npm run start
+- health check: /api/health
+- Node: 22.13
+
+### Cách 2 — Web Service thủ công
+
+Render → New → Web Service:
+
+- Branch: main
+- Runtime: Node
+- Build Command: npm ci && npm run build
+- Start Command: npm run start
+- Health Check Path: /api/health
+
+Không chọn Static Site vì Auth, API, Admin, redirect, private media và scheduler đều cần server.
+
+### Biến môi trường Render
+
+Thêm toàn bộ biến của .env.example. Trên Render:
+
+- SITE_URL và NEXT_PUBLIC_SITE_URL phải là URL public hiện tại.
+- SCHEDULER_SECRET phải là chuỗi dài và trùng GitHub secret.
+- Không thêm dấu nháy quanh giá trị.
+
+Sau khi lưu biến, Manual Deploy → Deploy latest commit.
+
+## 9. Lịch keepalive Supabase và gọi API
+
+Database đã có job supabase_keepalive chu kỳ 1440 phút. GitHub Actions chỉ đánh thức runner 30 phút một lần; runner tự chọn job đến hạn, vì vậy Supabase chỉ được gọi nhẹ mỗi ngày.
+
+GitHub → repository → Settings → Secrets and variables → Actions, tạo:
+
+| Secret | Giá trị |
+|---|---|
+| SITE_BASE_URL | URL Render, không có dấu / cuối |
+| SCHEDULER_SECRET | đúng chuỗi ở Render |
+
+Workflow: .github/workflows/backend-scheduler.yml.
+
+Vào tab Actions → Backend scheduler → Run workflow để thử. Nếu 401, hai giá trị SCHEDULER_SECRET không trùng. Nếu 404, SITE_BASE_URL sai hoặc Render chưa deploy source mới.
+
+## 10. Domain Cloudflare → Render
+
+1. Trong Render → Settings → Custom Domains, thêm domain.
+2. Render hiển thị bản ghi DNS cần tạo.
+3. Trong Cloudflare DNS, tạo đúng A/CNAME mà Render yêu cầu.
+4. Lúc Render cấp chứng chỉ, để record DNS only nếu proxy gây lỗi xác minh.
+5. Khi Certificate Issued, có thể bật proxy Cloudflare nếu muốn.
+6. Cập nhật SITE_URL/NEXT_PUBLIC_SITE_URL, Supabase Auth URL và R2 CORS.
+
+Redirect toàn domain cũ sang domain mới nên đặt tại Cloudflare Redirect Rules. Redirect đường dẫn nội bộ trong cùng website có thể quản lý ở /admin/redirects.
+
+## 11. Search Console và sitemap
+
+Mở trực tiếp trước:
+
+https://nguyenlekhanhhoa.com/sitemap.xml
+
+Nếu XML mở được, trong Google Search Console nhập đầy đủ:
+
+~~~text
+https://nguyenlekhanhhoa.com/sitemap.xml
+~~~
+
+Với Domain Property, Google đôi khi vẫn yêu cầu URL đầy đủ thay vì chỉ sitemap.xml.
+
+Chỉ gửi sitemap một lần. Khi Admin tạo bài/trang/tool công khai, sitemap động tự cập nhật; không sửa file sitemap thủ công.
+
+Sau khi xuất bản nội dung quan trọng, dùng Kiểm tra URL → Yêu cầu lập chỉ mục. Không gửi hàng loạt URL rỗng/trùng lặp.
+
+## 12. Đổi từ domain test sang domain chính
+
+Không tạo lại Supabase/R2 và không chép dữ liệu:
+
+1. Thêm domain chính vào Render.
+2. Trỏ Cloudflare DNS.
+3. Đổi SITE_URL và NEXT_PUBLIC_SITE_URL trên Render.
+4. Thêm callback domain chính ở Supabase.
+5. Thêm domain chính ở R2 CORS.
+6. Admin → Cấu hình chung → site_url.
+7. Deploy lại để metadata mặc định dùng domain mới.
+
+## 13. Lỗi thường gặp
+
+### npm.cmd is not recognized
+
+Node.js chưa cài hoặc terminal chưa mở lại. Cài Node LTS rồi đóng/mở PowerShell.
+
+### npm.ps1 cannot be loaded
+
+Dùng npm.cmd và npx.cmd.
+
+### not a git repository
+
+Bạn đang ở thư mục giải nén không có .git. Clone repo rồi chép source vào thư mục clone.
+
+### Render Site not found
+
+Kiểm tra service đang chạy và URL Render; website này phải là Web Service.
+
+### SSL/certificate error
+
+Kiểm tra DNS không còn record cũ xung đột, để DNS only trong lúc Render xác minh và chờ DNS/chứng chỉ cập nhật.
+
+### R2 từ chối upload
+
+Kiểm tra token, bucket, public base URL và CORS đúng origin.
+
+### User không mở được dữ liệu private
+
+Kiểm tra user active, item visible/private và có bản ghi Cấp quyền dữ liệu chưa hết hạn.
+
+### Admin thay nội dung nhưng web chưa đổi
+
+Nội dung database đổi ngay. Hard refresh trình duyệt; nếu là cấu hình được cache, chờ ngắn hoặc redeploy. Thay code luôn cần Git push/Render deploy.
+
+===== FILE: docs/HUONG_DAN_QUAN_TRI_SOURCE.md =====
+# Hướng dẫn quản trị nội dung và phát triển source
+
+Mục tiêu của hệ thống mới: việc thay nội dung hằng ngày thực hiện trong Admin; chỉ sửa source khi tạo thuật toán, route hoặc kiểu giao diện hoàn toàn mới.
+
+## 1. Quy tắc lưu dữ liệu
+
+| Loại | Nơi lưu | Ví dụ |
+|---|---|---|
+| Nội dung/cấu hình | Supabase Database | menu, CV, bài báo, app, SEO, quyền |
+| Tài khoản | Supabase Auth + profiles/roles | email, trạng thái, vai trò |
+| Tệp | Cloudflare R2 | ảnh, icon, PDF, Quiz JSON |
+| Bí mật | Supabase API Vault | API key/provider secret |
+| Source | GitHub | giao diện, thuật toán, API adapter |
+
+Không lưu tài khoản/mật khẩu/API key trong JSON ở public. File public có thể bị bất kỳ ai tải.
+
+## 2. Đăng nhập Admin và phân quyền
+
+### Owner đầu tiên
+
+Đăng ký bằng khanhhoa2002.hh@gmail.com sau khi migration hoàn tất. Email này được gán owner và active tự động.
+
+### User mới
+
+1. User mở /login → Đăng ký.
+2. Supabase gửi email xác thực.
+3. User bấm link xác thực.
+4. Tài khoản mặc định pending/member.
+5. Owner/Admin mở Admin → Người dùng, chọn role và đổi status thành active.
+
+### Vai trò và permission
+
+- owner: toàn quyền.
+- admin: gần toàn quyền quản trị.
+- editor: quyền nội dung theo cấu hình role.
+- member: dùng chức năng được cấp.
+
+Admin → Người dùng → Vai trò cho phép tạo role mới. permissions là mảng JSON, ví dụ:
+
+~~~json
+["news.manage", "media.manage"]
+~~~
+
+Người viết báo chỉ cần hai quyền trên, không cần quyền user/API/SEO.
+
+## 3. Cấu hình chung và Trang chủ
+
+Admin → Website → Cấu hình chung:
+
+- site_name, site_url.
+- title/description mặc định VI/EN.
+- email, footer, copyright.
+- bật/tắt đăng ký.
+- bật/tắt tin tức.
+- maintenance_mode.
+
+Admin → Website → Khối nội dung dùng cấu trúc page_key + block_key.
+
+Các block Trang chủ đã có:
+
+| page_key | block_key | Công dụng |
+|---|---|---|
+| home | hero | câu chào, tên, nhãn và nút |
+| home | facts | dải thông tin nổi bật |
+| home | capabilities | nhóm năng lực |
+| home | workspace | tiêu đề khu sản phẩm/tool |
+
+Sửa trường content dạng JSON, không sửa app/page.tsx. Giữ đúng cấu trúc object/array hiện có; nên sao chép nội dung cũ ra tệp dự phòng trước khi thay JSON lớn.
+
+## 4. Tạo một trang mới không viết code
+
+Ví dụ tạo /p/gioi-thieu-du-an:
+
+1. Admin → Trang nội dung → Tạo mới.
+2. slug: gioi-thieu-du-an.
+3. Điền title/excerpt/content VI và EN.
+4. Nội dung hỗ trợ Markdown.
+5. Chọn template standard, wide hoặc article.
+6. Chọn published và ngày xuất bản; để trống ngày nghĩa là xuất bản ngay.
+7. Nếu cần khóa, bật requires_auth và điền allowed_roles.
+8. Admin → Menu → tạo mục có href /p/gioi-thieu-du-an.
+9. Admin → SEO → tạo route /p/gioi-thieu-du-an.
+
+Trang published, không khóa sẽ tự vào sitemap.
+
+Nếu muốn một kiểu trang đặc biệt như bảng giá tương tác, bản đồ hoặc dashboard, cần code thêm template/component một lần; nội dung sau đó vẫn có thể lấy từ Admin.
+
+## 5. Header, menu, footer và mạng xã hội
+
+Admin → Menu & footer.
+
+### Menu
+
+- location: header hoặc footer.
+- href: đường dẫn nội bộ hoặc URL đầy đủ.
+- parent_id: menu cha nếu cần.
+- sort_order: số nhỏ hiện trước.
+- visible: hiện/ẩn.
+- requires_auth: chỉ người đăng nhập thấy.
+- allowed_roles: giới hạn role.
+- open_new_tab: mở tab mới.
+
+Muốn thêm mục Tin tức: href /news. Muốn ẩn một mục: tắt visible, không cần xóa.
+
+### Mạng xã hội
+
+Tạo/sửa/xóa ở danh sách social:
+
+- YouTube.
+- Instagram.
+- LinkedIn.
+- TikTok.
+- Email.
+
+Muốn bỏ GitHub ở footer: tìm dòng platform GitHub rồi tắt visible hoặc xóa. Không sửa components/Footer.tsx.
+
+Footer tự lấy footer_intro và copyright ở Cấu hình chung.
+
+## 6. SEO, sitemap và index
+
+Admin → SEO, mỗi route một bản ghi:
+
+- route: /news, /cv, /p/slug...
+- title_vi/title_en.
+- description_vi/description_en.
+- canonical_path.
+- og_image và og_type.
+- indexable và follow_links.
+- schema_type và structured_data JSON.
+- change_frequency và priority cho sitemap.
+
+Metadata route được server tạo tự động. Không nhét thẻ meta vào từng HTML tool.
+
+Sitemap ở /sitemap.xml tự tổng hợp:
+
+- route SEO indexable.
+- tool visible, không khóa.
+- bài báo published.
+- trang nội dung published, không khóa.
+
+Không chỉnh app/sitemap.ts khi chỉ thêm nội dung mới. Search Console chỉ cần gửi URL sitemap một lần.
+
+## 7. Redirect
+
+Admin → Redirect:
+
+- source_path: /duong-dan-cu.
+- target_url: /duong-dan-moi hoặc URL đầy đủ.
+- status_code: 301 cho chuyển vĩnh viễn, 302/307 cho tạm thời.
+- preserve_query: giữ query string.
+- active: bật/tắt.
+
+Admin phù hợp redirect đường dẫn. Chuyển toàn bộ domain cũ sang domain mới nên tạo Cloudflare Redirect Rule để hoạt động cả khi app gặp sự cố.
+
+Không tạo vòng lặp A → B và B → A.
+
+## 8. CV
+
+Admin → CV có hai phần.
+
+### Hồ sơ chính
+
+Sửa:
+
+- tên, vai trò, headline, tóm tắt VI/EN.
+- ngày sinh, địa chỉ, điện thoại, email.
+- photo_url.
+- pdf_url.
+- theme và published.
+
+Ảnh và PDF:
+
+1. Admin → Thư viện → tải ảnh/PDF lên R2.
+2. Sao chép public URL nếu file công khai.
+3. Dán vào photo_url hoặc pdf_url.
+
+### Mục CV
+
+Mỗi mục là một cv_section:
+
+- section_type: education, experience, certification, skill, project...
+- title/subtitle VI/EN.
+- period, organization, description, URL.
+- sort_order, visible.
+- data JSON cho dữ liệu bổ sung.
+
+Thêm kinh nghiệm mới chỉ tạo section mới. Không sửa giao diện CV. Nếu muốn đổi hoàn toàn bố cục CV, code thêm theme rồi chọn tên theme trong hồ sơ.
+
+## 9. Kho phần mềm/App
+
+Admin → Phần mềm.
+
+### Tạo nhóm
+
+1. Mở Nhóm phần mềm.
+2. Tạo slug, tên VI/EN.
+3. sort_order và visible.
+
+### Thêm app
+
+1. Tải icon/cover lên R2.
+2. Tạo Phần mềm.
+3. Chọn category.
+4. Điền name, slug, description.
+5. Điền icon_url, cover_url và download_url.
+6. Điền version, compatibility, nhãn giá.
+7. Bật visible/featured và đặt thứ tự.
+
+App tự xuất hiện ở /software, tìm kiếm và bộ lọc. Không sửa app/software/page.tsx.
+
+Xóa app không xóa tệp R2 tự động; nếu không dùng nữa, xóa riêng trong bucket/thư viện để tránh xóa nhầm file đang được mục khác dùng.
+
+## 10. Dữ liệu: nhóm, mục và cấp quyền
+
+### 10.1 Tạo nhóm dữ liệu
+
+Admin → Dữ liệu → Nhóm dữ liệu:
+
+- slug, tên, mô tả VI/EN.
+- icon.
+- visibility:
+  - public: ai cũng thấy.
+  - authenticated: mọi user đã đăng nhập.
+  - private: chỉ user được cấp.
+- visible và sort_order.
+
+### 10.2 Thêm tài liệu/link/tệp
+
+Admin → Dữ liệu → Tài liệu & liên kết:
+
+1. Chọn collection_id.
+2. Điền tiêu đề/mô tả.
+3. Chọn item_type:
+   - link: link ngoài/Google Drive/FileShare.
+   - r2_file: tệp R2.
+   - quiz_json: dữ liệu nhập trực tiếp vào Quiz.
+   - document hoặc video.
+4. Link ngoài dùng external_url.
+5. Tệp R2 chọn media_id hoặc object_key.
+6. Chọn visibility, visible, sort_order.
+7. metadata là JSON mở rộng.
+
+### 10.3 Cấp riêng cho user
+
+Với mục private:
+
+1. Admin → Cấp quyền dữ liệu.
+2. Chọn user_id.
+3. Chọn item_id.
+4. Đặt expires_at nếu quyền có hạn; để trống nếu không hết hạn.
+
+RLS và API kiểm tra quyền trước khi cấp tệp.
+
+### 10.4 Quiz lấy JSON từ tài khoản
+
+Tạo item_type = quiz_json. Khi user được cấp mở Quiz, bộ chọn Dữ liệu hiển thị mục đó. User chọn tệp, server lấy từ R2 và Quiz nhập vào local/browser. File không được dùng làm database câu hỏi trực tiếp và không tự đồng bộ tiến độ lên server.
+
+## 11. Tin tức
+
+Admin → Tin tức.
+
+### Danh mục
+
+Tạo slug, tên/mô tả VI/EN, màu, thứ tự và visible.
+
+### Bài báo
+
+Điền:
+
+- slug.
+- category.
+- title, subtitle, excerpt, content VI/EN.
+- cover_image và alt.
+- author_name, translator_name, editor_name.
+- source_name, source_url.
+- tags JSON.
+- draft/published/archived.
+- featured, comments, published_at.
+
+Nội dung hỗ trợ Markdown. Bài published tự có URL /news/slug, metadata và sitemap. Với bài dịch, luôn ghi nguồn và tác giả gốc; không sao chép toàn bài vi phạm bản quyền.
+
+## 12. Tool và vòng quỹ đạo
+
+### Tool đã có code
+
+Sau khi route/tool module đã được push:
+
+1. Admin → Tool → tạo bản ghi cùng slug.
+2. route phải khớp route trong code.
+3. Điền title/description/icon/accent.
+4. visible điều khiển danh sách Công cụ.
+5. show_home điều khiển thẻ Trang chủ.
+6. show_orbit điều khiển quỹ đạo.
+7. status, sort_order.
+8. requires_auth/allowed_roles.
+9. settings JSON là cấu hình riêng.
+
+Không cần thêm lại tool vào app/page.tsx, data/home-products.ts hoặc orbit.config.ts. Database hiện là nguồn cấu hình chính.
+
+### Tạo thuật toán tool mới
+
+Phải tạo source theo README:
+
+- public/tool-modules/ten-tool/index.html.
+- module.css.
+- module.js.
+- core.js/vendor nếu có.
+- app/tools/ten-tool/page.tsx.
+- app/tools/ten-tool/layout.tsx.
+
+Sau đó mọi việc hiện/ẩn/phân quyền/quỹ đạo được Admin điều khiển.
+
+### Vòng quỹ đạo
+
+Admin → Quỹ đạo:
+
+- size: kích thước vòng.
+- duration: thời gian quay.
+- reverse: đảo chiều.
+- dashed: nét đứt.
+- dot_angle/dot_tone.
+- sort_order, visible.
+
+Trong bản ghi tool:
+
+- orbit_ring trỏ đến vòng.
+- orbit_angle đặt góc.
+- icon có thể là URL R2 hoặc biểu tượng hệ thống.
+
+Có thể thêm nhiều vòng và mục mà không sửa component ToolOrbit.
+
+## 13. Cấu hình riêng từng tool
+
+Admin → Tool có trang riêng cho Quiz, PDF và COMTRADE. Không đưa mọi tùy chọn vào Cấu hình chung.
+
+- Quiz: quyền, nguồn dữ liệu, giới hạn/import theo settings.
+- PDF: bật/tắt tác vụ local và integration trực tuyến.
+- COMTRADE: giới hạn file, tùy chọn parser/biểu đồ.
+
+Nếu thêm field settings mới, code tool phải đọc field đó. Admin chỉ lưu cấu hình; Admin không tự tạo thuật toán.
+
+## 14. PDF local và API
+
+Các tác vụ đang làm local, không tải tài liệu lên server:
+
+- gộp PDF.
+- lấy/tách trang.
+- xóa trang.
+- sắp xếp trang.
+- xoay trang.
+- watermark.
+- số trang.
+- JPG/PNG thành PDF.
+
+Các tác vụ cần engine đặc biệt như OCR chất lượng cao, Office sang PDF chính xác hoặc chỉnh nội dung nâng cao có thể gọi provider API. Khi đó:
+
+1. Code tạo nút/adapter server.
+2. Admin → API tạo integration.
+3. Secret lưu trong Vault.
+4. Tool chỉ gọi slug integration, không biết key.
+
+## 15. API Vault và lịch gọi
+
+### Tạo integration
+
+Admin → API → Tích hợp:
+
+- slug/name.
+- base_url.
+- allowed_host: chống SSRF, phải đúng host provider.
+- endpoint_template.
+- method.
+- headers/query/body template.
+- key_placeholder.
+- scope, timeout và active.
+
+Sau đó dùng form Cài bí mật. Secret chỉ ghi vào Vault; API danh sách không trả lại secret.
+
+Admin không cho dán code JavaScript tùy ý. Provider cần OAuth, chữ ký HMAC hay định dạng đặc biệt phải có adapter trong lib/integrations.
+
+### Lịch gọi
+
+Tạo scheduled job:
+
+- integration_id.
+- handler = integration hoặc supabase_keepalive.
+- endpoint_path và request_payload.
+- interval_minutes tối thiểu 15.
+- enabled và next_run_at.
+
+GitHub Actions gọi runner mỗi 30 phút. Job keepalive mặc định chỉ chạy mỗi 1440 phút.
+
+## 16. Thư viện R2
+
+Admin → Thư viện:
+
+1. Chọn tệp.
+2. Chọn thư mục logic.
+3. Chọn public/authenticated/private.
+4. Browser upload trực tiếp bằng signed URL ngắn hạn.
+5. Metadata được ghi vào media_assets.
+
+Ảnh/icon/CV có thể tải hoàn toàn từ Admin; không cần mở R2 Dashboard. Với 2–5 GB, R2 phù hợp hơn GitHub. Không commit file lớn vào repo.
+
+## 17. Thay nội dung và deploy
+
+### Chỉ thay nội dung Admin
+
+Không cần Git commit hoặc Render deploy. Dữ liệu lưu Supabase/R2 và website đọc lại.
+
+### Thay source/tool/giao diện
+
+~~~powershell
+git status
+npm.cmd run lint
+npx.cmd tsc --noEmit
+npm.cmd run build
+git add .
+git commit -m "Mo ta thay doi"
+git pull --rebase origin main
+git push origin main
+~~~
+
+Render Auto Deploy sẽ chạy.
+
+## 18. Sao lưu
+
+- Supabase: xuất schema/data định kỳ.
+- R2: giữ quy ước folder và danh sách object.
+- GitHub: source và migration.
+- Trước khi xóa nhóm, kiểm tra các item con.
+- Trước khi xóa media, kiểm tra CV/news/software/data có dùng URL đó.
+- API secret nên có bản ghi an toàn ngoài source để có thể thay vòng khóa.
+
+===== FILE: docs/README_ADMIN_V4.md =====
+# NLKH KOHA — Admin V4
+
+Bản này là **overlay nâng cấp** cho repository `koha2002/NLKH_KOHA` hiện tại, không phải một website mới viết lại từ số 0.
+
+Frontend gốc vẫn là **Next.js static export**. Admin được tách thành một **Render Static Site** riêng và dữ liệu/quyền dùng Supabase + Cloudflare R2.
+
+## 1. Những gì Admin V4 đã đổi
+
+- Bỏ màn hình **Tổng quan**; đăng nhập xong đi thẳng **Cấu hình chung**.
+- Form có dấu `*` đỏ chỉ ở trường thật sự bắt buộc; trường bắt buộc có điều kiện chỉ hiện `*` khi điều kiện đó đang đúng.
+- Lỗi lưu trả về đúng trường cần sửa: trùng slug, thiếu trường bắt buộc, sai URL, sai JSON, foreign key không còn tồn tại, sai quyền, migration chưa đồng bộ…
+- Tất cả trường đều có placeholder/help; dấu `?` có tooltip giải thích.
+- Thứ tự tự quản lý theo kiểu `1, 2, 3…`, không yêu cầu nhập `10, 20, 30…`.
+- Quan hệ như Menu cha, Nhóm, Vai trò, Danh mục… dùng dropdown/checkbox; không bắt Admin nhớ UUID.
+- Ảnh/tệp được tải hoặc chọn **ngay trong form** qua Cloudflare R2.
+- R2 có ID dễ đọc `R2-000001`, `R2-000002`…; ID tăng dần, xóa rồi không dùng lại.
+- Upload có SHA-256 để nhận diện file giống hệt và tái sử dụng ID có sẵn thay vì lưu bản trùng.
+- Có preview / chọn ID cũ / thay file giữ ID / bỏ liên kết / xóa ID R2.
+- Thêm Tool mới thì Admin sidebar tự sinh mục con; frontend Tools/Home/Orbit tự đồng bộ ở lần build tiếp theo.
+- Tool có thể dùng source Git như cũ hoặc dán HTML thuần vào Admin và chạy thử trong iframe sandbox trước khi lưu.
+- User avatar tải R2; người chưa có avatar hiện chữ viết tắt từ tên.
+- Data permission có `Chỉ đọc`, `Thêm mới`, `Full`; Admin cấp nhiều tài liệu cho một tài khoản bằng checkbox.
+- Bình luận tin tức vào hàng chờ Supabase; chỉ khi Admin **Duyệt** mới ghi JSON vào R2 và hiển thị công khai.
+- Phần mềm hỗ trợ file tải bằng **Link hoặc R2**; R2 có chế độ công khai hoặc bắt đăng nhập bằng signed URL.
+- PDF Studio có nút **Offline / Online**. Online giữ flow iLovePDF có sẵn trong source; Offline dùng `pdf-lib`/Canvas cho những chức năng làm được tại trình duyệt.
+
+## 2. OG image và Favicon khác nhau
+
+### OG image
+
+OG = Open Graph. Đây là ảnh preview khi chia sẻ link website/bài viết lên Facebook, Zalo, LinkedIn hoặc dịch vụ đọc metadata.
+
+**OG image không phải icon trên tab trình duyệt.**
+
+Admin V4 có:
+- `Ảnh chia sẻ mặc định (OG image)` trong **Cấu hình chung**;
+- `Ảnh chia sẻ riêng cho trang` trong **SEO**.
+
+Nếu trang không có OG riêng, frontend dùng OG mặc định.
+
+### Favicon
+
+Favicon là icon nhỏ ở:
+- tab trình duyệt;
+- bookmark/favorite;
+- một số danh sách lịch sử/trình duyệt.
+
+Admin V4 có trường riêng **Icon trên tab trình duyệt (Favicon)** và frontend đưa URL này vào Next Metadata khi build.
+
+## 3. R2 ID hoạt động như thế nào?
+
+Database giữ UUID nội bộ để quan hệ an toàn, nhưng Admin hiển thị thêm `asset_no` theo dạng:
+
+```text
+R2-000001
+R2-000002
+R2-000003
+```
+
+`asset_no` dùng sequence/bigserial nên tăng ở database/cloud, **không liên quan máy tính của bạn**.
+
+Một asset lưu:
+- R2 ID dễ đọc;
+- UUID database;
+- object key thật trên bucket;
+- tên file gốc;
+- MIME type;
+- dung lượng;
+- SHA-256;
+- quyền public/authenticated/private;
+- thư mục logic;
+- nơi đang dùng asset.
+
+Khi upload file giống hệt file đã có trong cùng mức quyền, hệ thống trả ID cũ và không upload thêm bản trùng.
+
+## 4. Quy tắc xóa R2
+
+Admin Media có quyền xóa file vật lý.
+
+Nếu một ID R2 đang được Site/SEO/Tool/News/CV/Data dùng, thao tác xóa bình thường bị chặn và chỉ rõ đang được dùng ở đâu. Admin có thể chọn xóa bắt buộc; khi đó hệ thống gỡ các reference trước.
+
+Người dùng được cấp `Full` cho Data có thể xóa **mục dữ liệu** đã cấp. Hệ thống **không tự xóa file vật lý R2** vì file có thể đang được tái sử dụng ở chỗ khác. Xóa file vật lý vẫn là việc của Admin Media.
+
+## 5. Ý nghĩa quyền Data
+
+- **Chỉ đọc**: xem/tải tài liệu đã được tích.
+- **Thêm mới**: xem tài liệu được tích và được tạo tài liệu mới trong cùng nhóm; không sửa/xóa tài liệu hiện có.
+- **Full**: xem, thêm, sửa và xóa mục dữ liệu được cấp.
+
+Admin chọn một tài khoản rồi tích nhiều tài liệu; không phải chọn từng tài liệu một lần.
+
+## 6. CV
+
+Admin V4 chỉ dùng **một hồ sơ CV chính**.
+
+Migration khởi tạo dữ liệu mẫu theo `public/content/cv/profile.json` của source gốc. Admin có thể sửa:
+- thông tin chính;
+- ảnh;
+- PDF;
+- học vấn;
+- chứng chỉ;
+- kỹ năng;
+- kinh nghiệm;
+- dự án/ngôn ngữ/custom section;
+- thứ tự;
+- ẩn/hiện từng mục.
+
+`Hiển thị hồ sơ` = bật/tắt toàn bộ CV ngoài website. Nó **không phải** quyền file. Riêng `Quyền tải file PDF CV` có 3 mức: Công khai / Cần đăng nhập / Ẩn nút tải; khi dùng R2, file mới được lưu theo mức quyền tương ứng.
+
+Theme mặc định:
+
+```json
+{
+  "layout": "source-default",
+  "accent": "blue",
+  "show_photo": true,
+  "show_contact": true,
+  "show_download_pdf": true
+}
+```
+
+Nếu chưa cần đổi sâu, giữ mẫu này.
+
+## 7. Tool mới
+
+Khi tạo Tool:
+
+- `slug` là route/thư mục, ví dụ `kiem-tra-cap`;
+- `route` thường là `/tools/kiem-tra-cap`;
+- icon upload/chọn R2 ngay trong form;
+- màu dùng color picker;
+- role dùng checkbox;
+- `Code HTML thuần` để trống = dùng `public/tool-modules/<slug>/index.html` trong Git;
+- nếu điền HTML = build tạo `public/tool-modules/_admin/<slug>/index.html` và route dùng bản này;
+- nút `Chạy thử HTML` chạy trong iframe sandbox trước khi lưu.
+
+Sau khi sửa Tool/Nội dung/SEO/CV/News và cần cập nhật static output, bấm **Xuất bản frontend**.
+
+
+## 7.1. Phần mềm: Link hay R2?
+
+Mỗi phần mềm có `Nguồn file tải`:
+
+- **Liên kết bên ngoài**: dùng Drive/OneDrive/website khác. Nếu chọn “Cần đăng nhập”, Admin chỉ khóa nút ở frontend; bản thân URL ngoài phải tự có bảo vệ nếu cần bí mật thật.
+- **Cloudflare R2**: upload/chọn ID ngay trong form. Chọn “Cần đăng nhập” sẽ lưu/chọn asset mức `authenticated`; frontend chỉ xin signed URL sau khi người dùng đăng nhập. Đây là lựa chọn nên dùng cho file cần kiểm soát tải.
+
+## 8. PDF Online / Offline
+
+Bản nâng cấp **không xóa code online** hiện tại.
+
+- **Online**: tiếp tục chạy `module.js` gốc và iLovePDF API/public project key đang có trong source.
+- **Offline**: chạy hoàn toàn trên trình duyệt cho các tác vụ phù hợp như merge PDF, tách trang, xoay PDF, watermark chữ, đánh số trang và nhiều thao tác ảnh.
+- Các tác vụ cần engine/server mà browser không xử lý tương đương sẽ yêu cầu chuyển sang Online.
+
+Script build chỉ inject menu Offline/Online và thư viện offline; nó không ghi đè `public/tool-modules/pdf/module.js` gốc.
+
+## 9. Scheduler secret không phụ thuộc PowerShell/máy tính
+
+Chuỗi `SCHEDULER_SECRET` chỉ là một secret ngẫu nhiên dùng để xác thực request giữa cloud services.
+
+Admin có nút **Tạo khóa ngẫu nhiên an toàn** bằng Web Crypto. Copy cùng một giá trị sang:
+- Supabase Edge Function Secrets;
+- GitHub Actions Secrets.
+
+Sau khi đã lưu trên cloud, tắt máy tính không ảnh hưởng gì. Không dùng `[guid]::NewGuid()` để “duy trì” hệ thống.
+
+## 10. Redirect trên web static
+
+Admin vẫn cho chọn 301/302/307/308 và giải thích từng loại. Tuy nhiên file HTML static của Render tự nó trả HTTP 200 rồi mới chuyển ở browser.
+
+Nếu cần **HTTP status redirect thật** cho SEO/migration URL, tạo rule tương ứng ở Cloudflare/Render. Bản build static vẫn tạo fallback redirect để người dùng không bị kẹt link cũ.
+
+===== FILE: docs/README_CU.md =====
+# NLKH Portal — website, CMS và Admin
+
+Website cá nhân của Nguyễn Lê Khánh Hòa đã được chuyển từ web tĩnh sang hệ thống Next.js + Supabase + Cloudflare R2. Giao diện công khai chỉ làm nhiệm vụ hiển thị; nội dung, quyền truy cập, SEO, menu, CV, phần mềm, dữ liệu, tin tức, API và lịch chạy được quản lý trong Admin.
+
+Địa chỉ chính dự kiến: https://nguyenlekhanhhoa.com
+
+## 1. Kiến trúc ba lớp
+
+| Lớp | Thư mục chính | Nhiệm vụ |
+|---|---|---|
+| Giao diện | app, components, styles, public/tool-modules | Trang công khai, Admin, theme, ngôn ngữ và giao diện riêng của tool |
+| Nghiệp vụ | lib/services, lib/auth, lib/integrations | Kiểm tra quyền, xử lý dữ liệu, gọi API, lịch chạy và quy tắc hệ thống |
+| Dữ liệu | lib/repositories, lib/supabase, Supabase, R2 | Database, Auth, RLS, tệp, API Vault và truy vấn dữ liệu |
+
+Ba lớp này tách nhau để thay giao diện không làm hỏng dữ liệu, thay nơi lưu tệp không phải viết lại tool, và mọi quyền vẫn được kiểm tra ở server/database.
+
+## 2. Những gì đã có
+
+- Đăng ký, xác thực email, đăng nhập và trang tài khoản bằng Supabase Auth.
+- Vai trò owner, admin, editor, member và hệ thống permission chi tiết.
+- Admin quản lý người dùng, role, menu, footer, mạng xã hội, nội dung, SEO, redirect.
+- Admin quản lý CV, phần mềm, dữ liệu, tin tức, tool và vòng quỹ đạo.
+- Admin tải ảnh/tệp trực tiếp lên Cloudflare R2; khóa R2 không xuất hiện ở trình duyệt.
+- API Vault lưu bí mật ở Supabase; source Git không chứa API key.
+- Lịch chạy API và lịch keepalive Supabase mỗi ngày.
+- Sitemap và robots động; trang mới, bài báo và tool công khai tự vào sitemap.
+- Theme sáng/tối và ngôn ngữ VI/EN được lưu trên máy người dùng.
+- Quiz chạy cục bộ; tài khoản được cấp quyền có thể chọn tệp JSON từ Dữ liệu rồi nhập vào Quiz.
+- PDF chạy cục bộ: gộp, lấy trang, xóa trang, sắp xếp, xoay, đóng dấu, đánh số trang và ảnh sang PDF.
+- COMTRADE chạy offline, đã kiểm thử ASCII, BINARY, BINARY32 và FLOAT32.
+- Tin tức có danh mục, tác giả, người dịch, biên tập, nguồn, tag, ảnh và SEO.
+
+## 3. Chạy trên máy
+
+Yêu cầu Node.js 22.13 trở lên.
+
+~~~powershell
+git clone https://github.com/koha2002/NLKH_KOHA.git
+cd NLKH_KOHA
+Copy-Item .env.example .env.local
+npm.cmd install
+npm.cmd run dev
+~~~
+
+Mở http://localhost:3000.
+
+Điền biến môi trường theo file .env.example. Không commit .env.local lên GitHub.
+
+## 4. Kiểm tra trước khi cập nhật
+
+~~~powershell
+npm.cmd run lint
+npx.cmd tsc --noEmit
+npm.cmd run test:comtrade
+npm.cmd run build
+~~~
+
+Build hiện đã vượt qua TypeScript, COMTRADE và production build. ESLint chỉ còn cảnh báo tối ưu ảnh động, không phải lỗi chạy.
+
+## 5. Trang Admin
+
+Sau khi chạy migration và đăng ký đúng email owner:
+
+- /admin — tổng quan.
+- /admin/site — cấu hình chung và các khối nội dung.
+- /admin/pages — tạo trang /p/slug không cần code.
+- /admin/menu — menu header/footer và mạng xã hội.
+- /admin/seo — title, description, canonical, robots, Open Graph, schema và sitemap.
+- /admin/redirects — redirect theo đường dẫn.
+- /admin/users — tài khoản, role và trạng thái.
+- /admin/cv — hồ sơ và các mục CV.
+- /admin/news — danh mục và bài báo.
+- /admin/software — nhóm và app.
+- /admin/data — nhóm dữ liệu, mục dữ liệu và cấp quyền.
+- /admin/tools — tool, cấu hình riêng và vòng quỹ đạo.
+- /admin/media — ảnh/tệp R2.
+- /admin/api — API Vault, mẫu gọi API và lịch chạy.
+
+## 6. Việc nào làm trong Admin, việc nào cần code?
+
+| Công việc | Admin | Cần sửa code |
+|---|---:|---:|
+| Sửa tiêu đề, mô tả, footer, mạng xã hội | Có | Không |
+| Thêm menu hoặc trỏ menu tới URL mới | Có | Không |
+| Tạo trang nội dung dạng bài/trang thường | Có | Không |
+| Thêm bài báo, app, dữ liệu, CV | Có | Không |
+| Đổi ảnh/icon/PDF CV | Có, tải qua R2 | Không |
+| Bật/tắt tool ở Trang chủ, Công cụ, quỹ đạo | Có | Không |
+| Yêu cầu đăng nhập hoặc giới hạn role | Có | Không |
+| Thêm title/meta/schema/sitemap cho route | Có | Không |
+| Thêm redirect nội bộ | Có | Không |
+| Cài API key và lịch gọi | Có | Không |
+| Tạo thuật toán/tool hoàn toàn mới | Sau khi có route | Có |
+| Tạo một mẫu giao diện hoàn toàn mới | Sau khi có template | Có |
+
+Admin không nhận đoạn JavaScript tùy ý để chạy. Đây là chủ ý bảo mật. Với API mới, lập trình viên thêm một adapter/mẫu gọi an toàn một lần; sau đó Admin quản lý URL, key, header, body, bật/tắt và lịch.
+
+## 7. Tạo tool mới đúng chuẩn
+
+### 7.1 Tạo module độc lập
+
+~~~text
+public/tool-modules/ten-tool/
+├── index.html
+├── module.css
+├── module.js
+├── core.js           # tùy chọn: thuật toán lớn
+└── vendor/           # tùy chọn: thư viện offline
+~~~
+
+index.html chỉ dựng cấu trúc. Gọi CSS chung trước CSS riêng:
+
+~~~html
+<link rel="stylesheet" href="/tool-modules/shared/module-base.css">
+<link rel="stylesheet" href="./module.css">
+<script defer src="./core.js"></script>
+<script defer src="./module.js"></script>
+~~~
+
+Không chép Header/Footer vào tool. Header/Footer đã nằm trong app/layout.tsx.
+
+### 7.2 Tạo route Next.js
+
+Tạo app/tools/ten-tool/page.tsx và dùng ToolFrame:
+
+~~~tsx
+"use client";
+import { ToolFrame } from "../../../components/ToolFrame";
+
+export default function ToolPage() {
+  return <ToolFrame src="/tool-modules/ten-tool/index.html" title="Tên tool" tall flush />;
+}
+~~~
+
+Tạo app/tools/ten-tool/layout.tsx để kiểm tra quyền và SEO:
+
+~~~tsx
+import { enforceToolAccess } from "../../../lib/auth/tool-access";
+import { buildRouteMetadata } from "../../../lib/public/metadata";
+
+export async function generateMetadata() {
+  return buildRouteMetadata("/tools/ten-tool", { title: "Tên tool", description: "Mô tả" });
+}
+
+export default async function Layout({ children }: { children: React.ReactNode }) {
+  await enforceToolAccess("ten-tool");
+  return children;
+}
+~~~
+
+### 7.3 Khai báo trong Admin
+
+Vào Admin → Tool → Danh sách tool và tạo:
+
+- slug: ten-tool
+- route: /tools/ten-tool
+- visible: bật
+- show_home: có/không
+- show_orbit: có/không
+- orbit_ring, orbit_angle: vị trí quỹ đạo
+- requires_auth, allowed_roles: quyền truy cập
+- settings: cấu hình JSON riêng của tool
+
+Từ thời điểm route tồn tại, việc hiện/ẩn ở Trang chủ, Công cụ, quỹ đạo và quyền truy cập đều do Admin; không sửa app/page.tsx.
+
+## 8. API mới
+
+Code server chỉ gọi theo slug:
+
+~~~ts
+await fetch("/api/integrations/ten-api", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ payload: { /* dữ liệu không bí mật */ } })
+});
+~~~
+
+Trong Admin → API:
+
+1. Tạo API integration, khai báo allowed_host, base_url, method và template.
+2. Bấm cài bí mật để lưu key vào Vault.
+3. Nếu cần tự chạy, tạo lịch trong Lịch gọi API.
+4. Với provider có cách ký request đặc biệt, thêm adapter server trong lib/integrations; tuyệt đối không đưa secret vào frontend.
+
+## 9. Quiz và dữ liệu được cấp
+
+1. Admin tải file JSON lên R2 tại Thư viện.
+2. Admin tạo Nhóm dữ liệu.
+3. Admin tạo Mục dữ liệu, chọn loại quiz_json và chọn tệp R2.
+4. Nếu private, Admin cấp mục đó cho user trong Cấp quyền dữ liệu.
+5. User đăng nhập, mở Quiz → chọn dữ liệu được cấp.
+6. Server kiểm tra quyền rồi trả file; Quiz nhập dữ liệu vào bộ nhớ trình duyệt và tiếp tục chạy local.
+
+Quiz không gửi đáp án hoặc tiến độ làm bài lên Internet trừ khi sau này chủ động phát triển tính năng đồng bộ.
+
+## 10. Thay tên miền
+
+Không lưu cứng tên miền trong nội dung. Khi đổi domain chỉ cần:
+
+1. Đổi SITE_URL và NEXT_PUBLIC_SITE_URL trên Render.
+2. Cập nhật Site URL/Redirect URLs trong Supabase Auth.
+3. Thêm origin mới vào CORS của R2.
+4. Trỏ DNS Cloudflare sang Render.
+5. Sửa site_url tại Admin → Cấu hình chung.
+
+Không phải chuyển database, R2 hay sửa toàn bộ source.
+
+## 11. Tài liệu chi tiết
+
+- DEPLOY_A_Z.md — cài máy mới, Supabase, R2, GitHub, Render, domain và scheduler.
+- HUONG_DAN_QUAN_TRI_SOURCE.md — hướng dẫn từng màn hình Admin và cách thêm/bớt nội dung.
+
+## 12. Nguyên tắc bảo mật
+
+- Không commit .env.local, service-role key, R2 secret hoặc API key.
+- Không dùng service-role key trong component client.
+- Quyền được kiểm tra đồng thời ở server và RLS.
+- Tài khoản mới ở trạng thái pending cho đến khi được Admin duyệt/phân role.
+- Redirect chỉ dùng đường dẫn nguồn hợp lệ; redirect toàn domain vẫn nên đặt ở Cloudflare/Render.
+- R2 private phải tải qua API có kiểm tra quyền, không phát public URL.

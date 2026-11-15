@@ -1,0 +1,2214 @@
+
+===== FILE: admin/scripts/postbuild-routes.mjs =====
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const dist = path.join(root, "dist");
+const appFile = path.join(root, "src", "App.jsx");
+const indexFile = path.join(dist, "index.html");
+
+if (!fs.existsSync(indexFile)) {
+  throw new Error(`Missing ${indexFile}`);
+}
+if (!fs.existsSync(appFile)) {
+  throw new Error(`Missing ${appFile}`);
+}
+
+const app = fs.readFileSync(appFile, "utf8");
+const indexHtml = fs.readFileSync(indexFile, "utf8");
+
+// NLKH_ADMIN_STATIC_ROUTE_AUTO_V1
+// Extract every literal React Router path from App.jsx.
+// Dynamic routes (":id", "*") are intentionally skipped.
+// This makes direct URL / reload work for every static Admin page,
+// including future pages such as /backup, without maintaining a second route list.
+const routeRe = /<Route\b[^>]*\bpath\s*=\s*["']([^"']+)["']/g;
+const routes = new Set();
+
+for (const match of app.matchAll(routeRe)) {
+  const route = String(match[1] || "").trim();
+
+  if (!route || route === "/" || route === "*") continue;
+  if (!route.startsWith("/")) continue;
+  if (route.includes(":") || route.includes("*")) continue;
+
+  routes.add(route);
+}
+
+for (const route of [...routes].sort()) {
+  const relative = route.replace(/^\/+|\/+$/g, "");
+  if (!relative) continue;
+
+  const dir = path.join(dist, ...relative.split("/"));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "index.html"), indexHtml, "utf8");
+}
+
+console.log(
+  `[admin routes] generated ${routes.size} static route shells: ` +
+  [...routes].sort().join(", ")
+);
+
+===== FILE: admin/src/App.jsx =====
+import React from"react";import{Routes,Route,Navigate,useParams}from"react-router-dom";import RequireAccess from"./components/RequireAccess";import Login from"./pages/Login";import AuthCallback from"./pages/AuthCallback";import Site from"./pages/Site";import Navigation from"./pages/Navigation";import Content from"./pages/Content";import Seo from"./pages/Seo";import Redirects from"./pages/Redirects";import Tools from"./pages/Tools";import News from"./pages/News";import Software from"./pages/Software";import Data from"./pages/Data";import Cv from"./pages/Cv";import Users from"./pages/Users";import Media from"./pages/Media";import Api from"./pages/Api";import Backup from"./pages/Backup";
+const g=(p,C,props={})=><RequireAccess permission={p}><C {...props}/></RequireAccess>;function ToolEditRoute(){const{toolId}=useParams();return g("tools.manage",Tools,{openId:toolId})}
+export default function App(){return <Routes><Route path="/login" element={<Login/>}/><Route path="/auth/callback" element={<AuthCallback/>}/><Route path="/" element={<Navigate to="/site" replace/>}/><Route path="/site" element={g("site.manage",Site)}/><Route path="/navigation" element={g("site.manage",Navigation)}/><Route path="/content" element={g("content.manage",Content)}/><Route path="/seo" element={g("seo.manage",Seo)}/><Route path="/redirects" element={g("seo.manage",Redirects)}/><Route path="/tools" element={g("tools.manage",Tools)}/><Route path="/tools/:toolId" element={<ToolEditRoute/>}/><Route path="/news" element={g("news.manage",News)}/><Route path="/software" element={g("software.manage",Software)}/><Route path="/data" element={g("data.manage",Data)}/><Route path="/cv" element={g("content.manage",Cv)}/><Route path="/users" element={g("users.manage",Users)}/><Route path="/media" element={g("media.manage",Media)}/><Route path="/api" element={g("api.manage",Api)}/><Route path="/backup" element={g("api.manage",Backup)}/><Route path="*" element={<Navigate to="/site" replace/>}/></Routes>}
+
+===== FILE: admin/src/brand-fix.css =====
+/* V4.7.1 — larger Admin brand + favicon polish */
+.sidebar .logo{
+  font-size:32px !important;
+  line-height:1 !important;
+  letter-spacing:.035em;
+  padding:10px 12px 26px !important;
+}
+.sidebar .logo span{
+  display:inline-block;
+  margin-top:6px;
+  font-size:11px !important;
+  letter-spacing:.24em !important;
+}
+@media(max-width:900px){
+  .sidebar .logo{
+    font-size:28px !important;
+    padding:8px 10px 16px !important;
+  }
+}
+
+===== FILE: admin/src/components/AdminShell.jsx =====
+import React,{useEffect,useState}from"react";
+import{NavLink,useNavigate}from"react-router-dom";
+import{supabase,invoke}from"../lib/supabase";
+import{notify}from"../lib/notify";
+const baseNav=[["/site","Cấu hình chung"],["/navigation","Menu & Footer"],["/content","Trang nội dung"],["/seo","SEO"],["/redirects","Redirect"],["/tools","Danh sách Tool"],["/news","Tin tức"],["/software","Phần mềm"],["/data","Dữ liệu & quyền"],["/cv","CV"],["/users","Người dùng & quyền"],["/media","Thư viện R2"],["/api","API & lịch chạy"],["/backup","Backup FULL"]];
+function initials(name=""){const p=name.trim().split(/\s+/).filter(Boolean);return(p.slice(-2).map(x=>x[0]?.toUpperCase()).join("")||"U")}
+function initialTheme(){try{return localStorage.getItem("nlkh-admin-theme")||"dark"}catch{return"dark"}}
+export default function AdminShell({children,access}){const go=useNavigate(),[tools,setTools]=useState([]),[publishing,setPublishing]=useState(false),[toast,setToast]=useState(null),[theme,setTheme]=useState(initialTheme);
+ async function loadTools(){const{data}=await supabase.from("tools").select("id,slug,code,title_vi,visible,sort_order").order("sort_order");setTools(data||[])}
+ useEffect(()=>{loadTools();const fn=()=>loadTools();window.addEventListener("nlkh:tools-changed",fn);return()=>window.removeEventListener("nlkh:tools-changed",fn)},[]);
+ useEffect(()=>{document.documentElement.dataset.adminTheme=theme;try{localStorage.setItem("nlkh-admin-theme",theme)}catch{}},[theme]);
+ useEffect(()=>{let timer;const fn=e=>{const d=e.detail||{};setToast({message:d.message||"Đã hoàn tất.",type:d.type||"success"});clearTimeout(timer);timer=setTimeout(()=>setToast(null),Number(d.duration||3200))};window.addEventListener("nlkh:admin-toast",fn);return()=>{clearTimeout(timer);window.removeEventListener("nlkh:admin-toast",fn)}},[]);
+ async function logout(){await supabase.auth.signOut();go("/login")}
+ async function publish(){if(publishing)return;const ok=confirm("Xuất bản frontend sẽ yêu cầu Render build lại dữ liệu build-time như Menu, Tool, CV, Tin tức, SEO và cấu hình website. Tiếp tục?");if(!ok)return;setPublishing(true);notify("Đang gửi yêu cầu build frontend…","info",5000);try{const r=await invoke("render-deploy",{target:"frontend"});notify(r.message||"Đã yêu cầu Render build lại frontend.","success",5200)}catch(e){notify(e?.message||String(e),"error",9000)}finally{setPublishing(false)}}
+ const avatar=access?.avatar_url;return <div className="adminLayout"><aside className="sidebar"><div className="logo">NLKH<br/><span>ADMIN</span></div><nav>{baseNav.map(([to,l])=><React.Fragment key={to}><NavLink to={to}>{l}</NavLink>{to==="/tools"&&tools.length>0&&<div className="toolSubNav">{tools.map(t=><NavLink key={t.id} to={`/tools/${t.id}`} className={({isActive})=>`toolSubItem ${isActive?"active":""}`}>{t.code||"TOOL"} · {t.title_vi}{!t.visible&&" (ẩn)"}</NavLink>)}</div>}</React.Fragment>)}</nav><div className="sidebarFoot"><button onClick={publish} disabled={publishing}>{publishing?"Đang xuất bản…":"Xuất bản frontend"}</button><small className="publishHint">Tool/Menu/CV/News/SEO cần build lại. Data/Software/R2 đọc runtime.</small><button onClick={logout}>Đăng xuất</button></div></aside><main className="adminMain"><header className="adminTop"><div className="adminIdentity"><div className="adminAvatar">{avatar?<img src={avatar} alt=""/>:<span>{initials(access?.display_name||access?.email)}</span>}</div><div><strong>{access?.display_name||access?.email}</strong><small>{access?.role_id}</small></div></div><div className="adminTopActions"><button className="themeToggle" type="button" onClick={()=>setTheme(x=>x==="dark"?"light":"dark")} title="Đổi giao diện sáng/tối">{theme==="dark"?"☀ Sáng":"☾ Tối"}</button><a href={import.meta.env.VITE_SITE_URL||"/"} target="_blank" rel="noreferrer">Mở website ↗</a></div></header>{children}</main>{toast&&<div className={`adminToast ${toast.type||"success"}`}><span>{toast.type==="error"?"!":"✓"}</span><p>{toast.message}</p><button onClick={()=>setToast(null)}>×</button></div>}</div>}
+
+===== FILE: admin/src/components/CommentsModeration.jsx =====
+import React,{useEffect,useState}from"react";import{supabase,invoke}from"../lib/supabase";
+export default function CommentsModeration(){const[rows,setRows]=useState([]),[status,setStatus]=useState("pending"),[msg,setMsg]=useState("");
+async function load(){try{const r=await invoke("news-comment",{action:"list",status});setRows(r.rows||[])}catch(e){setMsg(e.message)}}useEffect(()=>{load()},[status]);
+async function change(id,next){try{const r=await invoke("news-comment",{action:"moderate",comment_id:id,status:next});setMsg(r.message);load()}catch(e){setMsg(e.message)}}
+async function del(id){if(!confirm("Xóa vĩnh viễn bình luận khỏi Supabase và file JSON trên R2?"))return;try{const r=await invoke("news-comment",{action:"delete",comment_id:id});setMsg(r.message);load()}catch(e){setMsg(e.message)}}
+return <section className="adminSection"><div className="sectionTitle"><div><h1>Bình luận</h1><p className="sectionDescription">Bình luận mới chỉ nằm ở hàng chờ Supabase. Khi bạn bấm Duyệt, hệ thống mới ghi bản JSON vào R2 và cho phép hiển thị trên trang tin. Nếu Từ chối, bình luận không hiển thị và không giữ bản R2 đã duyệt.</p></div><select className="smallSelect" value={status} onChange={e=>setStatus(e.target.value)}><option value="pending">Chờ duyệt</option><option value="approved">Đã duyệt</option><option value="rejected">Đã từ chối</option><option value="all">Tất cả</option></select></div>{msg&&<div className="notice">{msg}</div>}<div className="commentAdminList">{rows.map(x=><article key={x.id} className="commentAdminCard"><div><strong>{x.display_name}</strong><small>{x.email||"Không email"} · {new Date(x.created_at).toLocaleString("vi-VN")}</small><small>Bài: {x.news_articles?.title_vi||x.article_id}</small><small>R2: {x.r2_object_key||"chưa có — chỉ tạo sau khi duyệt"}</small></div><p>{x.body}</p><div className="rowActions">{x.status!=="approved"&&<button onClick={()=>change(x.id,"approved")}>Duyệt</button>}{x.status!=="rejected"&&<button onClick={()=>change(x.id,"rejected")}>Từ chối</button>}<button className="dangerText" onClick={()=>del(x.id)}>Xóa</button></div></article>)}{!rows.length&&<p className="emptyState">Không có bình luận trong trạng thái này.</p>}</div></section>}
+
+===== FILE: admin/src/components/DataAccessMatrix.jsx =====
+import React,{useEffect,useState}from"react";import{supabase}from"../lib/supabase";import{notify}from"../lib/notify";
+const levels=[{value:"read",label:"Chỉ xem",note:"Xem/tải mọi file trong thư mục."},{value:"add",label:"Xem + thêm",note:"Xem và upload/thêm file mới; không sửa/xóa file hiện có."},{value:"full",label:"Full",note:"Xem, thêm, sửa và xóa mọi file trong thư mục."}];
+export default function DataAccessMatrix(){const[users,setUsers]=useState([]),[folders,setFolders]=useState([]),[uid,setUid]=useState(""),[selected,setSelected]=useState({}),[msg,setMsg]=useState("");useEffect(()=>{Promise.all([supabase.from("profiles").select("id,email,display_name,status").order("display_name"),supabase.from("data_collections").select("id,slug,name_vi,visible").order("sort_order")]).then(([u,c])=>{setUsers(u.data||[]);setFolders(c.data||[])})},[]);useEffect(()=>{if(!uid){setSelected({});return}supabase.from("user_collection_access").select("collection_id,permission_level,expires_at").eq("user_id",uid).then(({data})=>{const x={};(data||[]).forEach(r=>x[r.collection_id]={checked:true,level:r.permission_level||"read",expires_at:r.expires_at||""});setSelected(x)})},[uid]);function toggle(id,on){setSelected(s=>({...s,[id]:{checked:on,level:s[id]?.level||"read",expires_at:s[id]?.expires_at||""}}))}function level(id,v){setSelected(s=>({...s,[id]:{checked:true,level:v,expires_at:s[id]?.expires_at||""}}))}async function save(){if(!uid)return;const chosen=Object.entries(selected).filter(([,v])=>v.checked),keep=chosen.map(([id])=>id),{data:{user}}=await supabase.auth.getUser();if(keep.length){const payload=chosen.map(([collection_id,v])=>({user_id:uid,collection_id,permission_level:v.level,granted_by:user?.id||null,expires_at:v.expires_at||null}));const{error}=await supabase.from("user_collection_access").upsert(payload,{onConflict:"user_id,collection_id"});if(error){setMsg(error.message);return}}const{data:existing}=await supabase.from("user_collection_access").select("collection_id").eq("user_id",uid);const remove=(existing||[]).map(x=>x.collection_id).filter(id=>!keep.includes(id));if(remove.length){const{error}=await supabase.from("user_collection_access").delete().eq("user_id",uid).in("collection_id",remove);if(error){setMsg(error.message);return}}const m=`Đã lưu quyền cho ${keep.length} thư mục.`;setMsg(m);notify(m,"success")}
+return <section className="adminSection"><div className="sectionTitle"><div><h1>Cấp quyền theo thư mục</h1><p className="sectionDescription">Chọn tài khoản, sau đó cấp Read / Add / Full cho từng thư mục. Quyền áp dụng cho toàn bộ file hiện có và file thêm sau này trong thư mục đó.</p></div></div><label className="standaloneField"><span>Tài khoản *</span><select value={uid} onChange={e=>setUid(e.target.value)}><option value="">— Chọn tài khoản —</option>{users.map(u=><option key={u.id} value={u.id}>{u.display_name||u.email} — {u.email} ({u.status})</option>)}</select></label>{uid&&<div className="accessGrid">{folders.map(c=>{const v=selected[c.id]||{checked:false,level:"read",expires_at:""};return <div className={`accessItem ${v.checked?"selected":""}`} key={c.id}><label><input type="checkbox" checked={!!v.checked} onChange={e=>toggle(c.id,e.target.checked)}/><span><strong>{c.name_vi}</strong><small>data/{c.slug}{!c.visible?" · đang ẩn":""}</small></span></label><select disabled={!v.checked} value={v.level} onChange={e=>level(c.id,e.target.value)}>{levels.map(l=><option key={l.value} value={l.value}>{l.label}</option>)}</select><small>{levels.find(l=>l.value===v.level)?.note}</small></div>})}</div>}<div className="editorActions"><button className="primary" onClick={save} disabled={!uid}>Lưu quyền thư mục</button></div>{msg&&<div className="notice">{msg}</div>}</section>}
+
+===== FILE: admin/src/components/MediaPicker.jsx =====
+import React,{useEffect,useMemo,useState}from"react";
+import{assetCode,deleteAsset,getAsset,getAssetPreviewUrl,listAssets,replaceR2Asset,uploadToR2}from"../lib/media";
+
+function AssetPreview({asset,compact=false}) {
+  const[preview,setPreview]=useState("");
+  const isImage=(asset?.mime_type||"").startsWith("image/");
+  useEffect(()=>{
+    let alive=true;setPreview("");
+    if(asset&&isImage)getAssetPreviewUrl(asset).then(u=>alive&&setPreview(u)).catch(()=>{});
+    return()=>{alive=false};
+  },[asset?.id,asset?.public_url,asset?.object_key]);
+  if(!asset) return <div className="assetEmpty">Chưa chọn tệp</div>;
+  return <div className={`assetPreview ${compact?"compact":""}`}>
+    <div className="assetThumb">
+      {isImage && preview ? <img src={preview} alt={asset.alt_vi||asset.original_name}/> : <span>{(asset.mime_type||"FILE").split("/").pop()?.toUpperCase()}</span>}
+    </div>
+    <div className="assetMeta">
+      <strong>{assetCode(asset.asset_no)}</strong>
+      <span>{asset.original_name}</span>
+      <small>ID DB: {asset.id}</small>
+      <small>R2: {asset.object_key}</small>
+    </div>
+  </div>
+}
+
+export default function MediaPicker({
+  value,onChange,kind="image",visibility="public",label="Tệp",help="",required=false,
+  onMirrorUrl,uploadedFrom="admin",itemId=null,collectionId=null
+}) {
+  const[current,setCurrent]=useState(null),[open,setOpen]=useState(false),[assets,setAssets]=useState([]),
+    [q,setQ]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[info,setInfo]=useState("");
+
+  useEffect(()=>{value?getAsset(value).then(setCurrent).catch(e=>setError(e.message)):setCurrent(null)},[value]);
+
+  async function refresh(){try{setAssets(await listAssets(kind))}catch(e){setError(e.message)}}
+  useEffect(()=>{if(open)refresh()},[open,kind]);
+
+  const filtered=useMemo(()=>assets.filter(a=>a.visibility===visibility&&`${assetCode(a.asset_no)} ${a.original_name} ${a.title} ${a.object_key}`.toLowerCase().includes(q.toLowerCase())),[assets,q,visibility]);
+
+  async function upload(file){
+    if(!file)return;
+    try{
+      setBusy(true);setError("");setInfo("");
+      const asset=await uploadToR2(file,{visibility,folder:kind==="image"?"images":kind==="pdf"?"cv":"files",usageNote:label,uploadedFrom,itemId,collectionId});
+      setCurrent(asset);onChange(asset.id);onMirrorUrl?.(asset.public_url||"");
+      setInfo(asset._deduplicated?`File giống hệt đã có. Hệ thống dùng lại ${assetCode(asset.asset_no)} nên không tăng dung lượng R2.`:`Đã tải lên và gán ID ${assetCode(asset.asset_no)}.`);
+      await refresh();
+    }catch(e){setError(e.message)}finally{setBusy(false)}
+  }
+
+  async function replaceSameId(file){
+    if(!file||!current)return;
+    const usageWarn="Thay file nhưng giữ nguyên ID sẽ cập nhật nội dung ở TẤT CẢ nơi đang dùng ID này. Nếu chỉ muốn đổi riêng mục hiện tại, hãy dùng ‘Tải tệp mới’ hoặc ‘Chọn từ thư viện’.";
+    if(!confirm(`${usageWarn}\n\nTiếp tục với ${assetCode(current.asset_no)}?`))return;
+    try{
+      setBusy(true);setError("");setInfo("");
+      const asset=await replaceR2Asset(current.id,file);
+      setCurrent(asset);onChange(asset.id);onMirrorUrl?.(asset.public_url||"");
+      if(asset._replacedByExisting)setInfo(`Nội dung này đã tồn tại ở ${assetCode(asset.asset_no)}. Hệ thống chuyển mục hiện tại sang ID đó để tránh lưu trùng.`);
+      else setInfo(`Đã thay file bên trong ${assetCode(asset.asset_no)} và giữ nguyên ID. Mọi nơi dùng ID này nhận file mới.`);
+      await refresh();
+    }catch(e){setError(e.message)}finally{setBusy(false)}
+  }
+
+  function choose(a){setCurrent(a);onChange(a.id);onMirrorUrl?.(a.public_url||"");setInfo(`Đã chọn ${assetCode(a.asset_no)} từ thư viện; không upload thêm bản trùng.`);setOpen(false)}
+  function detach(){setCurrent(null);onChange("");onMirrorUrl?.("");setInfo("Đã bỏ liên kết khỏi mục này; file vẫn còn trong Thư viện R2 để dùng lại.")}
+
+  async function removeFromR2(a){
+    if(!confirm(`Xóa ${assetCode(a.asset_no)} khỏi R2? Hệ thống sẽ chặn nếu tệp đang được dùng.`))return;
+    try{
+      setBusy(true);setError("");setInfo("");
+      await deleteAsset(a.id,false);
+      if(value===a.id)detach();
+      setInfo(`Đã xóa ${assetCode(a.asset_no)} khỏi R2. ID này không được tái sử dụng.`);
+      await refresh();
+    }catch(e){
+      const ok=confirm(`${e.message}\n\nNếu bạn chắc chắn muốn xóa bắt buộc, hệ thống sẽ gỡ các liên kết đang dùng ID này. Bấm OK để tiếp tục.`);
+      if(ok){try{await deleteAsset(a.id,true);if(value===a.id)detach();setInfo(`Đã xóa bắt buộc ${assetCode(a.asset_no)} và gỡ các liên kết.`);await refresh()}catch(x){setError(x.message)}}
+    }finally{setBusy(false)}
+  }
+
+  const accept=kind==="image"?"image/*":kind==="pdf"?"application/pdf":"*/*";
+  const helpText=help||"Tải file trực tiếp lên Cloudflare R2 hoặc chọn ID đã có. ID dạng R2-000001 tăng tự động và tồn tại sau khi đăng xuất/đăng nhập.";
+  return <div className="mediaField">
+    <div className="fieldLabel"><span>{label}{required&&<b className="requiredMark">*</b>}</span><button className="helpDot" type="button" title={helpText}>?</button></div>
+    <AssetPreview asset={current}/>
+    <div className="mediaActions">
+      <label className="miniButton uploadButton">{busy?"Đang tải…":"Tải tệp mới"}<input type="file" hidden accept={accept} disabled={busy} onChange={e=>{upload(e.target.files?.[0]);e.target.value=""}}/></label>
+      {current&&<label className="miniButton uploadButton">Thay file, giữ ID<input type="file" hidden accept={accept} disabled={busy} onChange={e=>{replaceSameId(e.target.files?.[0]);e.target.value=""}}/></label>}
+      <button type="button" className="miniButton" onClick={()=>setOpen(true)}>Chọn / xem thư viện R2</button>
+      {current&&<button type="button" className="miniButton dangerText" onClick={detach}>Bỏ khỏi mục này</button>}
+      {current&&<button type="button" className="miniButton dangerText" onClick={()=>removeFromR2(current)}>Xóa ID khỏi R2</button>}
+    </div>
+    <small className="fieldHelp">{helpText}</small>
+    {info&&<div className="fieldInfo">{info}</div>}
+    {error&&<div className="fieldError">{error}</div>}
+
+    {open&&<div className="modal assetModal">
+      <div className="assetLibrary">
+        <div className="editorHead"><div><h2>Thư viện R2</h2><small>Chỉ hiện file có cùng mức quyền với trường này ({visibility}). Chọn ID cũ để tái sử dụng; tìm bằng R2-000123, tên file hoặc object key.</small></div><button type="button" onClick={()=>setOpen(false)}>✕</button></div>
+        <input className="assetSearch" value={q} onChange={e=>setQ(e.target.value)} placeholder="Tìm ID R2, tên tệp hoặc đường dẫn R2…"/>
+        <div className="assetGrid">
+          {filtered.map(a=><div className="assetCard" key={a.id}>
+            <button type="button" className="assetChoose" onClick={()=>choose(a)}><AssetPreview asset={a} compact/></button>
+            <button type="button" className="assetDelete" onClick={()=>removeFromR2(a)}>Xóa khỏi R2</button>
+          </div>)}
+          {!filtered.length&&<p className="emptyState">Chưa có tệp phù hợp.</p>}
+        </div>
+      </div>
+    </div>}
+  </div>
+}
+
+===== FILE: admin/src/components/RequireAccess.jsx =====
+import React,{useEffect,useState}from"react";import{Navigate}from"react-router-dom";import{getAccess,can}from"../lib/access";
+export default function RequireAccess({permission,children}){const[a,setA]=useState(null);useEffect(()=>{let live=true;const load=()=>getAccess().then(x=>{if(live)setA(x)});load();const refresh=()=>load();window.addEventListener("focus",refresh);document.addEventListener("visibilitychange",refresh);return()=>{live=false;window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh)}},[]);if(!a)return <div className="center">Đang kiểm tra quyền…</div>;if(!a.authenticated)return <Navigate to="/login" replace/>;if(a.status!=="active")return <div className="center"><div className="panel"><h2>Tài khoản chưa hoạt động</h2><p>{a.status}</p></div></div>;if(permission&&!can(a,permission))return <div className="center"><div className="panel"><h2>Không có quyền</h2><p>Cần: {permission}</p></div></div>;return React.cloneElement(children,{access:a})}
+
+===== FILE: admin/src/components/SystemUsage.jsx =====
+import React,{useEffect,useMemo,useState}from"react";
+import{invoke}from"../lib/supabase";
+
+const LIMITS={
+ database:500*1000*1000,
+ supabaseStorage:1*1000*1000*1000,
+ r2:10*1000*1000*1000
+};
+
+function fmtBytes(n){
+ n=Number(n||0);
+ if(!Number.isFinite(n))return"—";
+ const units=["B","KB","MB","GB","TB"];let i=0,v=n;
+ while(v>=1000&&i<units.length-1){v/=1000;i++}
+ return`${i===0?Math.round(v):v<10?v.toFixed(2):v<100?v.toFixed(1):Math.round(v)} ${units[i]}`
+}
+function percent(v,max){return max?Math.max(0,Math.min(100,Number(v||0)/max*100)):0}
+function level(p){return p>=95?"danger":p>=85?"warn2":p>=70?"warn":"ok"}
+
+function Meter({label,value,max,note}){
+ const p=percent(value,max);
+ return <div className={`usageMeter ${level(p)}`}>
+  <div className="usageMeterHead"><strong>{label}</strong><span>{fmtBytes(value)} / {fmtBytes(max)} · {p.toFixed(1)}%</span></div>
+  <div className="usageBar"><i style={{width:`${p}%`}}/></div>
+  {note&&<small>{note}</small>}
+ </div>
+}
+
+function monthClock(){
+ const now=new Date();
+ const start=new Date(now.getFullYear(),now.getMonth(),1);
+ const end=new Date(now.getFullYear(),now.getMonth()+1,1);
+ const total=(end-start)/36e5;
+ const elapsed=(now-start)/36e5;
+ return{total,elapsed,remaining:Math.max(0,total-elapsed)}
+}
+
+export default function SystemUsage(){
+ const[data,setData]=useState(null),[err,setErr]=useState(""),[loading,setLoading]=useState(true);
+ async function load(){
+  setLoading(true);setErr("");
+  try{setData(await invoke("system-usage",{}))}
+  catch(e){setErr(e?.message||String(e))}
+  finally{setLoading(false)}
+ }
+ useEffect(()=>{load()},[]);
+ const clock=useMemo(monthClock,[]);
+
+ return <section className="adminSection usagePanel">
+  <div className="sectionHead usageTitle">
+   <div>
+    <p className="eyebrow">USAGE / FREE TIER</p>
+    <h1>Dung lượng & hạn mức</h1>
+    <p>Theo dõi trực tiếp Supabase và Cloudflare R2 để tránh chạm giới hạn Free.</p>
+   </div>
+   <button type="button" onClick={load} disabled={loading}>{loading?"Đang đo…":"Làm mới"}</button>
+  </div>
+
+  {err&&<div className="notice"><b>Lỗi đọc usage:</b> {err}</div>}
+
+  <div className="usageGrid">
+   <div className="usageCard">
+    <h2>Supabase Free</h2>
+    <Meter label="Postgres database" value={data?.supabase?.database_bytes} max={LIMITS.database} note="Ngưỡng theo dõi: 500 MB / project."/>
+    <Meter label="Supabase Storage" value={data?.supabase?.storage_bytes} max={LIMITS.supabaseStorage} note={`${data?.supabase?.storage_objects??"—"} object · Ngưỡng theo dõi: 1 GB.`}/>
+    <div className="usageInfo">
+     <strong>Compute / số giờ trong tháng</strong>
+     <p>Tháng hiện tại có <b>{clock.total.toFixed(0)} giờ</b>; đã trôi qua {clock.elapsed.toFixed(1)} giờ, còn {clock.remaining.toFixed(1)} giờ lịch.</p>
+     <p><b>730/744 giờ không phải quota Free bị trừ dần.</b> Đây chỉ xấp xỉ số giờ một tháng và được dùng trong ví dụ tính compute của gói trả phí.</p>
+     <small>Free project có thể bị pause khi hoạt động thấp trong khoảng 7 ngày.</small>
+    </div>
+   </div>
+
+   <div className="usageCard">
+    <h2>Cloudflare R2</h2>
+    <Meter label="R2 Standard storage" value={data?.r2?.bytes} max={LIMITS.r2} note={`${data?.r2?.objects??"—"} object · Free tier: 10 GB-month/tháng.`}/>
+    <div className="usageInfo">
+     <strong>Free operations / tháng</strong>
+     <p>Class A: <b>1.000.000</b> · Class B: <b>10.000.000</b> · Egress Internet: <b>miễn phí</b>.</p>
+     {data?.r2?.error&&<small>R2 metric: {data.r2.error}</small>}
+    </div>
+   </div>
+  </div>
+
+  <div className="usageFoot">Đo lúc: {data?.checked_at?new Date(data.checked_at).toLocaleString("vi-VN"):"—"} · Supabase project: {data?.project_ref||"—"}</div>
+ </section>
+}
+
+===== FILE: admin/src/components/TableManager.jsx =====
+import React,{useEffect,useMemo,useState}from"react";
+import{supabase}from"../lib/supabase";
+import MediaPicker from"./MediaPicker";
+import{notify}from"../lib/notify";
+
+const empty=v=>v===null||v===undefined||v===""||(Array.isArray(v)&&v.length===0);
+const isRequired=(f,form={})=>!!(typeof f.requiredWhen==="function"?f.requiredWhen(form):f.required);
+function helpText(f,form={}){
+  if(f.help)return f.help;
+  if(f.type==="sort")return "Thứ tự hiển thị. Hệ thống tự đánh lại 1, 2, 3… sau khi lưu/xóa; số nhỏ đứng trước.";
+  if(f.type==="relation")return "Chọn từ dữ liệu đã có; không cần nhớ hoặc nhập ID kỹ thuật.";
+  if(f.type==="checks")return "Có thể tích nhiều mục. Bỏ tích để thu hồi lựa chọn/quyền tương ứng.";
+  if(f.type==="media")return "Tải trực tiếp lên Cloudflare R2 hoặc chọn ID R2 đã có trong thư viện; không cần dán URL thủ công.";
+  if(f.type==="checkbox")return "Tùy chọn bật/tắt. Có thể thay đổi lại bất cứ lúc nào.";
+  if(f.type==="json")return "Cấu hình nâng cao dạng JSON. Nếu không dùng, giữ mẫu sẵn có hoặc {}. Hệ thống sẽ chỉ đúng ô nếu JSON sai.";
+  if(f.type==="url")return "Nhập URL đầy đủ bắt đầu bằng https:// nếu dùng liên kết bên ngoài.";
+  if(f.type==="datetime")return "Chọn ngày/giờ bằng ô lịch để tránh sai định dạng.";
+  return isRequired(f,form)?`${f.label} là trường bắt buộc.`:`${f.label} là trường không bắt buộc; có thể để trống nếu chưa dùng.`;
+}
+
+function nlkhToDateTimeLocal(value){
+  if(value===null||value===undefined||value==="")return "";
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime()))return String(value).slice(0,16);
+  const p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function nlkhFromDateTimeLocal(value){
+  if(value===null||value===undefined||value==="")return "";
+  const d=new Date(value);
+  return Number.isNaN(d.getTime())?String(value):d.toISOString();
+}
+function parseField(f,v){
+  // Optional media/relation fields are backed by FK/UUID columns.
+  // An unselected control uses an empty string in the browser, but Postgres UUID
+  // columns require NULL rather than "".
+  if((f.type==="media"||f.type==="relation")&&(v===""||v===undefined||v===null))return null;
+  if(f.type==="number"||f.type==="sort")return v===""?null:Number(v);
+  if(f.type==="checkbox")return!!v;
+  if(f.type==="json"){
+    if(typeof v!=="string")return v??{};
+    if(!v.trim())return{};
+    return JSON.parse(v);
+  }
+  if(f.type==="array"||f.type==="checks"){
+    if(Array.isArray(v))return v;
+    return String(v||"").split(",").map(x=>x.trim()).filter(Boolean);
+  }
+  return v===""&&f.nullable?null:v;
+}
+function display(v){if(v==null)return"";if(typeof v==="object")return JSON.stringify(v);return String(v)}
+
+function extractServerError(error,fields){
+  const constraint=String(error?.constraint||error?.message?.match(/constraint ["']([^"']+)["']/i)?.[1]||"");
+  const byConstraint=fields.find(f=>constraint&&constraint.includes(`_${f.name}_`));
+  const msg=error?.message||"Không thể lưu dữ liệu.";
+  const details=error?.details||"";
+  if(error?.code==="23505"){
+    const match=details.match(/\(([^)]+)\)=\(([^)]*)\)/);
+    if(match){
+      const field=fields.find(f=>f.name===match[1]);
+      return {field:match[1],message:`${field?.label||match[1]} “${match[2]}” đã tồn tại. Hãy đổi giá trị này.`};
+    }
+    return {message:"Có một giá trị bị trùng với dữ liệu đã có. Kiểm tra các trường mã/slug/đường dẫn."};
+  }
+  if(error?.code==="23502"){
+    const name=error?.column||details.match(/column "([^"]+)"/)?.[1];
+    const field=fields.find(f=>f.name===name);
+    return{field:name,message:`${field?.label||name||"Một trường bắt buộc"} đang để trống. Hãy điền đúng ô này.`};
+  }
+  if(error?.code==="23503"){
+    const name=byConstraint?.name||details.match(/Key \(([^)]+)\)=/)?.[1]||details.match(/column ["']?([^"' ]+)/i)?.[1];
+    const field=fields.find(f=>f.name===name);
+    return{field:name,message:field?`${field.label} đang trỏ tới một mục không còn tồn tại. Hãy chọn lại ngay ô “${field.label}”.`:`Không thể lưu vì một mục liên quan đã bị xóa/không còn tồn tại. Hãy chọn lại menu cha, nhóm, vai trò hoặc ID R2.`};
+  }
+  if(error?.code==="23514"){
+    const field=byConstraint||fields.find(f=>`${msg} ${details}`.includes(f.name));
+    return{field:field?.name,message:field?`${field.label} có giá trị không hợp lệ theo quy tắc hệ thống. ${details||msg}`:`Giá trị không đúng quy tắc của hệ thống. ${details||msg}`};
+  }
+  if(error?.code==="22P02")return{message:`Sai định dạng dữ liệu: ${details||msg}. Kiểm tra ô ID, số, ngày/giờ hoặc JSON vừa sửa.`};
+  if(error?.code==="22007")return{message:"Ngày/giờ không đúng định dạng. Hãy chọn lại bằng ô ngày/giờ thay vì nhập chuỗi tự do."};
+  if(error?.code==="PGRST204")return{message:`Cấu trúc Admin và database chưa đồng bộ: ${msg}. Hãy chạy migration V4 rồi thử lại.`};
+  if(error?.code==="42501")return{message:"Tài khoản hiện tại không có quyền thực hiện thay đổi này. Kiểm tra vai trò/quyền của tài khoản."};
+  return{message:[msg,details].filter(Boolean).join(" — ")};
+}
+
+function FieldLabel({f}){
+  const help=f.help||helpText(f);
+  return <div className="fieldLabel">
+    <span>{f.label}{f.required&&<b className="requiredMark">*</b>}</span>
+    <button className="helpDot" type="button" title={help} aria-label={`Trợ giúp ${f.label}`}>?</button>
+  </div>
+}
+
+function RelationInput({f,value,onChange}){
+  const[options,setOptions]=useState([]),[error,setError]=useState("");
+  useEffect(()=>{
+    let q=supabase.from(f.relation.table).select(f.relation.select||"*");
+    if(f.relation.filter)Object.entries(f.relation.filter).forEach(([k,v])=>q=q.eq(k,v));
+    if(f.relation.orderBy)q=q.order(f.relation.orderBy,{ascending:f.relation.ascending!==false});
+    q.then(({data,error})=>{if(error)setError(error.message);else setOptions(data||[])});
+  },[f.relation.table]);
+  const valueKey=f.relation.valueKey||"id",labelKey=f.relation.labelKey||"name";
+  return <><select value={value??""} onChange={e=>onChange(e.target.value)}>
+    <option value="">{f.placeholder||"— Không chọn —"}</option>
+    {options.map(o=><option key={o[valueKey]} value={o[valueKey]}>{typeof f.relation.label==="function"?f.relation.label(o):(o[labelKey]||o[valueKey])}</option>)}
+  </select>{error&&<small className="fieldError">{error}</small>}</>
+}
+function ChecksInput({f,value,onChange}){
+  const[options,setOptions]=useState(f.options||[]);
+  useEffect(()=>{
+    if(f.options){setOptions(f.options);return;}
+    if(!f.relation)return;
+    let q=supabase.from(f.relation.table).select(f.relation.select||"*");
+    if(f.relation.filter)Object.entries(f.relation.filter).forEach(([k,v])=>q=q.eq(k,v));
+    if(f.relation.orderBy)q=q.order(f.relation.orderBy,{ascending:true});
+    q.then(({data})=>setOptions(data||[]));
+  },[f.relation?.table,JSON.stringify(f.options||[])]);
+  const current=Array.isArray(value)?value:[];
+  const valueKey=f.relation?.valueKey||"value",labelKey=f.relation?.labelKey||"label";
+  const toggle=(v,checked)=>onChange(checked?[...new Set([...current,v])]:current.filter(x=>x!==v));
+  return <div className="checkGrid">{options.map(o=>{
+    const val=typeof o==="string"?o:o[valueKey],label=typeof o==="string"?o:(typeof f.relation?.label==="function"?f.relation.label(o):(o[labelKey]||val));
+    const note=typeof o==="object"?o.note:null;
+    return <label className="checkCard" key={val}><input type="checkbox" checked={current.includes(val)} onChange={e=>toggle(val,e.target.checked)}/><span><b>{label}</b>{note&&<small>{note}</small>}</span></label>
+  })}</div>
+}
+
+function Input({f,value,onChange,onMirror,form={}}){
+  if(f.type==="media"){
+    const mediaVisibility=typeof f.visibility==="function"?f.visibility(form):(f.visibility||"public");
+    return <MediaPicker value={value} onChange={onChange} kind={f.kind||"image"} visibility={mediaVisibility} label={f.label} help={f.help} required={f.required} onMirrorUrl={onMirror}/>;
+  }
+  if(f.type==="relation")return <RelationInput f={f} value={value} onChange={onChange}/>;
+  if(f.type==="checks")return <ChecksInput f={f} value={value} onChange={onChange}/>;
+  if(f.type==="textarea"||f.type==="html")return <textarea rows={f.rows||8} value={value??""} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||""}/>;
+  if(f.type==="json")return <textarea rows={f.rows||9} value={typeof value==="string"?value:JSON.stringify(value??{},null,2)} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||'{\n  "key": "value"\n}'}/>;
+  if(f.type==="array")return <input value={Array.isArray(value)?value.join(", "):(value??"")} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||"Nhập nhiều giá trị, cách nhau bằng dấu phẩy"}/>;
+  if(f.type==="checkbox")return <label className="switchRow"><input type="checkbox" checked={!!value} onChange={e=>onChange(e.target.checked)}/><span>{f.trueLabel||"Bật"}</span></label>;
+  if(f.type==="select")return <select value={value??""} onChange={e=>onChange(e.target.value)}>{f.placeholder&&<option value="">{f.placeholder}</option>}{(f.options||[]).map(o=><option key={String(o.value)} value={o.value}>{o.label}</option>)}</select>;
+  if(f.type==="color")return <div className="colorInput"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value||"")?value:"#3157f6"} onChange={e=>onChange(e.target.value)}/><input value={value??""} onChange={e=>onChange(e.target.value)} placeholder="#3157f6"/></div>;
+  if(f.type==="datetime")return <input
+    type="datetime-local"
+    min={f.min}
+    max={f.max}
+    step={f.step||60}
+    value={nlkhToDateTimeLocal(value)}
+    onChange={e=>onChange(nlkhFromDateTimeLocal(e.target.value))}
+    placeholder={f.placeholder||""}
+  />;
+  const type=f.type==="number"||f.type==="sort"?"number":f.type==="url"?"url":"text";
+  return <input type={type} min={f.min} max={f.max} step={f.step} value={value??""} onChange={e=>onChange(e.target.value)} placeholder={f.placeholder||""}/>;
+}
+
+
+/* NLKH_HTML_PREVIEW_HELPER_START */
+function prepareHtmlToolPreview(raw=""){
+  let html=String(raw||"");
+  html=html.replace(/<script\b[^>]*\bsrc=["'](?:https?:)?\/\/local\.adguard\.org[^>]*>[\s\S]*?<\/script>/gi,"");
+
+  const bootstrap = `
+<style id="nlkh-preview-loading-style">
+#nlkh-preview-loading{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:#f7f9fc;color:#101828;font-family:Arial,sans-serif}
+#nlkh-preview-loading .box{width:min(520px,82vw);text-align:center}
+#nlkh-preview-loading .title{font-size:18px;font-weight:800;margin-bottom:8px}
+#nlkh-preview-loading .sub{font-size:12px;color:#667085;margin-bottom:14px}
+#nlkh-preview-loading .track{height:10px;border-radius:999px;background:#e4e7ec;overflow:hidden}
+#nlkh-preview-loading .bar{height:100%;width:4%;background:#3157f6;transition:width .28s ease}
+#nlkh-preview-loading .pct{font-size:12px;margin-top:8px;color:#475467}
+</style>
+<script>
+(function(){
+  function memoryStorage(){
+    var data=Object.create(null);
+    return {
+      get length(){return Object.keys(data).length},
+      key:function(i){return Object.keys(data)[i]||null},
+      getItem:function(k){k=String(k);return Object.prototype.hasOwnProperty.call(data,k)?data[k]:null},
+      setItem:function(k,v){data[String(k)]=String(v)},
+      removeItem:function(k){delete data[String(k)]},
+      clear:function(){data=Object.create(null)}
+    };
+  }
+  function ensureStorage(name){
+    try{
+      var store=window[name];
+      var key="__nlkh_preview_probe__";
+      store.setItem(key,"1"); store.removeItem(key);
+    }catch(e){
+      try{Object.defineProperty(window,name,{configurable:true,value:memoryStorage()})}catch(_){}
+    }
+  }
+  ensureStorage("localStorage"); ensureStorage("sessionStorage");
+
+  var progress=4, timer=null, finished=false;
+  function ensureUi(){
+    if(document.getElementById("nlkh-preview-loading"))return;
+    var wrap=document.createElement("div");
+    wrap.id="nlkh-preview-loading";
+    wrap.innerHTML='<div class="box"><div class="title">Đang nạp bản xem thử / Loading preview</div><div class="sub" id="nlkh-preview-loading-text">Đang tải HTML và các thư viện bên ngoài…</div><div class="track"><div class="bar" id="nlkh-preview-loading-bar"></div></div><div class="pct" id="nlkh-preview-loading-pct">4%</div></div>';
+    (document.body||document.documentElement).appendChild(wrap);
+  }
+  function paint(){
+    ensureUi();
+    var b=document.getElementById("nlkh-preview-loading-bar"),p=document.getElementById("nlkh-preview-loading-pct");
+    if(b)b.style.width=progress+"%"; if(p)p.textContent=Math.round(progress)+"%";
+  }
+  function done(){
+    if(finished)return; finished=true; progress=100; paint(); clearInterval(timer);
+    var t=document.getElementById("nlkh-preview-loading-text"); if(t)t.textContent="Đã nạp xong / Preview ready";
+    setTimeout(function(){var w=document.getElementById("nlkh-preview-loading");if(w){w.style.opacity="0";w.style.transition="opacity .25s";setTimeout(function(){w.remove()},280)}},350);
+  }
+  document.addEventListener("DOMContentLoaded",function(){
+    paint();
+    timer=setInterval(function(){
+      if(finished)return;
+      progress=Math.min(92,progress+(progress<55?8:progress<80?4:1.5)); paint();
+    },320);
+  });
+  window.addEventListener("load",done);
+  setTimeout(function(){
+    if(!finished){
+      var t=document.getElementById("nlkh-preview-loading-text");
+      if(t)t.textContent="Một số CDN/tài nguyên đang tải chậm; vẫn tiếp tục chờ… / External resources are still loading…";
+      progress=Math.max(progress,94);paint();
+    }
+  },7000);
+  setTimeout(done,16000);
+})();
+<\/script>`;
+
+  const base='<base target="_blank">';
+  if(/<head(?:\s[^>]*)?>/i.test(html)){
+    return html.replace(/<head(\s[^>]*)?>/i,m=>m+base+bootstrap);
+  }
+  return '<!doctype html><html><head>'+base+bootstrap+'</head><body>'+html+'</body></html>';
+}
+/* NLKH_HTML_PREVIEW_HELPER_END */
+
+export default function TableManager({
+  title,description="",table,fields,idField="id",orderBy="updated_at",ascending=false,
+  allowDelete=true,allowAdd=true,defaults={},singleRow=false,openId=null,onChanged,deleteHandler=null,canDelete=null
+}){
+  const[rows,setRows]=useState([]),[edit,setEdit]=useState(null),[form,setForm]=useState({}),[msg,setMsg]=useState(""),
+    [fieldErrors,setFieldErrors]=useState({}),[htmlPreview,setHtmlPreview]=useState("");
+  const visible=useMemo(()=>fields.filter(f=>!f.hidden),[fields]);
+
+  async function load(){
+    let q=supabase.from(table).select("*");
+    if(orderBy)q=q.order(orderBy,{ascending});
+    const{data,error}=await q;
+    if(error)setMsg(error.message);else{
+      setRows(data||[]);
+      if(singleRow&&data?.length&&!edit)start(data[0],data||[]);
+      if(openId&&data?.length){
+        const found=data.find(r=>String(r[idField])===String(openId));
+        if(found)start(found,data||[]);
+      }
+    }
+  }
+  useEffect(()=>{load()},[table,openId]);
+
+  function defaultFor(f){
+    if(f.name in defaults)return typeof defaults[f.name]==="function"?defaults[f.name]():defaults[f.name];
+    if(f.type==="checkbox")return false;
+    if(f.type==="json")return{};
+    if(f.type==="array"||f.type==="checks")return[];
+    if(f.type==="sort")return rows.reduce((m,r)=>Math.max(m,Number(r[f.name]||0)),0)+1;
+    return"";
+  }
+  function start(row=null,currentRows=rows){
+    setEdit(row?row[idField]:"__new__");setMsg("");setFieldErrors({});
+    const b={};
+    fields.forEach(f=>{
+      if(row)b[f.name]=row[f.name]??defaultFor(f);
+      else if(f.type==="sort")b[f.name]=currentRows.reduce((m,r)=>Math.max(m,Number(r[f.name]||0)),0)+1;
+      else b[f.name]=defaultFor(f);
+    });
+    setForm(b);
+  }
+
+  function validate(){
+    const errors={};
+    fields.forEach(f=>{
+      if(f.hidden||f.readonly|| (f.showWhen && !f.showWhen(form)))return;
+      const v=form[f.name];
+      if(isRequired(f,form)&&empty(v))errors[f.name]=`${f.label} là trường bắt buộc trong lựa chọn hiện tại.`;
+      if(!errors[f.name]&&f.type==="url"&&v){
+        try{new URL(v)}catch{errors[f.name]=`${f.label} phải là URL đầy đủ, ví dụ https://...`}
+      }
+      if(!errors[f.name]&&f.type==="json"&&typeof v==="string"&&v.trim()){
+        try{JSON.parse(v)}catch(e){errors[f.name]=`${f.label} có JSON sai cú pháp: ${e.message}`}
+      }
+      if(!errors[f.name]&&f.validate){
+        const result=f.validate(v,form);
+        if(result)errors[f.name]=result;
+      }
+    });
+    setFieldErrors(errors);
+    return Object.keys(errors).length===0;
+  }
+
+  async function normalizeSortRows(){
+    const sortField=fields.find(f=>f.type==="sort");
+    if(!sortField)return;
+    const{data,error}=await supabase.from(table).select(`${idField},${sortField.name}`).order(sortField.name,{ascending:true}).order(idField,{ascending:true});
+    if(error)return;
+    for(let i=0;i<(data||[]).length;i++){
+      const row=data[i],target=i+1;
+      if(Number(row[sortField.name])!==target)await supabase.from(table).update({[sortField.name]:target}).eq(idField,row[idField]);
+    }
+  }
+
+  async function save(e){
+    e.preventDefault();setMsg("");
+    if(!validate()){setMsg("Có trường chưa đúng. Mình đã đánh dấu đúng ô cần sửa bên dưới.");notify("Chưa thể lưu: có trường cần kiểm tra lại.","error");return}
+    try{
+      const payload={};
+      for(const f of fields){
+        if(f.readonly||f.skipSave)continue;
+        try{const raw=typeof f.derive==="function"?f.derive(form):form[f.name];payload[f.name]=parseField(f,raw)}
+        catch(err){setFieldErrors(x=>({...x,[f.name]:`${f.label}: ${err.message}`}));setMsg(`Không thể lưu vì trường “${f.label}” chưa đúng.`);return}
+      }
+      const result=edit==="__new__"?await supabase.from(table).insert(payload):await supabase.from(table).update(payload).eq(idField,edit);
+      if(result.error)throw result.error;
+      if(!singleRow)setEdit(null);await normalizeSortRows();setMsg("Đã lưu thành công.");notify("Đã lưu thay đổi thành công.","success");await load();
+      if(table==="tools")window.dispatchEvent(new Event("nlkh:tools-changed"));
+      onChanged?.();
+    }catch(error){
+      const info=extractServerError(error,fields);
+      if(info.field)setFieldErrors(x=>({...x,[info.field]:info.message}));
+      setMsg(info.message);notify(info.message,"error",6500);
+    }
+  }
+
+  async function del(row){
+    if(!confirm(`Xóa mục “${display(row[visible[0]?.name]||row[idField])}”?`))return;
+    let error=null;
+    try{
+      if(deleteHandler)await deleteHandler(row);
+      else{const result=await supabase.from(table).delete().eq(idField,row[idField]);error=result.error}
+    }catch(err){
+      const message=err instanceof Error?err.message:String(err);
+      setMsg(message);notify(message,"error",6500);return;
+    }
+    if(error){const info=extractServerError(error,fields);setMsg(info.message);notify(info.message,"error",6500);return}
+    await normalizeSortRows();setMsg("Đã xóa.");notify("Đã xóa mục.","success");await load();if(table==="tools")window.dispatchEvent(new Event("nlkh:tools-changed"));onChanged?.();
+  }
+
+  return <section className="adminSection">
+    <div className="sectionTitle"><div><h1>{title}</h1>{description&&<p className="sectionDescription">{description}</p>}<small>{table}</small></div>{allowAdd&&!singleRow&&<button className="primary" onClick={()=>start()}>+ Thêm mới</button>}</div>
+    {msg&&<div className={`notice ${Object.keys(fieldErrors).length?"noticeError":""}`}>{msg}</div>}
+    {!singleRow&&<div className="tableWrap"><table><thead><tr>{visible.slice(0,5).map(f=><th key={f.name}>{f.label}</th>)}<th/></tr></thead><tbody>{rows.map((r,i)=><tr key={r[idField]??i}>{visible.slice(0,5).map(f=><td key={f.name}>{f.type==="checkbox"?(r[f.name]?"Có":"Không"):f.type==="media"?(r[f.name]?"Đã chọn R2":"—"):display(r[f.name]).slice(0,110)}</td>)}<td className="rowActions"><button onClick={()=>start(r)}>Sửa</button>{allowDelete&&(!canDelete||canDelete(r))&&<button onClick={()=>del(r)}>Xóa</button>}</td></tr>)}</tbody></table></div>}
+
+    {edit&&<div className={singleRow?"inlineEditor":"modal"}><form className={singleRow?"editor inline":"editor"} onSubmit={save} noValidate>
+      {!singleRow&&<div className="editorHead"><div><h2>{edit==="__new__"?"Thêm":"Chỉnh sửa"} · {title}</h2><small>Dấu <b className="requiredMark">*</b> là bắt buộc. Trường không có dấu * có thể để trống.</small></div><button type="button" onClick={()=>setEdit(null)}>✕</button></div>}
+      <div className="formGrid">{fields.filter(f=>!f.hidden&&!f.readonly&&(!f.showWhen||f.showWhen(form))).map(f=>{
+        const dynamicRequired=isRequired(f,form);
+        const ef={...f,required:dynamicRequired,help:helpText({...f,required:dynamicRequired},form)};
+        const mirror=(url)=>{if(f.mirrorUrlField)setForm(x=>({...x,[f.mirrorUrlField]:url}))};
+        if(f.type==="media")return <div key={f.name} className="wide fieldBlock"><Input f={ef} value={form[f.name]} onChange={v=>setForm(x=>({...x,[f.name]:v}))} onMirror={mirror} form={form}/>{fieldErrors[f.name]&&<div className="fieldError">{fieldErrors[f.name]}</div>}</div>;
+        return <div key={f.name} className={`${f.wide?"wide":""} fieldBlock`}>
+          <FieldLabel f={ef}/>
+          <Input f={ef} value={form[f.name]} onChange={v=>setForm(x=>({...x,[f.name]:v}))} form={form}/>
+          <small className="fieldHelp">{ef.help}</small>
+          {f.type==="html"&&form[f.name]&&<button type="button" className="previewCode" onClick={()=>setHtmlPreview(form[f.name])}>▶ Chạy thử HTML trong khung an toàn</button>}
+          {fieldErrors[f.name]&&<div className="fieldError">{fieldErrors[f.name]}</div>}
+        </div>
+      })}</div>
+      <div className="editorActions">{!singleRow&&<button type="button" onClick={()=>setEdit(null)}>Hủy</button>}<button className="primary">Lưu thay đổi</button></div>
+    </form></div>}
+
+    {htmlPreview&&<div className="modal"><div className="htmlPreviewPanel"><div className="editorHead"><div><h2>Xem thử code tool</h2><small>Chỉ là iframe thử nghiệm; chưa lưu thì website chưa thay đổi.</small></div><button type="button" onClick={()=>setHtmlPreview("")}>✕</button></div><iframe sandbox="allow-scripts allow-forms allow-downloads" srcDoc={prepareHtmlToolPreview(htmlPreview)} title="Tool HTML preview"/></div></div>}
+  </section>
+}
+
+===== FILE: admin/src/components/UserTraffic.jsx =====
+import React,{
+  useEffect,
+  useMemo,
+  useState,
+}from"react";
+
+import{
+  invoke,
+}from"../lib/supabase";
+
+const ONLINE_MS=90000;
+
+function fmt(v){
+  if(!v)return"—";
+
+  try{
+    return new Intl.DateTimeFormat(
+      "vi-VN",
+      {
+        dateStyle:"short",
+        timeStyle:"medium",
+      },
+    ).format(
+      new Date(v),
+    );
+  }catch{
+    return String(v);
+  }
+}
+
+export default function UserTraffic(){
+  const[rows,setRows]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[filter,setFilter]=useState("all");
+  const[error,setError]=useState("");
+  const[checkedAt,setCheckedAt]=useState("");
+  const[now,setNow]=useState(Date.now());
+
+  async function load(){
+    setLoading(true);
+
+    try{
+      const out=
+        await invoke(
+          "site-traffic",
+          {
+            action:"summary",
+          },
+        );
+
+      setRows(
+        Array.isArray(out?.rows)
+          ?out.rows
+          :[],
+      );
+
+      setCheckedAt(
+        out?.checked_at||"",
+      );
+
+      setError("");
+    }catch(e){
+      setError(
+        e?.message||
+        String(e),
+      );
+    }finally{
+      setNow(Date.now());
+      setLoading(false);
+    }
+  }
+
+  useEffect(()=>{
+    load();
+
+    const poll=
+      setInterval(
+        load,
+        5000,
+      );
+
+    const clock=
+      setInterval(
+        ()=>setNow(Date.now()),
+        5000,
+      );
+
+    return()=>{
+      clearInterval(poll);
+      clearInterval(clock);
+    };
+  },[]);
+
+  const isOnline=
+    (r)=>
+      now-
+      new Date(
+        r.last_seen_at,
+      ).getTime()
+      <=ONLINE_MS;
+
+  const online=
+    rows.filter(
+      isOnline,
+    ).length;
+
+  const shown=
+    useMemo(
+      ()=>rows.filter(
+        r=>
+          filter==="all"||
+          (
+            filter==="online"&&
+            isOnline(r)
+          )||
+          (
+            filter==="member"&&
+            r.user_id
+          ),
+      ),
+      [rows,filter,now],
+    );
+
+  async function clean(){
+    if(
+      !confirm(
+        "Xóa lịch sử visitor không hoạt động quá 30 ngày?",
+      )
+    )return;
+
+    try{
+      await invoke(
+        "site-traffic",
+        {
+          action:"cleanup",
+          days:30,
+        },
+      );
+
+      await load();
+    }catch(e){
+      setError(
+        e?.message||
+        String(e),
+      );
+    }
+  }
+
+  return <section className="adminSection">
+    <div className="sectionTitle">
+      <div>
+        <h1>Người dùng truy cập / đang online</h1>
+        <p className="sectionDescription">
+          Presence V4: website gọi Edge Function <b>site-traffic</b>; Edge dùng service role ghi/đọc Supabase.
+          Trình duyệt không còn ghi trực tiếp bảng site_presence qua RPC/RLS. Heartbeat 30 giây, online 90 giây.
+          {checkedAt?<> · Kiểm tra: {fmt(checkedAt)}</>:null}
+        </p>
+      </div>
+      <div className="rowActions">
+        <button onClick={load}>
+          {loading?"Đang tải…":"Làm mới"}
+        </button>
+        <button onClick={clean}>
+          Dọn &gt;30 ngày
+        </button>
+      </div>
+    </div>
+
+    {error
+      ?<div className="noticeErr">
+        <b>Lỗi site-traffic:</b> {error}
+      </div>
+      :null}
+
+    <div className="trafficStats">
+      <article>
+        <strong>{online}</strong>
+        <span>Đang online</span>
+      </article>
+      <article>
+        <strong>{rows.length}</strong>
+        <span>Visitor gần đây</span>
+      </article>
+      <article>
+        <strong>{rows.filter(r=>r.user_id).length}</strong>
+        <span>Đã đăng nhập</span>
+      </article>
+    </div>
+
+    <div className="trafficFilter">
+      <button
+        className={filter==="all"?"active":""}
+        onClick={()=>setFilter("all")}
+      >
+        Tất cả
+      </button>
+      <button
+        className={filter==="online"?"active":""}
+        onClick={()=>setFilter("online")}
+      >
+        Đang online
+      </button>
+      <button
+        className={filter==="member"?"active":""}
+        onClick={()=>setFilter("member")}
+      >
+        Có tài khoản
+      </button>
+    </div>
+
+    {loading&&!rows.length
+      ?<p>Đang tải…</p>
+      :<div className="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Trạng thái</th>
+              <th>Người dùng</th>
+              <th>Trang hiện tại</th>
+              <th>Lần cuối</th>
+              <th>Heartbeat</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map(r=>{
+              const p=
+                Array.isArray(r.profiles)
+                  ?r.profiles[0]
+                  :r.profiles;
+
+              const on=
+                isOnline(r);
+
+              return <tr key={r.visitor_id}>
+                <td>
+                  <span className={`presenceDot ${on?"online":"offline"}`}>
+                    {on?"Online":"Offline"}
+                  </span>
+                </td>
+                <td>
+                  <strong>
+                    {p?.display_name||p?.email||"Khách"}
+                  </strong>
+                  <small className="trafficSub">
+                    {p
+                      ?`${p.email||""} · ${p.role_id||""} · ${p.status||""}`
+                      :`Visitor ${String(r.visitor_id).slice(0,8)}`}
+                  </small>
+                </td>
+                <td>
+                  <code>{r.current_path||"/"}</code>
+                </td>
+                <td>{fmt(r.last_seen_at)}</td>
+                <td>{Number(r.page_views||0)}</td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>}
+  </section>;
+}
+
+===== FILE: admin/src/lib/access.js =====
+import{supabase}from"./supabase";export async function getAccess(){const{data:{session}}=await supabase.auth.getSession();if(!session)return{authenticated:false,permissions:[]};const{data,error}=await supabase.rpc("get_my_access");if(error)return{authenticated:true,status:"error",permissions:[],error:error.message};return{permissions:[],...(data||{})}}export function can(a,p){const x=a?.permissions||[];return a?.status==="active"&&(x.includes("*")||x.includes(p))}
+
+===== FILE: admin/src/lib/media.js =====
+import { supabase, invoke } from "./supabase";
+
+export function assetCode(assetNo) {
+  if (!assetNo) return "R2-??????";
+  return `R2-${String(assetNo).padStart(6, "0")}`;
+}
+
+export async function sha256File(file) {
+  const buf = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buf);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function uploadToR2(file, { visibility = "public", folder = "assets", usageNote = "", uploadedFrom = "admin", itemId = null, collectionId = null } = {}) {
+  const sha256 = await sha256File(file);
+  const prep = await invoke("r2-file", {
+    action: "prepare-upload",
+    original_name: file.name,
+    mime_type: file.type || "application/octet-stream",
+    size_bytes: file.size,
+    sha256,
+    visibility,
+    folder,
+    usage_note: usageNote,
+    usage_type: uploadedFrom,
+    item_id: itemId,
+    collection_id: collectionId
+  });
+
+  if (prep.duplicate && prep.asset) return { ...prep.asset, _deduplicated: true };
+
+  const put = await fetch(prep.url, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file
+  });
+  if (!put.ok) throw new Error(`Không tải được tệp lên R2 (HTTP ${put.status}). Kiểm tra CORS của bucket và thử lại.`);
+
+  const done = await invoke("r2-file", { action: "complete-upload", media_id: prep.asset.id });
+  return done.asset;
+}
+
+export async function replaceR2Asset(mediaId, file) {
+  if (!mediaId) throw new Error("Chưa có ID R2 để thay file.");
+  const sha256 = await sha256File(file);
+  const prep = await invoke("r2-file", {
+    action: "prepare-replace",
+    media_id: mediaId,
+    original_name: file.name,
+    mime_type: file.type || "application/octet-stream",
+    size_bytes: file.size,
+    sha256
+  });
+  if (prep.duplicate && prep.asset) return { ...prep.asset, _deduplicated: true, _replacedByExisting: true };
+  const put = await fetch(prep.url, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file
+  });
+  if (!put.ok) throw new Error(`Không thể thay file trên R2 (HTTP ${put.status}).`);
+  const done = await invoke("r2-file", {
+    action: "complete-replace",
+    media_id: mediaId,
+    original_name: file.name,
+    mime_type: file.type || "application/octet-stream",
+    size_bytes: file.size,
+    sha256
+  });
+  return { ...done.asset, _sameId: true };
+}
+
+export async function listAssets(kind = "any") {
+  let q = supabase.from("media_assets").select("*").eq("status", "ready").order("asset_no", { ascending: false });
+  if (kind === "image") q = q.like("mime_type", "image/%");
+  if (kind === "pdf") q = q.eq("mime_type", "application/pdf");
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getAsset(id) {
+  if (!id) return null;
+  const { data, error } = await supabase.from("media_assets").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+export async function getAssetPreviewUrl(asset) {
+  if (!asset) return "";
+  if (asset.public_url) return asset.public_url;
+  const out = await invoke("r2-file", { action: "presign-download", media_id: asset.id, object_key: asset.object_key });
+  return out.url || "";
+}
+
+export async function deleteAsset(id, force = false) {
+  return invoke("r2-file", { action: "delete", media_id: id, force });
+}
+
+===== FILE: admin/src/lib/notify.js =====
+export function notify(message,type="success",duration=3200){
+  if(typeof window==="undefined")return;
+  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{message:String(message||""),type,duration}}));
+}
+
+===== FILE: admin/src/lib/supabase.js =====
+import{createClient}from"@supabase/supabase-js";const url=import.meta.env.VITE_SUPABASE_URL,key=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+export const supabase=createClient(url||"",key||"",{auth:{flowType:"pkce",persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+export async function invoke(name,body){
+ const{data:{session}}=await supabase.auth.getSession();let r;
+ try{r=await fetch(`${url.replace(/\/$/,"")}/functions/v1/${name}`,{method:"POST",headers:{"Content-Type":"application/json",...(session?.access_token?{Authorization:`Bearer ${session.access_token}`}:{})},body:JSON.stringify(body||{})})}
+ catch(e){throw new Error(`Failed to fetch Edge Function “${name}”. Origin hiện tại: ${typeof location!=="undefined"?location.origin:"unknown"}. Kiểm tra mạng và ALLOWED_ORIGINS/CORS. ${e instanceof Error?e.message:""}`)}
+ const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{d={message:t}}if(!r.ok)throw new Error(d.error||d.message||`HTTP ${r.status}`);return d
+}
+
+===== FILE: admin/src/main.jsx =====
+import React from"react";import{createRoot}from"react-dom/client";import{BrowserRouter}from"react-router-dom";import App from"./App";import"./styles.css";import"./scroll-fix.css";
+import "./brand-fix.css";import "./theme-v48.css";createRoot(document.getElementById("root")).render(<React.StrictMode><BrowserRouter><App/></BrowserRouter></React.StrictMode>);
+
+===== FILE: admin/src/pages/Api.jsx =====
+import SystemUsage from"../components/SystemUsage";
+import React,{useEffect,useState}from"react";import TableManager from"../components/TableManager";import{AdminPage}from"./_shared";import{f}from"../schema";import{supabase,invoke}from"../lib/supabase";import{notify}from"../lib/notify";
+function randomSecret(){const b=new Uint8Array(48);crypto.getRandomValues(b);return Array.from(b,x=>x.toString(16).padStart(2,"0")).join("")}function nextSlot(){const d=new Date(Date.now()+15*60*1000);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
+export default function Api({access}){const[ints,setInts]=useState([]),[id,setId]=useState(""),[secret,setSecret]=useState(""),[cloudSecret,setCloudSecret]=useState(""),[testSlug,setTestSlug]=useState(""),[testPayload,setTestPayload]=useState("{}"),[testResult,setTestResult]=useState(""),[testing,setTesting]=useState(false);async function load(){const{data}=await supabase.from("api_integrations").select("id,name,slug,active,scope,secret_updated_at").order("name");setInts(data||[])}useEffect(()=>{load()},[]);async function saveSecret(){try{const r=await invoke("integration-secret",{integration_id:id,secret});notify(r.message||"Đã lưu secret.","success");setSecret("");load()}catch(e){notify(e.message,"error",6500)}}async function testApi(){try{setTesting(true);setTestResult("");const payload=JSON.parse(testPayload||"{}");const r=await invoke("integration-proxy",{slug:testSlug,payload});setTestResult(JSON.stringify(r,null,2));notify("API test đã chạy xong.","success")}catch(e){setTestResult(e.message);notify(e.message,"error",7000)}finally{setTesting(false)}}
+return <AdminPage access={access}><SystemUsage/><section className="adminSection"><div className="sectionTitle"><div><h1>API dùng như thế nào?</h1><p className="sectionDescription">Admin lưu cấu hình endpoint; API key được lưu riêng ở Edge Function. Frontend/scheduler chỉ gọi mã kết nối (slug), không cầm secret thật.</p></div></div><div className="apiGuide"><article><h3>1. Tạo kết nối</h3><p>Ví dụ Base URL = https://api.example.com, Host = api.example.com, Endpoint = /v1/process. Chỉ bật Active sau khi điền đúng.</p></article><article><h3>2. Lưu API Secret</h3><p>Chọn kết nối ở khối API Secret và nhập key. Dùng <code>{"{{API_KEY}}"}</code> trong Headers khi dịch vụ cần Bearer/API key.</p></article><article><h3>3. Test rồi mới lập lịch</h3><p>Dùng khối Test API bên dưới với JSON payload. Khi kết quả đúng mới tạo Lịch chạy API.</p></article></div></section>
+<TableManager title="Kết nối API" description="Định nghĩa dịch vụ bên ngoài. Secret không lưu trong HTML/browser." table="api_integrations" defaults={{method:"POST",scope:"authenticated",timeout_ms:30000,active:false,headers_template:{"Authorization":"Bearer {{API_KEY}}","Content-Type":"application/json"},query_template:{},body_template:{},key_placeholder:"{{API_KEY}}"}} fields={[f.text("slug","Mã kết nối",{required:true,placeholder:"my-api"}),f.text("name","Tên kết nối",{required:true}),f.area("description","Mô tả"),f.url("base_url","Base URL",{required:true}),f.text("allowed_host","Host được phép",{required:true}),f.text("endpoint_template","Endpoint",{required:true,placeholder:"/v1/process"}),f.sel("method","HTTP method",["GET","POST","PUT","PATCH","DELETE"].map(x=>({value:x,label:x})),{required:true}),f.json("headers_template","Headers"),f.json("query_template","Query parameters"),f.json("body_template","Body mẫu"),f.text("key_placeholder","Ký hiệu API key",{required:true}),f.sel("scope","Ai được gọi",[{value:"public",label:"Public"},{value:"authenticated",label:"Authenticated"},{value:"admin",label:"Admin"}],{required:true}),f.num("timeout_ms","Timeout (ms)",{required:true,min:1000,max:60000,step:1000}),f.bool("active","Kích hoạt",{trueLabel:"Cho phép dùng kết nối này"})]}/>
+<section className="adminSection"><div className="sectionTitle"><div><h1>API Secret</h1><p className="sectionDescription">Chọn kết nối rồi nhập API key; sau khi lưu Admin không đọc ngược lại key.</p></div></div><div className="uploadBox"><select value={id} onChange={e=>setId(e.target.value)}><option value="">— Chọn kết nối —</option>{ints.map(x=><option key={x.id} value={x.id}>{x.name}{x.secret_updated_at?" · đã có key":""}</option>)}</select><input type="password" value={secret} onChange={e=>setSecret(e.target.value)} placeholder="API secret/key"/><button className="primary" onClick={saveSecret} disabled={!id||!secret}>Mã hóa & lưu</button></div></section>
+<section className="adminSection"><div className="sectionTitle"><div><h1>Test API</h1><p className="sectionDescription">Gọi integration-proxy ngay từ Admin. Payload phải là JSON. Kết quả/HTTP upstream được hiển thị để kiểm tra trước khi dùng thật.</p></div></div><label className="standaloneField"><span>Kết nối</span><select value={testSlug} onChange={e=>setTestSlug(e.target.value)}><option value="">— Chọn kết nối đang Active —</option>{ints.filter(x=>x.active).map(x=><option key={x.id} value={x.slug}>{x.name} ({x.slug})</option>)}</select></label><div className="apiTest"><div><textarea value={testPayload} onChange={e=>setTestPayload(e.target.value)} spellCheck={false}/><button className="primary" disabled={!testSlug||testing} onClick={testApi}>{testing?"Đang gọi…":"Chạy thử API"}</button></div><pre>{testResult||"Kết quả sẽ xuất hiện ở đây."}</pre></div></section>
+<TableManager title="Lịch chạy API" description="Chạy trên cloud qua GitHub Actions → Supabase Edge Function." table="scheduled_api_jobs" orderBy="next_run_at" ascending defaults={{handler:"integration",request_payload:{},interval_minutes:1440,enabled:true,next_run_at:nextSlot}} fields={[f.relation("integration_id","Kết nối API",{table:"api_integrations",select:"id,name,slug",valueKey:"id",label:o=>`${o.name} (${o.slug})`,orderBy:"name"},{nullable:true,showWhen:form=>form.handler==="integration",requiredWhen:form=>form.handler==="integration",derive:form=>form.handler==="integration"?form.integration_id:null}),f.text("name","Tên lịch",{required:true}),f.sel("handler","Loại tác vụ",[{value:"integration",label:"Integration"},{value:"supabase_keepalive",label:"Supabase keepalive"}],{required:true}),f.text("endpoint_path","Ghi chú endpoint"),f.json("request_payload","Payload khi chạy"),f.num("interval_minutes","Chu kỳ (phút)",{required:true,min:15,max:525600}),f.bool("enabled","Bật lịch"),f.dt("next_run_at","Lần chạy kế tiếp",{required:true})]}/>
+<section className="adminSection"><div className="sectionTitle"><div><h1>Khóa Scheduler trên cloud</h1></div></div><div className="secretGenerator"><button className="primary" onClick={()=>setCloudSecret(randomSecret())}>Tạo khóa ngẫu nhiên an toàn</button>{cloudSecret&&<><textarea readOnly value={cloudSecret}/><button onClick={()=>navigator.clipboard.writeText(cloudSecret)}>Copy</button><small>Lưu cùng giá trị thành SCHEDULER_SECRET ở Supabase và GitHub Actions.</small></>}</div></section></AdminPage>}
+
+===== FILE: admin/src/pages/AuthCallback.jsx =====
+import React,{useEffect,useState}from"react";import{supabase}from"../lib/supabase";export default function AuthCallback(){const[m,setM]=useState("Đang xác thực…");useEffect(()=>{(async()=>{try{const c=new URL(location.href).searchParams.get("code");if(c){const{error}=await supabase.auth.exchangeCodeForSession(c);if(error)throw error}setTimeout(()=>location.replace("/"),400)}catch(e){setM(e.message)}})()},[]);return <div className="center">{m}</div>}
+
+===== FILE: admin/src/pages/Backup.jsx =====
+import React,{useEffect,useMemo,useRef,useState}from"react";
+import{ZipWriter,TextReader}from"@zip.js/zip.js";
+import{AdminPage}from"./_shared";
+import{invoke}from"../lib/supabase";
+import{notify}from"../lib/notify";
+
+const PAGE=250;
+const BACKUP_API_KEY=String(
+ import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY||
+ import.meta.env.VITE_SUPABASE_ANON_KEY||
+ ""
+);
+const enc=new TextEncoder();
+
+function bytes(v){
+ const n=Number(v||0);
+ if(!Number.isFinite(n)||n<=0)return"0 B";
+ const u=["B","KB","MB","GB","TB"];
+ let x=n,i=0;
+ while(x>=1024&&i<u.length-1){x/=1024;i++}
+ return`${x.toFixed(i?2:0)} ${u[i]}`;
+}
+function when(v){
+ try{return new Date(v).toLocaleString("vi-VN")}catch{return String(v||"")}
+}
+function shortHash(v=""){
+ let h=2166136261;
+ for(let i=0;i<v.length;i++){h^=v.charCodeAt(i);h=Math.imul(h,16777619)}
+ return(h>>>0).toString(36);
+}
+function safePart(v=""){
+ let s=String(v).replace(/[\x00-\x1f\x7f<>:"|?*]/g,"_");
+ if(s==="."||s==="..")s="_";
+ return s.slice(0,180)||"_";
+}
+function safeZipPath(prefix,key){
+ const original=String(key||"").replace(/\\/g,"/");
+ const rawParts=original.split("/").filter(Boolean);
+ const parts=rawParts.map(safePart);
+ let path=parts.join("/")||`unnamed-${shortHash(original)}`;
+ if(path!==original.replace(/^\/+/,"")){
+  const bits=path.split("/");
+  bits[bits.length-1]=`${bits[bits.length-1]}--${shortHash(original)}`;
+  path=bits.join("/");
+ }
+ return`${prefix}/${path}`;
+}
+function decodeMeta(v){
+ try{
+  if(!v)return{};
+  const p=v.replace(/-/g,"+").replace(/_/g,"/");
+  const raw=atob(p+"=".repeat((4-p.length%4)%4));
+  const b=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(b));
+ }catch{return{}}
+}
+
+function decodeB64uBytes(v=""){
+ const p=String(v||"").replace(/-/g,"+").replace(/_/g,"/");
+ const raw=atob(p+"=".repeat((4-p.length%4)%4));
+ const b=new Uint8Array(raw.length);
+ for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);
+ return b;
+}
+
+const RESTORE_GUIDE=`NLKH FULL DISASTER BACKUP V3
+
+VALID BACKUP
+A backup is complete only when BACKUP_COMPLETE.json exists and the ZIP opens without CRC errors.
+
+INCLUDED
+1. supabase/database/public/*.json
+   Every row from every table in the public schema.
+2. supabase/schema-metadata.json
+   Tables, columns, constraints, indexes, RLS state/policies, triggers, functions,
+   views, materialized views, sequences, enums, grants, extensions and migration history.
+3. supabase/auth/users.json
+   User records exposed by the supported Supabase Admin Auth API.
+4. supabase-storage/
+   Every object currently present in Supabase Storage plus per-page manifests.
+5. r2/
+   Every object currently present in the configured Cloudflare R2 bucket plus
+   object metadata returned by R2.
+6. runtime/environment-required.json
+   Safe project identifiers and a presence-only checklist for important secrets.
+
+NOT EXPORTED AS SECRET VALUES
+- Supabase service-role key
+- INTEGRATION_SECRETS_KEY
+- Scheduler secret
+- R2 secret access key
+- Cloudflare API token
+- Any other provider secret that cannot be safely read back from runtime
+
+IMPORTANT FOR ENCRYPTED API DATA
+api_integrations.secret_ciphertext is backed up as database data. It can only be
+decrypted after disaster recovery if the SAME INTEGRATION_SECRETS_KEY is restored.
+Keep secret VALUES separately in a password manager/offline secret escrow.
+
+AUTH LIMITATION
+Supabase Admin Auth exposes user records, but this ZIP is not a supported export of
+password hashes, active sessions or refresh tokens. After a disaster restore, users
+may need to be recreated and asked to reset passwords.
+
+SOURCE CODE / DEPLOYMENT
+The Git repository remains the authoritative source for Next.js/Admin/Edge Function/
+Worker source. This runtime ZIP cannot reconstruct full Git history or provider-side
+Render/Cloudflare dashboard settings.
+
+CLOUDFLARE WORKER KV
+Technology News CONFIG KV is exported to cloudflare/technology-news-kv.json,
+including key names, values, expiration and metadata returned by the Worker binding.
+
+R2 BUCKETS
+The backup first attempts account-level ListBuckets using the configured R2 S3
+credentials. If those credentials are bucket-scoped and cannot list the account,
+the backup falls back to the configured R2_BUCKET_NAME and records that mode.
+
+CONSISTENCY
+Supabase + Storage + R2 are different live services. This backup verifies row/object
+counts against the preflight inventory and aborts if counts change, but it is not one
+cross-service transactional snapshot. Run it during a quiet period for best consistency.
+
+RESTORE ORDER
+1. Restore/clone the Git repository.
+2. Create/select Supabase project; apply repo migrations.
+3. Restore required secret VALUES from your secret escrow.
+4. Restore public table JSON data.
+5. Recreate Auth users from supabase/auth/users.json; reset passwords if required.
+6. Restore Supabase Storage objects to identical bucket/path.
+7. Restore every Cloudflare R2 bucket/object to identical bucket/key and metadata.
+8. Restore Technology News CONFIG KV from cloudflare/technology-news-kv.json.
+9. Deploy Edge Functions, Cloudflare Workers, Admin and frontend.
+10. Compare schema metadata/RLS/grants and test all protected flows.
+
+SECURITY
+This ZIP contains private application/user data. Store it encrypted or in a secure drive.
+`;
+
+function pagedJsonStream(fetchPage,onPage){
+ let offset=0,first=true,done=false,started=false;
+ return new ReadableStream({
+  async pull(controller){
+   if(done)return;
+   try{
+    if(!started){controller.enqueue(enc.encode("[\n"));started=true}
+    const rows=await fetchPage(offset);
+    if(rows.length){
+     const text=rows.map(x=>JSON.stringify(x)).join(",\n");
+     controller.enqueue(enc.encode((first?"":",\n")+text));
+     first=false;
+     offset+=rows.length;
+     onPage?.(rows.length,offset);
+    }
+    if(rows.length<PAGE){
+     controller.enqueue(enc.encode("\n]\n"));
+     done=true;controller.close();
+    }
+   }catch(e){done=true;controller.error(e)}
+  }
+ });
+}
+function authJsonStream(fetchPage,onPage){
+ let page=1,first=true,done=false,started=false,total=0;
+ return new ReadableStream({
+  async pull(controller){
+   if(done)return;
+   try{
+    if(!started){controller.enqueue(enc.encode("[\n"));started=true}
+    const users=await fetchPage(page);
+    if(users.length){
+     const text=users.map(x=>JSON.stringify(x)).join(",\n");
+     controller.enqueue(enc.encode((first?"":",\n")+text));
+     first=false;total+=users.length;page++;
+     onPage?.(users.length,total);
+    }
+    if(users.length<1000){
+     controller.enqueue(enc.encode("\n]\n"));
+     done=true;controller.close();
+    }
+   }catch(e){done=true;controller.error(e)}
+  }
+ });
+}
+
+export default function Backup({access}){
+ const[inventory,setInventory]=useState(null);
+ const[checking,setChecking]=useState(false);
+ const[downloading,setDownloading]=useState(false);
+ const[message,setMessage]=useState("");
+ const[progress,setProgress]=useState({phase:"",current:0,total:0,detail:""});
+ const ticketRef=useRef(null);
+
+ const pct=useMemo(()=>{
+  if(!progress.total)return 0;
+  return Math.max(0,Math.min(100,Math.round(progress.current*100/progress.total)));
+ },[progress]);
+
+ async function check(){
+  try{
+   setChecking(true);setMessage("");
+   const r=await invoke("manual-backup",{action:"inventory"});
+   setInventory(r);
+   notify("Đã kiểm tra dữ liệu backup.","success");
+   return r;
+  }catch(e){
+   const m=e?.message||String(e);setMessage(m);notify(m,"error",8000);throw e;
+  }finally{setChecking(false)}
+ }
+ useEffect(()=>{check().catch(()=>{})},[]);
+
+ async function ensureTicket(force=false){
+  const cur=ticketRef.current;
+  if(!force&&cur&&new Date(cur.expires_at).getTime()-Date.now()>5*60*1000)return cur;
+  const r=await invoke("manual-backup",{action:"ticket"});
+  if(!r?.ticket||!r?.endpoint)throw new Error("Không tạo được vé backup.");
+  ticketRef.current=r;
+  return r;
+ }
+ async function edgeFetch(params,retryTicket=true){
+  const op=String(params?.op||"binary");
+  const t=await ensureTicket(false);
+  const u=new URL(t.endpoint);
+  u.searchParams.set("ticket",t.ticket);
+  Object.entries(params||{}).forEach(([k,v])=>{
+   if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,String(v));
+  });
+
+  let lastError=null;
+  for(let attempt=1;attempt<=3;attempt++){
+   try{
+    const headers=BACKUP_API_KEY?{apikey:BACKUP_API_KEY}:{};
+    const r=await fetch(u.toString(),{
+     cache:"no-store",
+     mode:"cors",
+     credentials:"omit",
+     headers
+    });
+    if(r.status===403&&retryTicket){
+     await ensureTicket(true);
+     return edgeFetch(params,false);
+    }
+    if(!r.ok){
+     const text=await r.text().catch(()=>"");
+     throw new Error(text||`Backup API HTTP ${r.status}`);
+    }
+    return r;
+   }catch(e){
+    lastError=e;
+    if(attempt<3)await new Promise(resolve=>setTimeout(resolve,500*attempt));
+   }
+  }
+  throw new Error(
+   `Không kết nối được luồng backup (${op}): ${lastError?.message||String(lastError||"Failed to fetch")}`
+  );
+ }
+ async function edgeJson(params){
+  const x=await invoke("manual-backup",{action:"json-op",...(params||{})});
+  if(x?.error)throw new Error(x.error);
+  return x;
+ }
+ const R2_CHUNK_BYTES=512*1024;
+ function r2ChunkStream(bucket,key,size,onFirstMeta,onProgress){
+  let offset=0;
+  let closed=false;
+  return new ReadableStream({
+   async pull(controller){
+    if(closed)return;
+    if(offset>=size){
+     closed=true;
+     controller.close();
+     return;
+    }
+    try{
+     const wanted=Math.min(R2_CHUNK_BYTES,size-offset);
+     const pack=await invoke("manual-backup",{
+      action:"r2-chunk",
+      bucket,key,
+      start:offset,
+      length:wanted
+     });
+     if(pack?.error)throw new Error(pack.error);
+     const buffer=decodeB64uBytes(pack?.bytes_b64||"");
+     if(buffer.byteLength<=0){
+      throw new Error(`R2 chunk rỗng tại byte ${offset}: ${bucket}/${key}`);
+     }
+     if(offset===0){
+      onFirstMeta?.({
+       content_type:pack?.meta?.content_type||null,
+       etag:pack?.meta?.etag||null,
+       last_modified:pack?.meta?.last_modified||null,
+       cache_control:pack?.meta?.cache_control||null,
+       content_disposition:pack?.meta?.content_disposition||null,
+       content_language:pack?.meta?.content_language||null,
+       proxy_meta:pack?.meta||{}
+      });
+     }
+     controller.enqueue(buffer);
+     offset+=buffer.byteLength;
+     onProgress?.(offset,size);
+     if(offset>=size){
+      closed=true;
+      controller.close();
+     }
+    }catch(e){
+     closed=true;
+     controller.error(e);
+    }
+   }
+  });
+ }
+ async function addText(zip,name,text){
+  await zip.add(name,new TextReader(String(text)),{level:0});
+ }
+
+ async function downloadFull(){
+  if(downloading)return;
+  if(!window.showSaveFilePicker){
+   const m="Trình duyệt này không hỗ trợ ghi ZIP trực tiếp xuống ổ đĩa. Hãy dùng Chrome/Edge desktop mới.";
+   setMessage(m);notify(m,"error",9000);return;
+  }
+  const ok=confirm(
+   "Tạo FULL disaster backup về máy?\n\nBao gồm toàn bộ public Supabase DB, Auth users, Supabase Storage và Cloudflare R2. File có dữ liệu riêng tư."
+  );
+  if(!ok)return;
+
+  const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+  let handle;
+  try{
+   handle=await window.showSaveFilePicker({
+    suggestedName:`NLKH_FULL_BACKUP_${stamp}.zip`,
+    types:[{description:"ZIP backup",accept:{"application/zip":[".zip"]}}]
+   });
+  }catch(e){
+   if(e?.name==="AbortError")return;
+   throw e;
+  }
+
+  let writable=null,zip=null,wake=null;
+  const startedAt=new Date().toISOString();
+
+  try{
+   setDownloading(true);setMessage("Đang kiểm tra lần cuối trước khi tạo ZIP...");
+   setProgress({phase:"Preflight",current:0,total:1,detail:"Kiểm tra Database/Auth/Storage/R2"});
+
+   const inv=await invoke("manual-backup",{action:"inventory"});
+   if(!inv?.ready)throw new Error("Preflight backup không sẵn sàng.");
+   setInventory(inv);
+   await ensureTicket(true);
+
+   try{wake=await navigator.wakeLock?.request?.("screen")}catch{}
+
+   writable=await handle.createWritable();
+   zip=new ZipWriter(writable,{
+    level:0,
+    zip64:true,
+    useWebWorkers:false,
+    useCompressionStream:false,
+    preventClose:true
+   });
+
+   const rootManifest={
+    format:"NLKH_FULL_DISASTER_BACKUP_V4_3",
+    started_at:startedAt,
+    preflight:inv,
+    complete_marker:"BACKUP_COMPLETE.json",
+    zip64:true,
+    compression:"store-level-0",
+    source_code:"Git repository is separate.",
+    cloudflare_worker_kv:"Included via protected Technology News Worker export.",
+    secret_values:"Not embedded; see runtime/environment-required.json."
+   };
+   await addText(zip,"README_RESTORE.txt",RESTORE_GUIDE);
+   await addText(zip,"manifest.json",JSON.stringify(rootManifest,null,2));
+
+   setProgress({phase:"Schema",current:0,total:1,detail:"Metadata/RLS/functions/migrations"});
+   const[schemaPack,metaPack]=await Promise.all([
+    edgeJson({op:"schema"}),
+    edgeJson({op:"meta"})
+   ]);
+   await addText(zip,"supabase/schema-metadata.json",JSON.stringify(schemaPack.schema||{},null,2));
+   await addText(zip,"runtime/environment-required.json",JSON.stringify(metaPack,null,2));
+   setProgress({phase:"Schema",current:1,total:1,detail:"Đã ghi metadata"});
+
+   let dbRows=0;
+   const tables=inv.database?.tables||[];
+   for(let ti=0;ti<tables.length;ti++){
+    const table=tables[ti];
+    let seen=0;
+    setProgress({
+     phase:"Supabase Database",current:ti,total:tables.length,
+     detail:`${table.table_name} · 0/${table.row_count} dòng`
+    });
+    const stream=pagedJsonStream(
+     async(offset)=>{
+      const x=await edgeJson({
+       op:"table-page",table:table.table_name,offset,limit:PAGE
+      });
+      return x.rows||[];
+     },
+     (_,total)=>{
+      seen=total;
+      setProgress({
+       phase:"Supabase Database",current:ti,total:tables.length,
+       detail:`${table.table_name} · ${total}/${table.row_count} dòng`
+      });
+     }
+    );
+    await zip.add(
+     `supabase/database/public/${safePart(table.table_name)}.json`,
+     stream,{level:0,zip64:true}
+    );
+    if(seen!==Number(table.row_count||0)){
+     throw new Error(
+      `Database thay đổi trong lúc backup: ${table.table_name} expected ${table.row_count}, got ${seen}. Hãy chạy lại khi website ít thay đổi.`
+     );
+    }
+    dbRows+=seen;
+    setProgress({
+     phase:"Supabase Database",current:ti+1,total:tables.length,
+     detail:`Đã xong ${table.table_name}`
+    });
+   }
+
+   let authSeen=0;
+   setProgress({phase:"Supabase Auth",current:0,total:Number(inv.auth?.users||0),detail:"Users"});
+   const authStream=authJsonStream(
+    async(page)=>{
+     const x=await edgeJson({op:"auth-page",page,limit:1000});
+     return x.users||[];
+    },
+    (_,total)=>{
+     authSeen=total;
+     setProgress({
+      phase:"Supabase Auth",current:total,total:Number(inv.auth?.users||0),
+      detail:`${total}/${inv.auth?.users||0} users`
+     });
+    }
+   );
+   await zip.add("supabase/auth/users.json",authStream,{level:0,zip64:true});
+   if(authSeen!==Number(inv.auth?.users||0)){
+    throw new Error(`Auth users thay đổi trong lúc backup: expected ${inv.auth?.users||0}, got ${authSeen}.`);
+   }
+
+   let storageSeen=0,storageOffset=0,storagePage=1;
+   const storageExpected=Number(inv.supabase_storage?.objects||0);
+   while(true){
+    const x=await edgeJson({op:"storage-list-page",offset:storageOffset,limit:PAGE});
+    const objects=x.objects||[];
+    if(!objects.length)break;
+
+    const pageMeta=[];
+    for(const obj of objects){
+     const bucket=String(obj.bucket_id||"");
+     const name=String(obj.name||"");
+     setProgress({
+      phase:"Supabase Storage",current:storageSeen,total:storageExpected,
+      detail:`${bucket}/${name}`
+     });
+     const res=await edgeFetch({op:"storage-file",bucket,name});
+     if(!res.body)throw new Error(`Storage response rỗng: ${bucket}/${name}`);
+     const zipPath=safeZipPath(`supabase-storage/files/${safePart(bucket)}`,name);
+     const responseMeta=decodeMeta(res.headers.get("X-NLKH-Object-Meta"));
+     await zip.add(zipPath,res.body,{level:0,zip64:true});
+     storageSeen++;
+     pageMeta.push({
+      ...obj,zip_path:zipPath,
+      response:{
+       content_type:res.headers.get("Content-Type"),
+       content_length:res.headers.get("Content-Length"),
+       etag:res.headers.get("ETag"),
+       last_modified:res.headers.get("Last-Modified"),
+       cache_control:res.headers.get("Cache-Control")
+      },
+      proxy_meta:responseMeta
+     });
+    }
+    await addText(
+     zip,
+     `supabase-storage/manifests/page-${String(storagePage).padStart(6,"0")}.json`,
+     JSON.stringify(pageMeta,null,2)
+    );
+    storageOffset+=objects.length;storagePage++;
+    if(objects.length<PAGE)break;
+   }
+   if(storageSeen!==storageExpected){
+    throw new Error(`Supabase Storage thay đổi trong lúc backup: expected ${storageExpected}, got ${storageSeen}.`);
+   }
+
+   let r2Seen=0,r2Page=1;
+   const r2Expected=Number(inv.r2?.objects||0);
+   const r2Buckets=Array.isArray(inv.r2?.buckets)?inv.r2.buckets:[];
+   for(const bucketInfo of r2Buckets){
+    const bucket=String(bucketInfo?.name||"");
+    if(!bucket)continue;
+    let r2Cursor="";
+    let bucketSeen=0;
+    const bucketExpected=Number(bucketInfo?.objects||0);
+    while(true){
+     const x=await edgeJson({
+      op:"r2-list-page",bucket,cursor:r2Cursor,limit:PAGE
+     });
+     const objects=x.objects||[];
+     if(!objects.length&&!x.next_cursor)break;
+
+     const pageMeta=[];
+     for(const obj of objects){
+      const key=String(obj.key||"");
+      setProgress({
+       phase:"Cloudflare R2",current:r2Seen,total:r2Expected,
+       detail:`${bucket}/${key}`
+      });
+       const size=Math.max(0,Number(obj.size||0));
+      const zipPath=safeZipPath(`r2/buckets/${safePart(bucket)}/files`,key);
+      let firstMeta={};
+      const stream=size>0
+       ?r2ChunkStream(
+         bucket,key,size,
+         meta=>{firstMeta=meta||{}},
+         (done,total)=>{
+          const mb=(done/1048576).toFixed(1);
+          const totalMb=(total/1048576).toFixed(1);
+          setProgress({
+           phase:"Cloudflare R2",
+           current:r2Seen,
+           total:r2Expected,
+           detail:`${bucket}/${key} · ${mb}/${totalMb} MB`
+          });
+         }
+        )
+       :new Blob([]).stream();
+
+      await zip.add(zipPath,stream,{level:0,zip64:true});
+      r2Seen++;bucketSeen++;
+      pageMeta.push({
+       ...obj,bucket,zip_path:zipPath,
+       response:firstMeta,
+       r2_metadata:firstMeta?.proxy_meta||{}
+      });
+     }
+     await addText(
+      zip,
+      `r2/buckets/${safePart(bucket)}/manifests/page-${String(r2Page).padStart(6,"0")}.json`,
+      JSON.stringify(pageMeta,null,2)
+     );
+     r2Page++;
+     r2Cursor=String(x.next_cursor||"");
+     if(!r2Cursor)break;
+    }
+    if(bucketSeen!==bucketExpected){
+     throw new Error(`R2 bucket ${bucket} thay đổi trong lúc backup: expected ${bucketExpected}, got ${bucketSeen}.`);
+    }
+   }
+   if(r2Seen!==r2Expected){
+    throw new Error(`R2 thay đổi trong lúc backup: expected ${r2Expected}, got ${r2Seen}.`);
+   }
+
+   setProgress({phase:"Cloudflare KV",current:0,total:1,detail:"Technology News CONFIG"});
+   const kvPack=await edgeJson({op:"technology-news-kv"});
+   await addText(
+    zip,
+    "cloudflare/technology-news-kv.json",
+    JSON.stringify(kvPack,null,2)
+   );
+   const kvKeys=Array.isArray(kvPack?.keys)?kvPack.keys.length:0;
+   setProgress({phase:"Cloudflare KV",current:1,total:1,detail:`${kvKeys} keys`});
+
+   const complete={
+    ok:true,
+    format:"NLKH_FULL_DISASTER_BACKUP_V4_3",
+    started_at:startedAt,
+    completed_at:new Date().toISOString(),
+    database_tables:tables.length,
+    database_rows:dbRows,
+    auth_users:authSeen,
+    supabase_storage_objects:storageSeen,
+    r2_buckets:Number(inv.r2?.total_buckets||r2Buckets.length||0),
+    r2_objects:r2Seen,
+    technology_news_kv_keys:kvKeys,
+    preflight_checked_at:inv.checked_at,
+    consistency:"count-verified-non-transactional-cross-service"
+   };
+
+   setProgress({phase:"Hoàn tất",current:0,total:1,detail:"Ghi BACKUP_COMPLETE.json"});
+   await addText(zip,"BACKUP_COMPLETE.json",JSON.stringify(complete,null,2));
+   await zip.close({zip64:true,preventClose:true});
+   await writable.close();
+   writable=null;
+   zip=null;
+
+   setProgress({phase:"Hoàn tất",current:1,total:1,detail:"ZIP đã ghi xong xuống ổ đĩa"});
+   setMessage(
+    `Backup FULL hoàn tất: ${dbRows} dòng DB · ${authSeen} users · ${storageSeen} Storage · ${r2Seen} R2 · ${kvKeys} KV. Hãy mở ZIP và kiểm tra BACKUP_COMPLETE.json.`
+   );
+   notify("FULL backup V4.3 đã hoàn tất.","success",8000);
+  }catch(e){
+   try{await zip?.close?.({preventClose:true})}catch{}
+   try{await writable?.abort?.()}catch{}
+   const m=e?.message||String(e);
+   setMessage(`BACKUP THẤT BẠI: ${m}`);
+   notify(`Backup thất bại: ${m}`,"error",12000);
+  }finally{
+   try{await wake?.release?.()}catch{}
+   setDownloading(false);
+   ticketRef.current=null;
+  }
+ }
+
+ const db=inventory?.database||{};
+ const ss=inventory?.supabase_storage||{};
+ const r2=inventory?.r2||{};
+ const estimated=Number(inventory?.estimated_binary_bytes||0);
+
+ return <AdminPage access={access}>
+  <section className="adminSection">
+   <div className="sectionTitle">
+    <div>
+     <h1>Backup FULL thủ công V4.3</h1>
+     <p className="sectionDescription">
+      Một nút tạo ZIP64 và ghi trực tiếp xuống ổ đĩa. Metadata đi qua request Admin đã xác thực;
+      file R2/Storage đi qua luồng GET có ticket ngắn hạn và CORS riêng.
+     </p>
+    </div>
+    <button className="primary" disabled={checking||downloading} onClick={check}>
+     {checking?"Đang kiểm tra...":"Kiểm tra dữ liệu backup"}
+    </button>
+   </div>
+
+   {message?<div className="fullBackupMessage">{message}</div>:null}
+
+   <div className="fullBackupStats">
+    <article><small>Supabase Database</small><strong>{db.total_tables??"—"} bảng</strong><span>{db.total_rows??"—"} dòng</span></article>
+    <article><small>Supabase Auth</small><strong>{inventory?.auth?.users??"—"} users</strong><span>User/metadata</span></article>
+    <article><small>Supabase Storage</small><strong>{ss.objects??"—"} file</strong><span>{bytes(ss.bytes)}</span></article>
+    <article><small>Cloudflare R2</small><strong>{r2.objects??"—"} file</strong><span>{r2.total_buckets??"—"} bucket · {bytes(r2.bytes)}</span></article>
+   </div>
+
+   <div className="fullBackupAction">
+    <div>
+     <strong>{inventory?.ready?"✓ Sẵn sàng backup":"Chưa kiểm tra / chưa sẵn sàng"}</strong>
+     <small>
+      {inventory?.checked_at
+       ?`Kiểm tra ${when(inventory.checked_at)} · dữ liệu nhị phân ~ ${bytes(estimated)}`
+       :"Hệ thống kiểm tra Database, Auth, Supabase Storage và R2."}
+     </small>
+    </div>
+    <button className="primary" disabled={!inventory?.ready||checking||downloading} onClick={downloadFull}>
+     {downloading?"Đang backup...":"Tạo & lưu FULL ZIP"}
+    </button>
+   </div>
+
+   {downloading||progress.phase?<div className="fullBackupProgress">
+    <div><strong>{progress.phase||"Backup"}</strong><span>{progress.total?`${progress.current}/${progress.total}`:""}</span></div>
+    <progress max="100" value={pct}/>
+    <small>{progress.detail||""}</small>
+   </div>:null}
+
+   <div className="notice">
+    <b>Backup chỉ hợp lệ khi:</b> file ZIP mở được và có <code>BACKUP_COMPLETE.json</code>.
+    Nếu dữ liệu thay đổi làm số lượng DB/Storage/R2 lệch so với lúc kiểm tra, hệ thống sẽ báo lỗi để bạn chạy lại.
+   </div>
+  </section>
+
+  <section className="adminSection">
+   <div className="sectionTitle"><div><h1>Phạm vi dữ liệu</h1><p className="sectionDescription">Toàn bộ bảng Supabase public hiện có.</p></div></div>
+   <div className="tableWrap">
+    <table>
+     <thead><tr><th>Bảng</th><th>Số dòng</th></tr></thead>
+     <tbody>{(db.tables||[]).map(x=><tr key={x.table_name}><td><code>{x.table_name}</code></td><td>{x.row_count}</td></tr>)}</tbody>
+    </table>
+   </div>
+  </section>
+
+  <section className="adminSection">
+   <div className="sectionTitle"><div><h1>Khôi phục khi web sập</h1><p className="sectionDescription">ZIP có README, schema/RLS/functions/migration metadata, DB, Auth, Storage, mọi R2 bucket mà credential truy cập được và Technology News KV.</p></div></div>
+   <div className="fullBackupWarnings">
+    <p><b>Secret value phải cất riêng:</b> service-role key, INTEGRATION_SECRETS_KEY, R2 secret, Scheduler secret, Cloudflare token. Runtime không nên cho phép đọc ngược các giá trị này vào ZIP.</p>
+    <p><b>Auth:</b> backup user record nhưng không phải bản export password hash/session được hỗ trợ. Phục hồi có thể cần reset mật khẩu.</p>
+    <p><b>Git/source:</b> vẫn phải giữ Git/GitHub. ZIP runtime không thay thế lịch sử source code.</p>
+    <p><b>Cloudflare Worker KV:</b> Technology News CONFIG KV được đưa vào ZIP qua endpoint nội bộ ký HMAC; gồm key/value/expiration/metadata.</p>
+   </div>
+  </section>
+ </AdminPage>;
+}
+
+===== FILE: admin/src/pages/Content.jsx =====
+import React from"react";import TableManager from"../components/TableManager";import{AdminPage}from"./_shared";import{f}from"../schema";
+const roles={table:"roles",select:"id,name",valueKey:"id",labelKey:"name",orderBy:"id"};
+export default function Content({access}){return <AdminPage access={access}>
+<TableManager title="Trang nội dung" description="Dùng để tạo các trang nội dung CMS như /p/gioi-thieu, /p/chinh-sach… mà không phải viết thêm file React. Không phải trang chủ/CV/Tool chuyên dụng." table="content_pages" defaults={{template:"standard",status:"draft",requires_auth:false}} fields={[
+ f.text("slug","Slug (mã trong URL)",{required:true,placeholder:"gioi-thieu",help:"Slug là phần cuối của địa chỉ. Ví dụ slug gioi-thieu tạo URL /p/gioi-thieu. Dùng chữ thường, số và dấu gạch ngang; không dùng khoảng trắng.",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug chỉ dùng a-z, 0-9 và dấu gạch ngang; ví dụ gioi-thieu.":null}),
+ f.text("title_vi","Tiêu đề (VI)",{required:true,placeholder:"Giới thiệu"}),f.text("title_en","Tiêu đề (EN)",{placeholder:"About"}),
+ f.area("excerpt_vi","Mô tả ngắn (VI)",{placeholder:"1–2 câu tóm tắt trang…",help:"Dùng trên danh sách/SEO nếu cần."}),f.area("excerpt_en","Mô tả ngắn (EN)",{placeholder:"Optional…"}),
+ f.area("content_vi","Nội dung (VI)",{required:true,rows:16,placeholder:"Nhập nội dung văn bản. Xuống dòng sẽ được giữ khi hiển thị.",help:"Nội dung chính của trang. Nếu cần trình soạn thảo Markdown/rich text có thể bổ sung sau; bản này ưu tiên hiển thị văn bản an toàn."}),
+ f.area("content_en","Nội dung (EN)",{rows:16,placeholder:"Optional English content…"}),
+ f.sel("template","Mẫu giao diện",[{value:"standard",label:"Standard — trang nội dung thường"},{value:"article",label:"Article — bài dài"},{value:"landing",label:"Landing — trang giới thiệu"}],{required:true,help:"Mã giao diện quyết định bố cục hiển thị. Nếu chưa có template riêng, chọn Standard."}),
+ f.sel("status","Trạng thái",[{value:"draft",label:"Nháp — chưa công khai"},{value:"published",label:"Đã xuất bản"},{value:"archived",label:"Lưu trữ — không còn dùng"}],{required:true,help:"Chỉ Published mới dành cho người dùng bình thường."}),
+ f.bool("requires_auth","Yêu cầu đăng nhập",{trueLabel:"Chỉ người đã đăng nhập mới xem được",help:"Dùng cho trang nội dung chỉ dành cho thành viên."}),
+ f.checks("allowed_roles","Vai trò được xem",roles,{help:"Nếu cần giới hạn sâu hơn, tích các vai trò được phép. Để trống = không giới hạn theo role."}),
+ f.dt("published_at","Ngày/giờ xuất bản",{nullable:true,placeholder:"Để trống nếu xuất bản ngay",help:"Thời điểm hiển thị/ghi nhận bài được xuất bản. Có thể để trống nếu không cần lịch."})
+]}/>
+<TableManager title="Khối nội dung trang chủ" description="Các khối đã có trên trang chủ như Hero/Thông tin nhanh. Chỉ sửa khi muốn thay nội dung cấu hình của một khối." table="content_blocks" orderBy="sort_order" ascending defaults={{visible:true}} fields={[
+ f.text("page_key","Trang",{required:true,placeholder:"home",help:"Mã trang chứa khối; hiện chủ yếu là home."}),f.text("block_key","Mã khối",{required:true,placeholder:"hero",help:"Mã kỹ thuật của khối, thường không đổi."}),f.text("label","Tên dễ nhớ",{required:true,placeholder:"Trang chủ / Hero"}),f.json("content","Nội dung khối",{required:true,help:"Cấu trúc dữ liệu cho khối. Giữ các key sẵn có; chỉ thay giá trị nếu không chắc."}),f.sort("sort_order","Thứ tự",{required:true}),f.bool("visible","Hiển thị",{trueLabel:"Hiển thị khối này"})
+]}/></AdminPage>}
+
+===== FILE: admin/src/pages/Cv.jsx =====
+import React,{useEffect,useState}from"react";import TableManager from"../components/TableManager";import{AdminPage}from"./_shared";import{f}from"../schema";import{supabase}from"../lib/supabase";
+const themeTemplate={layout:"source-default",accent:"blue",show_photo:true,show_contact:true,show_download_pdf:true};
+function Sections(){const[profileId,setProfileId]=useState(null);useEffect(()=>{supabase.from("cv_profiles").select("id").order("updated_at",{ascending:false}).limit(1).maybeSingle().then(({data})=>setProfileId(data?.id||null))},[]);if(!profileId)return <section className="adminSection"><div className="notice">Chưa có hồ sơ CV để thêm mục.</div></section>;return <TableManager title="Các mục trong CV" description="Thêm/bớt kinh nghiệm, học vấn, chứng chỉ, kỹ năng… Mỗi mục có nút Hiển thị để ẩn/hiện mà không phải xóa. Thứ tự tự tăng 1, 2, 3…" table="cv_sections" orderBy="sort_order" ascending defaults={{profile_id:profileId,section_type:"experience",visible:true,data:{}}} fields={[
+ f.hidden("profile_id"),f.sel("section_type","Loại mục",[{value:"experience",label:"Kinh nghiệm"},{value:"education",label:"Học vấn"},{value:"certificate",label:"Chứng chỉ"},{value:"skill",label:"Kỹ năng"},{value:"project",label:"Dự án"},{value:"language",label:"Ngôn ngữ"},{value:"custom",label:"Tùy chỉnh"}],{required:true,help:"Loại quyết định cách frontend nhóm/hiển thị mục."}),
+ f.text("title_vi","Tiêu đề (VI)",{required:true,placeholder:"Kỹ sư thiết kế / AutoCAD / Tự động hóa…"}),f.text("title_en","Tiêu đề (EN)",{placeholder:"Optional…"}),f.text("subtitle_vi","Dòng phụ (VI)",{placeholder:"Ví dụ: Hệ kỹ sư · Tốt nghiệp loại Giỏi"}),f.text("subtitle_en","Dòng phụ (EN)",{placeholder:"Optional…"}),f.text("period","Thời gian",{placeholder:"06/2025 - 11/2025",help:"Có thể để trống với kỹ năng/chứng chỉ không cần mốc thời gian."}),f.text("organization","Tổ chức / công ty (VI)",{placeholder:"Công ty / trường học…"}),f.text("organization_en","Tổ chức / công ty (EN)",{placeholder:"Optional English organization…"}),f.area("description_vi","Mô tả (VI)",{placeholder:"Công việc/thành tích…"}),f.area("description_en","Mô tả (EN)",{placeholder:"Optional…"}),f.url("url","Liên kết",{nullable:true,placeholder:"https://...",help:"Link chứng chỉ/dự án nếu có."}),f.sort("sort_order","Thứ tự",{required:true}),f.bool("visible","Hiển thị mục",{trueLabel:"Hiển thị mục này trong CV"}),f.json("data","Dữ liệu mở rộng",{help:"Giữ {} nếu mục này không cần tham số đặc biệt."})
+]}/>}
+export default function Cv({access}){return <AdminPage access={access}><TableManager title="Hồ sơ CV chính" description="Website dùng một hồ sơ CV chính. Admin chỉ sửa nội dung; không tạo nhiều profile trùng. Dữ liệu mẫu bám theo public/content/cv/profile.json của source NLKH_KOHA hiện tại." table="cv_profiles" singleRow allowAdd={false} allowDelete={false} defaults={{theme:themeTemplate,published:true,pdf_access:"public"}} fields={[
+ f.text("name","Họ và tên",{required:true,placeholder:"Nguyễn Lê Khánh Hòa"}),f.text("role_vi","Chức danh (VI)",{required:true,placeholder:"Kỹ sư điện"}),f.text("role_en","Chức danh (EN)",{placeholder:"Electrical Engineer"}),f.area("headline_vi","Headline (VI)",{placeholder:"Một câu ngắn giới thiệu nghề nghiệp…"}),f.area("headline_en","Headline (EN)",{placeholder:"Optional…"}),f.area("summary_vi","Tóm tắt (VI)",{required:true,placeholder:"Tóm tắt năng lực/kinh nghiệm…"}),f.area("summary_en","Tóm tắt (EN)",{placeholder:"Optional…"}),f.text("birth_date","Ngày sinh",{nullable:true,placeholder:"15/05/2002",help:"Giữ dạng ngày/tháng/năm nếu muốn hiển thị giống source hiện tại."}),f.text("address_vi","Địa chỉ (VI)",{placeholder:"Thanh Xuân, Hà Nội"}),f.text("address_en","Địa chỉ (EN)",{placeholder:"Thanh Xuan, Hanoi"}),f.text("phone","Điện thoại",{nullable:true,placeholder:"0343 434 584"}),f.text("email","Email",{nullable:true,placeholder:"khanhhoa2002.hh@gmail.com"}),
+ f.media("photo_media_id","Ảnh chân dung",{kind:"image",mirrorUrlField:"photo_url",help:"Tải/chọn ảnh R2 ngay tại đây. Nếu bỏ trống, frontend có thể dùng ảnh source mặc định."}),f.hidden("photo_url"),
+ f.sel("pdf_access","Quyền tải file PDF CV",[{value:"public",label:"Công khai — ai cũng tải được"},{value:"authenticated",label:"Cần đăng nhập mới tải"},{value:"hidden",label:"Ẩn nút tải PDF"}],{required:true,help:"Khác với 'Hiển thị hồ sơ'. Ô này chỉ điều khiển file PDF tải xuống: Public = ai cũng tải; Authenticated = cần login; Hidden = không hiện nút tải."}),
+ f.media("pdf_media_id","File PDF CV",{kind:"pdf",mirrorUrlField:"pdf_url",visibility:form=>form.pdf_access==="public"?"public":form.pdf_access==="authenticated"?"authenticated":"private",showWhen:form=>form.pdf_access!=="hidden",requiredWhen:form=>form.pdf_access==="authenticated",help:"Tải PDF mới hoặc chọn lại ID R2 cũ ngay tại đây. Nếu chọn Cần đăng nhập thì bắt buộc dùng file R2 mức Authenticated; không dùng file static public vì người biết URL có thể tải trực tiếp. Public có thể để trống để giữ PDF source mặc định."}),f.hidden("pdf_url"),
+ f.json("theme","Giao diện CV",{placeholder:JSON.stringify(themeTemplate,null,2),help:"Cấu hình giao diện. Mẫu gốc: layout=source-default, accent=blue, show_photo=true. Nếu chưa muốn đổi giao diện, giữ nguyên mẫu này."}),
+ f.bool("published","Hiển thị hồ sơ",{trueLabel:"Hiển thị CV trên website",help:"Đây là trạng thái ẩn/hiện hồ sơ, không phải quyền file R2. Tắt = trang CV không công khai nội dung hồ sơ."})
+]}/><Sections/></AdminPage>}
+
+===== FILE: admin/src/pages/Data.jsx =====
+import React from"react";import TableManager from"../components/TableManager";import DataAccessMatrix from"../components/DataAccessMatrix";import{AdminPage}from"./_shared";import{f}from"../schema";
+export default function Data({access}){return <AdminPage access={access}><TableManager title="Thư mục dữ liệu / R2" description="Mỗi mục ở đây là một THƯ MỤC logic. Tạo thư mục không bắt bạn upload file ngay. Sau đó người có quyền Add/Full vào trang /data để thêm Link hoặc upload nhiều file R2 vào đúng thư mục." table="data_collections" orderBy="sort_order" ascending defaults={{visibility:"private",visible:true}} fields={[f.text("slug","Slug thư mục",{required:true,placeholder:"ky-thuat-dien",help:"R2 prefix tự dùng dạng data/<slug>."}),f.text("name_vi","Tên thư mục (VI)",{required:true}),f.text("name_en","Tên thư mục (EN)"),f.area("description_vi","Mô tả (VI)"),f.area("description_en","Mô tả (EN)"),f.sel("visibility","Mặc định ai thấy thư mục",[{value:"public",label:"Công khai"},{value:"authenticated",label:"Mọi tài khoản đăng nhập"},{value:"private",label:"Chỉ tài khoản được cấp quyền"}],{required:true}),f.hidden("r2_prefix",{derive:form=>`data/${String(form.slug||"folder").toLowerCase().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,"")}`}),f.sort("sort_order","Thứ tự",{required:true}),f.bool("visible","Hiển thị",{trueLabel:"Hiển thị thư mục"})]}/><section className="adminSection"><div className="notice"><b>File bên trong thư mục không cần tạo ở Admin.</b> Hãy vào frontend <b>/data</b> bằng tài khoản có Add/Full để upload nhiều file hoặc thêm link. Object R2 sẽ có prefix data/&lt;slug&gt;/R2-xxxxxx/...</div></section><DataAccessMatrix/></AdminPage>}
+
+===== FILE: admin/src/pages/Login.jsx =====
+import React,{useState}from"react";import{useNavigate}from"react-router-dom";import{supabase}from"../lib/supabase";
+export default function Login(){const[email,setEmail]=useState(""),[password,setPassword]=useState(""),[msg,setMsg]=useState(""),go=useNavigate();async function submit(e){e.preventDefault();const{error}=await supabase.auth.signInWithPassword({email,password});if(error)setMsg(error.message);else go("/")}return <div className="center"><form className="loginPanel" onSubmit={submit}><div className="logo big">NLKH <span>ADMIN</span></div><label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/></label><label>Mật khẩu<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required/></label><button className="primary">Đăng nhập</button>{msg&&<p className="error">{msg}</p>}</form></div>}
+
+===== FILE: admin/src/pages/Media.jsx =====
+import React,{useEffect,useMemo,useState}from"react";
+import{AdminPage}from"./_shared";
+import{assetCode,deleteAsset,getAssetPreviewUrl,listAssets,replaceR2Asset,uploadToR2}from"../lib/media";
+import{supabase}from"../lib/supabase";
+function size(n=0){if(n<1024)return`${n} B`;if(n<1048576)return`${(n/1024).toFixed(1)} KB`;return`${(n/1048576).toFixed(1)} MB`}
+export default function Media({access}){
+ const[rows,setRows]=useState([]),[q,setQ]=useState(""),[file,setFile]=useState(null),[visibility,setVisibility]=useState("public"),[folder,setFolder]=useState("library"),[msg,setMsg]=useState(""),[busy,setBusy]=useState(false),[usage,setUsage]=useState({});
+ async function load(){try{setRows(await listAssets("any"));const{data}=await supabase.rpc("get_media_usage_summary");const u={};(data||[]).forEach(x=>u[x.media_id]=x);setUsage(u)}catch(e){setMsg(e.message)}}
+ useEffect(()=>{load()},[]);
+ const shown=useMemo(()=>rows.filter(x=>`${assetCode(x.asset_no)} ${x.original_name} ${x.folder} ${x.usage_note} ${x.object_key}`.toLowerCase().includes(q.toLowerCase())),[rows,q]);
+ async function upload(){if(!file){setMsg("Hãy chọn tệp trước.");return}try{setBusy(true);const a=await uploadToR2(file,{visibility,folder,usageNote:"Thêm từ Thư viện R2"});setMsg(a._deduplicated?`File giống hệt đã tồn tại; dùng lại ${assetCode(a.asset_no)} thay vì upload trùng.`:`Đã lưu ${assetCode(a.asset_no)} vào R2.`);setFile(null);load()}catch(e){setMsg(e.message)}finally{setBusy(false)}}
+ async function openAsset(a){try{const url=await getAssetPreviewUrl(a);if(!url)throw new Error("Không tạo được URL xem trước.");window.open(url,"_blank","noopener,noreferrer")}catch(e){setMsg(e.message)}}
+ async function replace(a,newFile){if(!newFile)return;if(!confirm(`Thay nội dung của ${assetCode(a.asset_no)} nhưng GIỮ NGUYÊN ID? Mọi vị trí đang dùng ID này sẽ nhận file mới.`))return;try{setBusy(true);const r=await replaceR2Asset(a.id,newFile);if(r._replacedByExisting)setMsg(`Không tạo bản trùng: nội dung mới đã có ở ${assetCode(r.asset_no)}. ${assetCode(a.asset_no)} chưa bị thay; hãy chọn ID đã có ở form cần dùng.`);else setMsg(`Đã thay file và giữ nguyên ${assetCode(a.asset_no)}.`);load()}catch(e){setMsg(e.message)}finally{setBusy(false)}}
+ async function del(a){if(!confirm(`Xóa ${assetCode(a.asset_no)} — ${a.original_name}? ID đã xóa sẽ không được dùng lại.`))return;try{await deleteAsset(a.id,false);setMsg(`Đã xóa ${assetCode(a.asset_no)}.`);load()}catch(e){const force=confirm(`${e.message}\n\nNếu muốn xóa bắt buộc và tự gỡ các liên kết đang dùng ID này, bấm OK.`);if(force){try{await deleteAsset(a.id,true);setMsg(`Đã xóa bắt buộc ${assetCode(a.asset_no)} và gỡ liên kết.`);load()}catch(x){setMsg(x.message)}}else setMsg(e.message)}}
+ return <AdminPage access={access}><section className="adminSection"><div className="sectionTitle"><div><h1>Thư viện ảnh & tệp R2</h1><p className="sectionDescription">Nơi xem toàn bộ file website đang quản lý. Các form Cấu hình/SEO/Tool/Tin tức/Phần mềm/CV/User đều có nút tải/chọn R2 ngay tại chỗ, nên không cần upload ở đây rồi đi copy link.</p></div></div>
+ <div className="notice"><b>ID R2:</b> R2-000001, R2-000002… tăng tự động và lưu trong database nên đăng xuất/đăng nhập vẫn giữ nguyên. ID đã xóa không tái sử dụng. SHA-256 giúp nhận file giống hệt trong cùng mức công khai để dùng lại ID cũ và tránh tốn dung lượng.</div>
+ <div className="mediaToolbar"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Tìm ID R2, tên, thư mục hoặc object key…"/><input value={folder} onChange={e=>setFolder(e.target.value)} placeholder="Thư mục logic, ví dụ software"/><select value={visibility} onChange={e=>setVisibility(e.target.value)}><option value="public">Public — có URL công khai</option><option value="authenticated">Authenticated — cần đăng nhập</option><option value="private">Private — chỉ signed URL/quyền</option></select><input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/><button className="primary" onClick={upload} disabled={busy}>{busy?"Đang xử lý…":"Thêm file mới"}</button></div>
+ {msg&&<div className="notice">{msg}</div>}
+ <div className="mediaLibraryGrid">{shown.map(a=><article key={a.id} className="mediaLibraryCard">{(a.mime_type||"").startsWith("image/")&&a.public_url?<img src={a.public_url} alt=""/>:<div className="fileBadge">{(a.mime_type||"FILE").split("/").pop()?.toUpperCase()}</div>}<strong>{assetCode(a.asset_no)}</strong><span>{a.original_name}</span><small>ID database: {a.id}</small><small>Object key R2: {a.object_key}</small><small>Thư mục: {a.folder} · Quyền: {a.visibility} · {size(a.size_bytes)}</small><small>Mục đích: {a.usage_note||"—"}</small><small>Đang dùng: {usage[a.id]?.usage_count||0} · {(usage[a.id]?.usage_labels||[]).join(", ")||"chưa được trỏ"}</small><div className="rowActions"><button onClick={()=>openAsset(a)}>Xem trước</button><label className="miniButton uploadButton">Thay file, giữ ID<input type="file" hidden onChange={e=>{replace(a,e.target.files?.[0]);e.target.value=""}}/></label><button className="dangerText" onClick={()=>del(a)}>Xóa ID</button></div></article>)}{!shown.length&&<p className="emptyState">Chưa có tệp phù hợp.</p>}</div></section></AdminPage>
+}
+
+===== FILE: admin/src/pages/Navigation.jsx =====
+import React from"react";import TableManager from"../components/TableManager";import{AdminPage}from"./_shared";import{f}from"../schema";
+const roleRel={table:"roles",select:"id,name",valueKey:"id",labelKey:"name",orderBy:"id"};
+const menuRel={table:"navigation_items",select:"id,label_vi,href,sort_order",valueKey:"id",label:o=>`${o.label_vi} — ${o.href}`,orderBy:"sort_order"};
+export default function Navigation({access}){return <AdminPage access={access}>
+<TableManager title="Menu Header / Footer" description="Tạo mục điều hướng cho đầu trang, chân trang hoặc cả hai. Thứ tự tự tăng 1, 2, 3… khi thêm mới." table="navigation_items" orderBy="sort_order" ascending defaults={{visible:true,location:"header",sort_order:1}} fields={[
+ f.text("label_vi","Tên menu (VI)",{required:true,placeholder:"Ví dụ: Công cụ",help:"Chữ người dùng nhìn thấy trên menu."}),
+ f.text("label_en","Tên menu (EN)",{placeholder:"Tools",help:"Có thể để trống nếu chưa cần tiếng Anh."}),
+ f.text("href","Đường dẫn khi bấm",{required:true,placeholder:"/tools hoặc https://...",help:"Trang sẽ mở khi người dùng bấm menu. Route nội bộ thường bắt đầu bằng /."}),
+ f.sel("location","Hiển thị ở đâu?",[{value:"header",label:"Chỉ Header"},{value:"footer",label:"Chỉ Footer"},{value:"both",label:"Cả Header và Footer"}],{required:true,help:"Chọn vị trí xuất hiện của mục menu."}),
+ f.relation("parent_id","Menu cha (nếu là menu con)",menuRel,{nullable:true,placeholder:"— Đây là menu cấp 1 —",help:"Không cần nhập ID. Chọn một menu đã có làm menu cha. Nếu để trống thì đây là menu cấp 1."}),
+ f.media("icon_media_id","Icon menu",{kind:"image",mirrorUrlField:"icon_url",help:"Icon dùng khi giao diện cần biểu tượng cho mục menu. Tải thẳng lên R2 hoặc chọn ID đã có; không phải dán link."}),
+ f.hidden("icon_url"),
+ f.sort("sort_order","Thứ tự",{required:true,help:"Số nhỏ đứng trước. Hệ thống tự đề xuất số tiếp theo 1, 2, 3…"}),
+ f.bool("visible","Hiển thị",{trueLabel:"Hiển thị mục menu"}),
+ f.bool("requires_auth","Yêu cầu đăng nhập",{trueLabel:"Chỉ tài khoản đăng nhập mới thấy mục này",help:"Nếu bật, khách chưa đăng nhập sẽ không thấy menu."}),
+ f.checks("allowed_roles","Vai trò được xem",roleRel,{showWhen:form=>!!form.requires_auth,help:"Chỉ có tác dụng khi cần giới hạn theo vai trò. Không tích vai trò nào = mọi tài khoản hợp lệ đều được xem."}),
+ f.bool("open_new_tab","Mở tab mới",{trueLabel:"Mở liên kết trong tab mới",help:"Thường bật cho link ra website bên ngoài."})
+]}/>
+<TableManager title="Liên kết mạng xã hội" description="Các icon/link ở Footer. Icon cũng chọn/tải trực tiếp từ R2." table="social_links" orderBy="sort_order" ascending defaults={{visible:true,sort_order:1}} fields={[
+ f.text("platform","Nền tảng",{required:true,placeholder:"facebook",help:"Mã ngắn dùng nội bộ, ví dụ facebook, youtube, linkedin."}),
+ f.text("label","Tên hiển thị",{required:true,placeholder:"Facebook"}),
+ f.url("url","Liên kết",{required:true,placeholder:"https://...",help:"URL trang mạng xã hội."}),
+ f.media("icon_media_id","Icon",{kind:"image",mirrorUrlField:"icon",help:"Tải icon mới hoặc tái sử dụng ID R2 đã có."}),
+ f.hidden("icon"),f.sort("sort_order","Thứ tự",{required:true}),f.bool("visible","Hiển thị",{trueLabel:"Hiển thị liên kết này"})
+]}/>
+</AdminPage>}
+
+===== FILE: admin/src/pages/News.jsx =====
+import React from"react";import TableManager from"../components/TableManager";import CommentsModeration from"../components/CommentsModeration";import{AdminPage}from"./_shared";import{f}from"../schema";import{supabase,invoke}from"../lib/supabase";
+async function deleteNewsArticleAndPublish(row){
+ const id=row?.id;
+ if(!id)throw new Error("Thiếu ID bài viết.");
+
+ const cleanup=await invoke("news-article-delete",{article_id:id});
+ const failed=Array.isArray(cleanup?.cleanup_failed)?cleanup.cleanup_failed:[];
+
+ try{
+  const r=await invoke("render-deploy",{target:"frontend"});
+  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{
+   type:failed.length?"error":"success",
+   duration:failed.length?12000:7500,
+   message:failed.length
+    ? "Đã xóa bài nhưng có media R2 cleanup lỗi: "+failed.join(" | ")
+    : (r?.message?"Đã xóa bài + media R2. "+r.message:"Đã xóa bài + media R2 và yêu cầu cập nhật frontend.")
+  }}));
+ }catch(e){
+  window.dispatchEvent(new CustomEvent("nlkh:admin-toast",{detail:{
+   type:"error",duration:10000,
+   message:"Đã xóa bài + media nhưng chưa thể yêu cầu frontend cập nhật: "+(e?.message||String(e))
+  }}));
+ }
+}const catRel={table:"news_categories",select:"id,name_vi,slug,sort_order",valueKey:"id",label:o=>`${o.name_vi} (${o.slug})`,orderBy:"sort_order"};
+export default function News({access}){return <AdminPage access={access}>
+<TableManager title="Danh mục tin" description="Nhóm bài viết để người đọc dễ lọc. Không bắt buộc phải có nhiều nhóm; một bài có thể để trống danh mục." table="news_categories" orderBy="sort_order" ascending defaults={{visible:true,color:"#3157f6"}} fields={[
+ f.text("slug","Slug danh mục",{required:true,placeholder:"ky-thuat",help:"Mã URL/kỹ thuật, chữ thường và dấu gạch ngang.",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug danh mục chỉ dùng a-z, 0-9 và dấu gạch ngang.":null}),f.text("name_vi","Tên danh mục (VI)",{required:true,placeholder:"Kỹ thuật"}),f.text("name_en","Tên (EN)",{placeholder:"Engineering"}),f.area("description_vi","Mô tả",{placeholder:"Danh mục gồm những bài gì…"}),f.area("description_en","Mô tả EN",{placeholder:"Optional…"}),f.color("color","Màu nhãn",{required:true,help:"Chọn trực tiếp màu nhãn danh mục."}),f.sort("sort_order","Thứ tự",{required:true}),f.bool("visible","Hiển thị",{trueLabel:"Hiển thị danh mục"})
+]}/>
+<TableManager title="Bài viết" description="Tạo/sửa tin tức. Ảnh bìa tải trực tiếp vào R2; Tags nhập cách nhau bằng dấu phẩy. Bình luận phải được duyệt ở phần bên dưới mới hiển thị." table="news_articles" deleteHandler={deleteNewsArticleAndPublish} defaults={{status:"draft",featured:false,allow_comments:false,tags:[]}} fields={[
+ f.text("slug","Slug bài viết",{required:true,placeholder:"ten-bai-viet",help:"Phần URL /news/ten-bai-viet. Không dùng khoảng trắng/dấu tiếng Việt.",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug chỉ dùng a-z, 0-9 và dấu gạch ngang.":null}),
+ f.relation("category_id","Danh mục",catRel,{nullable:true,placeholder:"— Không phân nhóm —",help:"Chọn nhóm bài viết; không cần nhập ID."}),
+ f.text("title_vi","Tiêu đề (VI)",{required:true,placeholder:"Tiêu đề bài viết"}),f.text("title_en","Tiêu đề (EN)",{placeholder:"Optional…"}),f.area("subtitle_vi","Tiêu đề phụ",{placeholder:"Một dòng bổ sung dưới tiêu đề…"}),f.area("subtitle_en","Tiêu đề phụ EN",{placeholder:"Optional…"}),f.area("excerpt_vi","Tóm tắt",{placeholder:"1–2 câu hiện ở thẻ tin và SEO…"}),f.area("excerpt_en","Tóm tắt EN",{placeholder:"Optional…"}),
+ f.area("content_vi","Nội dung (VI)",{required:true,rows:18,placeholder:"Nhập nội dung bài viết; xuống dòng được giữ khi hiển thị.",help:"Bản hiện tại hiển thị nội dung văn bản an toàn và giữ xuống dòng; không yêu cầu biết Markdown."}),f.area("content_en","Nội dung (EN)",{rows:18,placeholder:"Optional…"}),
+ f.media("cover_media_id","Ảnh bìa",{kind:"image",mirrorUrlField:"cover_image",help:"Tải ảnh ngay tại đây hoặc chọn lại ID R2 đã có. Khi đăng nhập lại, Admin vẫn nhận đúng ID và preview."}),f.hidden("cover_image"),
+ f.text("cover_alt_vi","Alt ảnh (VI)",{placeholder:"Mô tả nội dung bức ảnh",help:"Alt là mô tả thay thế cho ảnh, giúp người dùng dùng trình đọc màn hình và hỗ trợ SEO. Không phải caption."}),f.text("cover_alt_en","Alt ảnh (EN)",{placeholder:"Optional image description"}),
+ f.text("author_name","Tác giả",{required:true,placeholder:"Nguyễn Lê Khánh Hòa"}),f.text("translator_name","Người dịch",{nullable:true,placeholder:"Để trống nếu không có"}),f.text("editor_name","Biên tập",{nullable:true,placeholder:"Để trống nếu không có"}),f.text("source_name","Tên nguồn",{nullable:true,placeholder:"Ví dụ: IEEE"}),f.url("source_url","Link nguồn",{nullable:true,placeholder:"https://..."}),
+ f.arr("tags","Tags / từ khóa",{placeholder:"điện, relay, comtrade",help:"Không phải JSON. Nhập nhiều tag, cách nhau bằng dấu phẩy; dùng để phân loại/tìm kiếm."}),
+ f.sel("status","Trạng thái",[{value:"draft",label:"Nháp"},{value:"review",label:"Chờ duyệt"},{value:"scheduled",label:"Hẹn xuất bản"},{value:"published",label:"Đã xuất bản"},{value:"archived",label:"Lưu trữ"}],{required:true,help:"Chỉ Published được đọc công khai theo chính sách hiện tại."}),
+ f.bool("featured","Nổi bật",{trueLabel:"Đánh dấu là bài nổi bật",help:"Bài nổi bật có thể được ưu tiên lên vị trí/khối nổi bật trên giao diện. Không bật thì vẫn là bài bình thường trong danh sách."}),
+ f.bool("allow_comments","Cho bình luận",{trueLabel:"Người đọc được gửi bình luận",help:"Bình luận mới luôn ở trạng thái chờ; Admin phải duyệt thì mới hiển thị."}),f.dt("published_at","Ngày/giờ xuất bản",{nullable:true,help:"Automation/DB tự điền thời điểm tạo Draft. Bạn vẫn có thể chọn lại ngày và giờ bằng bộ chọn lịch; giá trị được lưu đúng múi giờ."})
+]}/>
+<CommentsModeration/>
+</AdminPage>}
+
+===== FILE: admin/src/pages/Redirects.jsx =====
+import React,{useState}from"react";import TableManager from"../components/TableManager";import{AdminPage}from"./_shared";import{f}from"../schema";import{invoke}from"../lib/supabase";import{notify}from"../lib/notify";
+const hosts=[
+ {value:"nguyenlekhanhhoa.com",label:"nguyenlekhanhhoa.com — miền chính"},
+ {value:"koha.io.vn",label:"koha.io.vn — miền cũ"},
+ {value:"nguyenlekhanhhoa.name.vn",label:"nguyenlekhanhhoa.name.vn — miền cũ"},
+];
+export default function Redirects({access}){const[syncing,setSyncing]=useState(false);async function sync(){if(!confirm("Đồng bộ TOÀN BỘ redirect đang Kích hoạt lên Cloudflare Bulk Redirects?"))return;setSyncing(true);try{const r=await invoke("cloudflare-redirect-sync",{action:"sync"});notify(r.message||"Đã đồng bộ Cloudflare.","success",6000)}catch(e){notify(e.message||String(e),"error",9000)}finally{setSyncing(false)}}return <AdminPage access={access}><section className="adminSection"><div className="sectionHead"><div><p className="eyebrow">EDGE / REDIRECT</p><h1>Redirect đa miền</h1><p>Quản lý redirect giữa 3 miền ngay trong Admin. Sau khi Lưu, bấm <b>Đồng bộ Cloudflare</b>; không cần Publish frontend cho redirect đa miền.</p></div><button onClick={sync} disabled={syncing}>{syncing?"Đang đồng bộ…":"Đồng bộ Cloudflare"}</button></div><div className="notice"><b>Ví dụ chuyển toàn bộ koha.io.vn → nguyenlekhanhhoa.com:</b> Miền nguồn = koha.io.vn · Path = / · Đích = https://nguyenlekhanhhoa.com/ · bật “Khớp mọi path con” + “Giữ phần path phía sau” + “Giữ query”. Dùng 301.</div></section><TableManager title="Danh sách Redirect" description="Same-domain path vẫn có thể tạo fallback static khi build. Redirect giữa các miền được đồng bộ thật tại Cloudflare Edge và trả HTTP 301/302/307/308." table="redirects" orderBy="source_host" ascending defaults={{source_host:"nguyenlekhanhhoa.com",source_path:"/",status_code:301,active:true,preserve_query:true,include_subdomains:true,subpath_matching:false,preserve_path_suffix:false}} fields={[
+ f.sel("source_host","Miền nguồn",hosts,{required:true,help:"Chọn một trong 3 miền bạn sở hữu. www và subdomain có thể bao phủ bằng tùy chọn Include subdomains."}),
+ f.text("source_path","Đường dẫn nguồn",{required:true,placeholder:"/ hoặc /cv-cu",help:"/ = gốc miền. Muốn chuyển cả miền, dùng / và bật Khớp mọi path con + Giữ phần path phía sau."}),
+ f.url("target_url","Chuyển tới",{required:true,placeholder:"https://nguyenlekhanhhoa.com/",help:"Redirect đa miền nên dùng URL đầy đủ https://...; path tương đối vẫn được Cloudflare sync về miền chính."}),
+ f.sel("status_code","Loại redirect",[{value:301,label:"301 — vĩnh viễn, nên dùng khi đổi miền/SEO"},{value:302,label:"302 — tạm thời"},{value:307,label:"307 — tạm thời, giữ HTTP method"},{value:308,label:"308 — vĩnh viễn, giữ HTTP method"}],{required:true}),
+ f.bool("active","Kích hoạt",{trueLabel:"Redirect đang hoạt động"}),
+ f.bool("include_subdomains","Bao gồm subdomain",{trueLabel:"Áp dụng cả www/subdomain phù hợp",help:"Hữu ích khi muốn www.koha.io.vn cũng chuyển."}),
+ f.bool("subpath_matching","Khớp mọi path con",{trueLabel:"Khớp cả URL nằm dưới path nguồn",help:"Ví dụ nguồn / + bật = /abc, /tools/pdf… cũng khớp."}),
+ f.bool("preserve_path_suffix","Giữ phần path phía sau",{trueLabel:"Giữ suffix path khi chuyển",help:"Ví dụ koha.io.vn/tools/pdf → nguyenlekhanhhoa.com/tools/pdf nếu target là root và bật tùy chọn này."}),
+ f.bool("preserve_query","Giữ query string",{trueLabel:"Giữ các tham số sau dấu ?"}),
+ f.area("note","Ghi chú nội bộ",{placeholder:"Ví dụ: chuyển miền cũ sang .com"})
+ ]}/></AdminPage>}
+
+===== FILE: admin/src/pages/Seo.jsx =====
+import React from"react";import TableManager from"../components/TableManager";import{AdminPage}from"./_shared";import{f}from"../schema";
+export default function Seo({access}){return <AdminPage access={access}><TableManager title="SEO từng trang" description="Mỗi dòng là cấu hình SEO cho một route. Đưa chuột vào dấu ? để xem ý nghĩa; ảnh chọn trực tiếp từ R2." table="seo_entries" orderBy="route" ascending defaults={{og_type:"website",indexable:true,follow_links:true,schema_type:"WebPage",change_frequency:"weekly",priority:.7}} fields={[
+ f.text("route","Đường dẫn trang",{required:true,placeholder:"/cv",help:"Route cần cấu hình SEO, ví dụ /, /cv, /tools/pdf."}),
+ f.text("title_vi","SEO title (VI)",{required:true,placeholder:"Hồ sơ | Nguyễn Lê Khánh Hòa",help:"Tiêu đề hiển thị trên Google/tab. Nên ngắn, rõ và đúng nội dung."}),
+ f.text("title_en","SEO title (EN)",{placeholder:"Optional English title"}),
+ f.area("description_vi","Meta description (VI)",{placeholder:"Khoảng 1–2 câu mô tả nội dung trang…",help:"Đoạn mô tả mà công cụ tìm kiếm có thể dùng trong kết quả."}),f.area("description_en","Meta description (EN)",{placeholder:"Optional…"}),
+ f.text("canonical_path","Canonical path",{nullable:true,placeholder:"/cv",help:"URL chuẩn được ưu tiên khi có nhiều URL trỏ tới cùng nội dung. Thường điền đúng route chính; để trống thì hệ thống dùng route hiện tại."}),
+ f.media("og_media_id","Ảnh chia sẻ riêng cho trang",{kind:"image",mirrorUrlField:"og_image",help:"Ảnh preview khi chia sẻ URL trang này. Nếu để trống, dùng OG image mặc định trong Cấu hình chung."}),f.hidden("og_image"),
+ f.sel("og_type","Loại Open Graph",[{value:"website",label:"website — trang thông thường"},{value:"article",label:"article — bài viết"},{value:"profile",label:"profile — hồ sơ cá nhân"}],{required:true,help:"Cho mạng xã hội biết loại nội dung khi tạo preview."}),
+ f.bool("indexable","Cho lập chỉ mục",{trueLabel:"Cho công cụ tìm kiếm index trang",help:"Tắt nếu không muốn trang xuất hiện trên Google/Bing."}),
+ f.bool("follow_links","Cho theo liên kết",{trueLabel:"Cho bot đi theo các liên kết trong trang",help:"Follow links nghĩa là bot tìm kiếm được phép theo các link trong trang để khám phá nội dung liên quan. Tắt tương đương nofollow ở cấp trang."}),
+ f.sel("schema_type","Schema",[{value:"WebPage",label:"WebPage — trang thường"},{value:"ProfilePage",label:"ProfilePage — CV/hồ sơ"},{value:"Article",label:"Article — bài viết"},{value:"SoftwareApplication",label:"SoftwareApplication — phần mềm/app"}],{required:true,help:"Schema là loại dữ liệu có cấu trúc giúp máy tìm kiếm hiểu trang nói về gì."}),
+ f.json("structured_data","JSON-LD / dữ liệu có cấu trúc",{placeholder:'{\n  "@context": "https://schema.org",\n  "@type": "WebPage"\n}',help:"JSON-LD là nội dung Schema dạng JSON. Nếu chưa cần dữ liệu nâng cao, giữ {}. Hệ thống sẽ báo chính xác nếu JSON sai cú pháp."}),
+ f.sel("change_frequency","Tần suất nội dung thay đổi",[{value:"always",label:"Always — thay đổi liên tục"},{value:"hourly",label:"Hourly — hàng giờ"},{value:"daily",label:"Daily — hàng ngày"},{value:"weekly",label:"Weekly — hàng tuần"},{value:"monthly",label:"Monthly — hàng tháng"},{value:"yearly",label:"Yearly — hàng năm"},{value:"never",label:"Never — gần như cố định"}],{required:true,help:"Gợi ý cho sitemap về mức độ cập nhật. CV thường monthly; tin tức có thể daily; trang tĩnh yearly."}),
+ f.num("priority","Độ ưu tiên sitemap",{required:true,min:0,max:1,step:.1,placeholder:"0.7",help:"Giá trị 0.0–1.0, chỉ dùng như gợi ý trong sitemap. Trang chủ thường 1.0, trang phụ khoảng 0.5–0.8."})
+]}/></AdminPage>}
+
+===== FILE: admin/src/pages/Site.jsx =====
+import React,{useEffect,useState}from"react";import TableManager from"../components/TableManager";import{AdminPage}from"./_shared";import{f}from"../schema";import{supabase,invoke}from"../lib/supabase";
+function FaviconStatus(){const[state,setState]=useState({loading:true,site:null,asset:null,url:"/favicon.png",size:"—"});useEffect(()=>{let alive=true;(async()=>{const{data:s}=await supabase.from("site_settings").select("favicon_media_id,favicon_url,favicon_size").limit(1).maybeSingle();let a=null,u=s?.favicon_url||"/favicon.png";if(s?.favicon_media_id){const{data}=await supabase.from("media_assets").select("id,asset_no,object_key,original_name,mime_type,public_url").eq("id",s.favicon_media_id).maybeSingle();a=data;if(a&&!a.public_url){try{const r=await invoke("r2-file",{action:"presign-download",media_id:a.id,object_key:a.object_key});u=r.url||u}catch{}}}if(alive)setState({loading:false,site:s,asset:a,url:u,size:"đang đọc…"})})().catch(()=>alive&&setState(x=>({...x,loading:false})));return()=>{alive=false}},[]);if(state.loading)return <div className="faviconStatus"><div/><div>Đang đọc favicon hiện tại…</div></div>;const active=state.site?.favicon_url?"URL favicon từ Admin":state.asset?"R2 đã chọn (preview signed); production vẫn dùng fallback nếu R2 chưa có public URL":"Fallback source /favicon.png";return <div className="faviconStatus"><img src={state.url} alt="Favicon hiện tại" onLoad={e=>{const i=e.currentTarget;setState(x=>({...x,size:`${i.naturalWidth} × ${i.naturalHeight}px`}))}}/><div><h3>Favicon đang dùng / xem trước</h3><p><b>Nguồn:</b> {active}</p><p><b>Kích thước ảnh thật:</b> {state.size} · <b>Kích thước khai báo:</b> {state.site?.favicon_size||32}×{state.site?.favicon_size||32}</p><p><code>{state.site?.favicon_url||"/favicon.png"}</code></p><p>Trình duyệt tự quyết định kích thước hiển thị thực tế trên tab. Trường kích thước bên dưới là metadata; nếu hình còn nhiều viền trong suốt, hãy thay/crop file ảnh.</p></div></div>}
+export default function Site({access}){const[rev,setRev]=useState(0);return <AdminPage access={access}><FaviconStatus key={rev}/><TableManager onChanged={()=>setRev(x=>x+1)} title="Cấu hình chung" description="Các thông tin nền của website. Dấu * màu đỏ là bắt buộc; các mục còn lại có thể để trống." table="site_settings" singleRow allowDelete={false} allowAdd={false} fields={[
+ f.text("site_name","1. Tên website",{required:true}),f.url("site_url","2. Địa chỉ website chính",{required:true}),f.text("default_title_vi","3. Tiêu đề mặc định (VI)",{required:true}),f.text("default_title_en","4. Tiêu đề mặc định (EN)"),f.area("description_vi","5. Mô tả website (VI)"),f.area("description_en","6. Mô tả website (EN)"),f.media("og_media_id","7. Ảnh chia sẻ mặc định (OG image)",{kind:"image",mirrorUrlField:"default_og_image",help:"Ảnh dùng khi chia sẻ link; không phải icon tab."}),f.hidden("default_og_image"),f.media("favicon_media_id","8. Icon trên tab trình duyệt (Favicon)",{kind:"image",mirrorUrlField:"favicon_url",help:"Chọn ảnh vuông. Nếu R2 private chưa có public URL, build sẽ cố lấy file R2 về /favicon.png; nếu không lấy được sẽ giữ fallback hiện tại."}),f.hidden("favicon_url"),f.num("favicon_size","8b. Kích thước khai báo favicon",{required:true,min:16,max:128,step:1,help:"Metadata kích thước icon (16–128 px). Trình duyệt vẫn quyết định kích thước tab thực tế."}),f.text("contact_email","9. Email liên hệ",{required:true}),f.area("footer_intro_vi","10. Giới thiệu ngắn ở Footer (VI)"),f.area("footer_intro_en","11. Giới thiệu Footer (EN)"),f.text("copyright_text","12. Dòng bản quyền"),f.bool("news_enabled","13. Bật mục Tin tức",{trueLabel:"Hiển thị mục Tin tức trên website"}),f.bool("registration_enabled","14. Cho phép đăng ký tài khoản",{trueLabel:"Người mới có thể tạo tài khoản"}),f.bool("maintenance_mode","15. Chế độ bảo trì",{trueLabel:"Bật trạng thái bảo trì"}),f.json("extra","16. Cấu hình nâng cao")
+ ]}/></AdminPage>}
+
+===== FILE: admin/src/pages/Software.jsx =====
+import React from"react";
+import TableManager from"../components/TableManager";
+import{AdminPage}from"./_shared";
+import{f}from"../schema";
+
+const catRel={table:"software_categories",select:"id,name_vi,slug,sort_order",valueKey:"id",label:o=>`${o.name_vi} (${o.slug})`,orderBy:"sort_order"};
+const roles={table:"roles",select:"id,name",valueKey:"id",labelKey:"name",orderBy:"id"};
+
+export default function Software({access}){return <AdminPage access={access}>
+<TableManager title="Nhóm phần mềm" description="Nhóm chỉ để lọc/sắp xếp kho phần mềm." table="software_categories" orderBy="sort_order" ascending defaults={{visible:true}} fields={[
+ f.text("slug","Slug nhóm",{required:true,placeholder:"engineering",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug nhóm chỉ dùng a-z, 0-9 và dấu gạch ngang.":null}),
+ f.text("name_vi","Tên nhóm (VI)",{required:true,placeholder:"Kỹ thuật"}),
+ f.text("name_en","Tên nhóm (EN)",{placeholder:"Engineering"}),
+ f.sort("sort_order","Thứ tự",{required:true}),
+ f.bool("visible","Hiển thị",{trueLabel:"Hiển thị nhóm"})
+]}/>
+<TableManager title="Kho phần mềm" description="Metadata ở Supabase. Nút tải được kiểm quyền lại tại Edge; link/file thật không còn đưa vào public bundle." table="software_items" orderBy="sort_order" ascending defaults={{visible:true,featured:false,download_source:"link",download_access:"public",download_allowed_roles:[],price_label_vi:"Miễn phí",price_label_en:"Free"}} fields={[
+ f.text("name","Tên phần mềm",{required:true,placeholder:"EPLAN"}),
+ f.text("slug","Slug",{required:true,placeholder:"eplan",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug chỉ dùng a-z, 0-9 và dấu gạch ngang.":null}),
+ f.relation("category_id","Nhóm",catRel,{nullable:true,placeholder:"— Không phân nhóm —"}),
+ f.area("description_vi","Mô tả VI"),
+ f.area("description_en","Mô tả EN"),
+ f.media("icon_media_id","Icon",{kind:"image",mirrorUrlField:"icon_url",visibility:"public"}),
+ f.hidden("icon_url"),
+ f.media("cover_media_id","Cover",{kind:"image",mirrorUrlField:"cover_url",visibility:"public"}),
+ f.hidden("cover_url"),
+ f.sel("download_source","Nguồn file tải",[{value:"link",label:"Liên kết ngoài — Google Drive / OneDrive / website khác"},{value:"r2",label:"Cloudflare R2"}],{required:true}),
+ f.url("download_url","Link tải ngoài",{showWhen:form=>form.download_source==="link",requiredWhen:form=>form.download_source==="link",derive:form=>form.download_source==="link"?form.download_url:null}),
+ f.media("download_media_id","File tải trên R2",{kind:"file",showWhen:form=>form.download_source==="r2",requiredWhen:form=>form.download_source==="r2",derive:form=>form.download_source==="r2"?form.download_media_id:null,visibility:form=>form.download_access==="authenticated"?"authenticated":"public"}),
+ f.sel("download_access","Quyền tải",[{value:"public",label:"Công khai — ai cũng tải"},{value:"authenticated",label:"Có tài khoản + được cấp quyền"}],{required:true}),
+ f.checks("download_allowed_roles","Vai trò được tải",roles,{showWhen:form=>form.download_access==="authenticated",help:"Để trống = mọi tài khoản trạng thái Active được tải. Nếu tích vai trò = chỉ tài khoản Active thuộc các vai trò đó được tải."}),
+ f.text("price_label_vi","Nhãn giá (VI)",{placeholder:"Miễn phí"}),
+ f.text("price_label_en","Nhãn giá (EN)",{placeholder:"Free"}),
+ f.text("version","Phiên bản",{nullable:true}),
+ f.text("compatibility","Tương thích",{nullable:true}),
+ f.bool("visible","Hiển thị",{trueLabel:"Hiển thị ngoài website"}),
+ f.bool("featured","Nổi bật",{trueLabel:"Ưu tiên lên trước"}),
+ f.sort("sort_order","Thứ tự",{required:true})
+]}/>
+</AdminPage>}
+
+===== FILE: admin/src/pages/Tools.jsx =====
+import React from "react";
+import TableManager from "../components/TableManager";
+import { AdminPage } from "./_shared";
+import { f } from "../schema";
+
+const roles={table:"roles",select:"id,name",valueKey:"id",labelKey:"name",orderBy:"id"};
+const groups={table:"tool_categories",select:"id,name_vi,slug,sort_order",valueKey:"id",label:o=>`${o.name_vi} (${o.slug})`,orderBy:"sort_order"};
+const isHtml=form=>form.tool_type==="html";
+const isSource=form=>!isHtml(form);
+
+export default function Tools({access,openId=null}){
+ return <AdminPage access={access}>
+  <TableManager title="Nhóm Tool" description="Bạn tự tạo nhóm như Tiện ích, Công việc, Bổ trợ, Kỹ thuật, Học tập…" table="tool_categories" orderBy="sort_order" ascending defaults={{visible:true}} fields={[
+    f.text("slug","Slug nhóm",{required:true,placeholder:"tien-ich",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug chỉ dùng a-z, 0-9 và dấu gạch ngang.":null}),
+    f.text("name_vi","Tên nhóm (VI)",{required:true,placeholder:"Tiện ích"}),
+    f.text("name_en","Tên nhóm (EN)",{placeholder:"Utilities"}),
+    f.area("description_vi","Mô tả VI"),
+    f.area("description_en","Mô tả EN"),
+    f.sort("sort_order","Thứ tự",{required:true}),
+    f.bool("visible","Hiển thị",{trueLabel:"Hiển thị nhóm"})
+  ]}/>
+  <TableManager
+    title="Danh sách Tool / Tool list"
+    description="Tool public được build thành snapshot; /tools chỉ render 6 mục mỗi trang."
+    table="tools" orderBy="sort_order" ascending openId={openId}
+    defaults={{tool_type:"html",status:"ready",visible:true,show_home:true,show_orbit:false,orbit_ring:1,orbit_angle:0,sort_order:1,requires_auth:false,accent:"#3157f6",settings:{}}}
+    fields={[
+      f.sel("tool_type","Loại Tool / Tool type",[
+        {value:"html",label:"HTML thuần / Static HTML — tạo trực tiếp từ Admin"},
+        {value:"source",label:"Source Git / Module — dùng code trong repository"}
+      ],{required:true}),
+      f.relation("category_id","Nhóm Tool",groups,{nullable:true,placeholder:"— Không phân nhóm —"}),
+      f.text("slug","Slug / URL",{required:true,placeholder:"quiz-moi",validate:v=>v&&!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v)?"Slug chỉ dùng chữ thường, số và dấu gạch ngang.":null}),
+      f.text("title_vi","Tên Tool (VI)",{required:true,placeholder:"Luyện đề"}),
+      f.text("title_en","Tên Tool (EN)",{placeholder:"Quiz practice"}),
+      f.text("code","Mã ngắn hiển thị",{showWhen:isSource,requiredWhen:isSource,placeholder:"PDF"}),
+      f.text("route","Đường dẫn",{showWhen:isSource,requiredWhen:isSource,placeholder:"/tools/pdf"}),
+      f.area("description_vi","Mô tả (VI)",{showWhen:isSource}),
+      f.area("description_en","Mô tả (EN)",{showWhen:isSource}),
+      f.text("icon","Icon key",{showWhen:isSource}),
+      f.text("accent","Màu nhấn",{showWhen:isSource}),
+      f.sel("status","Trạng thái",["ready","beta","hidden"].map(x=>({value:x,label:x})),{showWhen:isSource}),
+      f.bool("visible","Hiển thị"),
+      f.bool("show_home","Hiện trang chủ",{showWhen:isSource}),
+      f.bool("show_orbit","Hiện orbit",{showWhen:isSource}),
+      f.num("orbit_ring","Orbit ring",{showWhen:isSource,min:1,max:20}),
+      f.num("orbit_angle","Orbit angle",{showWhen:isSource,min:0,max:360}),
+      f.sort("sort_order","Thứ tự",{required:true}),
+      f.bool("requires_auth","Yêu cầu đăng nhập",{showWhen:isSource,trueLabel:"Chỉ người đăng nhập mới mở được route Tool"}),
+      f.checks("allowed_roles","Vai trò được dùng",roles,{showWhen:form=>isSource(form)&&!!form.requires_auth}),
+      f.html("inline_html","Code HTML thuần / Static HTML",{showWhen:isHtml,requiredWhen:isHtml,rows:24,placeholder:"Dán nguyên file HTML: <!DOCTYPE html> ..."}),
+      f.json("settings","Cấu hình riêng",{showWhen:isSource,placeholder:'{\n  "featureFlag": true\n}'}),
+      f.area("admin_note","Ghi chú nội bộ",{showWhen:isSource})
+    ]}
+  />
+ </AdminPage>;
+}
+
+===== FILE: admin/src/pages/Users.jsx =====
+import React from"react";
+import TableManager from"../components/TableManager";
+import UserTraffic from"../components/UserTraffic";
+import{AdminPage}from"./_shared";
+import{f}from"../schema";
+import{invoke}from"../lib/supabase";
+
+const roleRel={table:"roles",select:"id,name",valueKey:"id",label:o=>`${o.name} (${o.id})`,orderBy:"id"};
+const permissions=[
+ {value:"site.manage",label:"Cấu hình website"},{value:"content.manage",label:"Nội dung & CV"},
+ {value:"seo.manage",label:"SEO & Redirect"},{value:"tools.manage",label:"Tool"},
+ {value:"news.manage",label:"Tin tức"},{value:"software.manage",label:"Phần mềm"},
+ {value:"data.manage",label:"Dữ liệu"},{value:"media.manage",label:"Thư viện R2"},
+ {value:"users.manage",label:"Người dùng"},{value:"api.manage",label:"API & lịch chạy"},
+ {value:"*",label:"Toàn quyền"}
+];
+export default function Users({access}){return <AdminPage access={access}>
+ <UserTraffic/>
+ <TableManager title="Người dùng" description="Sửa tên/avatar/vai trò/trạng thái. Status Active là điều kiện cơ bản để dùng nội dung cần tài khoản." table="profiles" allowAdd={false} allowDelete orderBy="created_at" canDelete={r=>r.id!==access?.id&&r.role_id!=="owner"} deleteHandler={async r=>invoke("user-admin",{action:"delete-user",user_id:r.id})} fields={[
+  f.text("email","Email",{readonly:true}),f.text("display_name","Tên hiển thị",{required:true}),
+  f.media("avatar_media_id","Avatar",{kind:"image",mirrorUrlField:"avatar_url"}),f.hidden("avatar_url"),
+  f.relation("role_id","Vai trò",roleRel,{required:true}),
+  f.sel("status","Trạng thái",[{value:"pending",label:"Chờ duyệt"},{value:"active",label:"Đang hoạt động"},{value:"suspended",label:"Tạm khóa"}],{required:true})
+ ]}/>
+ <TableManager title="Vai trò & quyền" description="Vai trò cũng được dùng để giới hạn tải từng phần mềm nếu Admin chọn role allow-list." table="roles" idField="id" orderBy="id" ascending fields={[
+  f.text("id","Mã vai trò",{required:true}),f.text("name","Tên vai trò",{required:true}),f.checkOptions("permissions","Chức năng được phép",permissions),f.area("description","Mô tả vai trò")
+ ]}/>
+</AdminPage>}
+
+===== FILE: admin/src/pages/_shared.jsx =====
+import React from"react";import AdminShell from"../components/AdminShell";export function AdminPage({access,children}){return <AdminShell access={access}>{children}</AdminShell>}
+
+===== FILE: admin/src/schema.js =====
+export const f={
+  text:(name,label,x={})=>({name,label,type:"text",...x}),
+  url:(name,label,x={})=>({name,label,type:"url",...x}),
+  area:(name,label,x={})=>({name,label,type:"textarea",wide:true,...x}),
+  html:(name,label,x={})=>({name,label,type:"html",wide:true,...x}),
+  num:(name,label,x={})=>({name,label,type:"number",...x}),
+  sort:(name,label="Thứ tự hiển thị",x={})=>({name,label,type:"sort",min:1,step:1,...x}),
+  bool:(name,label,x={})=>({name,label,type:"checkbox",...x}),
+  json:(name,label,x={})=>({name,label,type:"json",wide:true,...x}),
+  arr:(name,label,x={})=>({name,label,type:"array",wide:true,...x}),
+  sel:(name,label,options,x={})=>({name,label,type:"select",options,...x}),
+  dt:(name,label,x={})=>({name,label,type:"datetime",...x}),
+  color:(name,label,x={})=>({name,label,type:"color",...x}),
+  relation:(name,label,relation,x={})=>({name,label,type:"relation",relation,...x}),
+  checks:(name,label,relation,x={})=>({name,label,type:"checks",relation,...x}),
+  checkOptions:(name,label,options,x={})=>({name,label,type:"checks",options,...x}),
+  media:(name,label,x={})=>({name,label,type:"media",wide:true,...x}),
+  hidden:(name,x={})=>({name,label:name,type:"text",hidden:true,...x}),
+};
+
+===== FILE: admin/src/scroll-fix.css =====
+/* V4.7 — Admin desktop: sidebar and content scroll independently. */
+@media (min-width: 901px) {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .adminLayout {
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar .logo {
+    flex: 0 0 auto;
+  }
+
+  .sidebar nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding-right: 4px;
+  }
+
+  .sidebar nav::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .sidebar nav::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 999px;
+  }
+
+  .sidebar nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sidebarFoot {
+    flex: 0 0 auto;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+    background: var(--side);
+  }
+
+  .adminMain {
+    height: 100vh;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+  }
+
+  .adminTop {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: var(--bg);
+  }
+}
+
+/* On mobile keep the original single-page scrolling behavior. */
+@media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: auto;
+  }
+
+  .adminLayout,
+  .adminMain {
+    height: auto;
+    overflow: visible;
+  }
+
+  .sidebar,
+  .sidebar nav {
+    overflow: visible;
+  }
+}

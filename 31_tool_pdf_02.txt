@@ -1,0 +1,1929 @@
+
+===== FILE: public/tool-modules/pdf/pdf-preview-v52.mjs =====
+import * as pdfjsLib from './vendor/pdf.mjs';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc=new URL('./vendor/pdf.worker.mjs',import.meta.url).href;
+
+const PAGE_TOOLS=new Set(['split','tilepages','deletepages','reorderpages','rotate','pdfjpg']);
+const MERGE_TOOL='merge';
+let generation=0;
+let currentDoc=null;
+let currentKey='';
+let observer=null;
+let selectedPages=new Set();
+let reorderPages=[];
+let renderTimer=null;
+let mergeOriginal=[];
+let mergeOriginalSetKey='';
+
+function en(){return String(document.documentElement.lang||'vi').toLowerCase().startsWith('en')}
+function t(vi,enText){return en()?enText:vi}
+function el(id){return document.getElementById(id)}
+function tool(){return el('apiTool')?.value||''}
+function files(){try{return Array.from(window.selectedFiles||[])}catch(_){return[]}}
+function sig(f){return f?`${f.name}:${f.size}:${f.lastModified}`:''}
+function workspace(){
+  let w=el('pdfPageWorkspaceV52');
+  if(w)return w;
+  w=document.createElement('section');
+  w.id='pdfPageWorkspaceV52';
+  w.className='pdf-page-workspace-v52 hidden';
+  const status=el('statusMessage');
+  if(status?.parentNode)status.parentNode.insertBefore(w,status);
+  return w;
+}
+function hideWorkspace(){
+  const w=workspace();w.classList.add('hidden');w.innerHTML='';
+  if(observer){observer.disconnect();observer=null}
+  currentDoc=null;currentKey='';selectedPages.clear();reorderPages=[];
+}
+function formatSize(n){
+  if(n<1024)return n+' B';
+  if(n<1024*1024)return (n/1024).toFixed(1)+' KB';
+  return (n/1024/1024).toFixed(1)+' MB';
+}
+function compressPages(values){
+  const a=[...new Set(values)].sort((x,y)=>x-y);if(!a.length)return'';
+  const out=[];let start=a[0],prev=a[0];
+  for(let i=1;i<=a.length;i++){
+    const cur=a[i];
+    if(cur===prev+1){prev=cur;continue}
+    out.push(start===prev?String(start):`${start}-${prev}`);
+    start=cur;prev=cur;
+  }
+  return out.join(',');
+}
+function parseRanges(text,total){
+  const out=[];
+  String(text||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(part=>{
+    if(part.includes('-')){
+      const [a,b]=part.split('-').map(Number);
+      if(a&&b)for(let n=Math.min(a,b);n<=Math.max(a,b);n++)if(n>=1&&n<=total)out.push(n);
+    }else{
+      const n=Number(part);if(n>=1&&n<=total)out.push(n);
+    }
+  });
+  return [...new Set(out)];
+}
+function setInput(id,value){
+  const n=el(id);if(!n)return;
+  n.value=value;
+  n.dispatchEvent(new Event('input',{bubbles:true}));
+}
+function managedFields(k){
+  const del=el('deletePageRange')?.closest('.nlkh-field');
+  const reo=el('reorderPageOrder')?.closest('.nlkh-field');
+  if(del)del.classList.remove('pdf-v52-hidden-field');
+  if(reo)reo.classList.remove('pdf-v52-hidden-field');
+}
+function actionButton(action,label){return `<button type="button" data-page-action="${action}">${label}</button>`}
+function toolbarHtml(k){
+  if(k==='deletepages')return `<div class="pdf-v57-actions">${actionButton('odd',t('Chọn trang lẻ','Select odd'))}${actionButton('even',t('Chọn trang chẵn','Select even'))}${actionButton('clear',t('Bỏ chọn','Clear'))}</div>`;
+  if(k==='reorderpages')return `<div class="pdf-v57-actions">${actionButton('reset-order',t('Khôi phục thứ tự','Reset order'))}</div>`;
+  if(k==='split')return `<div class="pdf-v57-actions">${actionButton('clear',t('Bỏ chọn nhanh','Clear selection'))}</div>`;
+  if(k==='tilepages')return `<div class="pdf-v57-actions">${actionButton('tile-all',t('Tất cả trang','All pages'))}${actionButton('tile-clear',t('Bỏ chọn','Clear'))}</div>`;
+  if(k==='merge')return `<div class="pdf-v57-actions">${actionButton('reset-merge',t('Khôi phục thứ tự file','Reset file order'))}</div>`;
+  return '';
+}
+function headerHtml(k,count,file){
+  const copy={
+    split:[t('Chọn trang để tạo nhanh các khoảng tách','Select pages to quickly build split ranges'),
+           t('Click thumbnail để thêm/bỏ trang; các trang liền nhau tự gộp thành một khoảng.','Click thumbnails to add/remove pages; consecutive pages become one range.')],
+    tilepages:[t('Xem trước và chọn trang cần chia nhỏ','Preview and select pages to tile'),
+               t('Chọn “Tất cả trang” hoặc “Tùy chọn trang”. Ở chế độ tùy chọn, click thumbnail để chọn nhanh.','Choose “All pages” or “Custom pages”. In custom mode, click thumbnails for quick selection.')],
+    deletepages:[t('Chọn trang cần xóa','Select pages to delete'),
+                 t('Click thumbnail hoặc dùng chọn nhanh trang lẻ/chẵn.','Click thumbnails or use odd/even quick selection.')],
+    reorderpages:[t('Kéo thả để sắp xếp trang','Drag to reorder pages'),
+                  t('Kéo thumbnail sang vị trí mới; thứ tự xử lý cập nhật ngay.','Drag thumbnails to a new position; processing order updates immediately.')],
+    rotate:[t('Xem trước các trang sẽ xoay','Preview pages to be rotated'),
+            t('Góc xoay được áp dụng cho toàn bộ PDF.','The rotation angle is applied to the entire PDF.')],
+    pdfjpg:[t('Xem trước các trang PDF','Preview PDF pages'),
+            t('Ở chế độ “Pages”, mỗi trang sẽ được xuất thành JPG.','In “Pages” mode, each page will be exported as JPG.')]
+  }[k]||['',''];
+  return `<div class="pdf-v52-head">
+    <div class="pdf-v57-headcopy"><strong>${copy[0]}</strong><small>${copy[1]}</small></div>
+    <div class="pdf-v57-headright"><div class="pdf-v52-meta"><span>${count} ${t('trang','pages')}</span><span>${formatSize(file.size)}</span></div>${toolbarHtml(k)}</div>
+  </div>`;
+}
+function cardShell(pageNum,k){
+  const c=document.createElement('article');
+  c.className='pdf-v52-page';
+  c.dataset.page=String(pageNum);
+  c.draggable=k==='reorderpages';
+  c.innerHTML=`<div class="pdf-v52-canvasbox"><div class="pdf-v52-skeleton"></div><canvas></canvas></div>
+    <footer><span>${t('Trang','Page')} ${pageNum}</span><b class="pdf-v52-state"></b></footer>`;
+  if(k==='split'||k==='deletepages'||k==='tilepages'){
+    c.addEventListener('click',()=>{
+      if(k==='tilepages'&&el('tilePageScopeV63')?.value==='all'){
+        selectedPages.clear();
+        selectedPages.add(pageNum);
+      }else if(selectedPages.has(pageNum))selectedPages.delete(pageNum);else selectedPages.add(pageNum);
+      syncSelectionUi(k);
+    });
+  }
+  if(k==='reorderpages')bindPageDrag(c);
+  return c;
+}
+function paintSelectionUi(k){
+  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach(c=>{
+    const n=Number(c.dataset.page),active=selectedPages.has(n);
+    c.classList.toggle(k==='deletepages'?'is-delete':'is-selected',active);
+    const s=c.querySelector('.pdf-v52-state');
+    if(s)s.textContent=active?(k==='deletepages'?t('XÓA','DELETE'):k==='tilepages'?t('CHIA','TILE'):t('ĐÃ CHỌN','SELECTED')):'';
+  });
+}
+function setTileCustomRange(value){
+  const scope=el('tilePageScopeV63');
+  if(scope&&scope.value!=='custom'){
+    scope.value='custom';
+    scope.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  setInput('tilePagesV62',value);
+}
+function writeSelectionInput(k){
+  if(k==='deletepages')setInput('deletePageRange',compressPages(selectedPages));
+  if(k==='split')setInput('splitRange',compressPages(selectedPages));
+  if(k==='tilepages'){
+    const value=compressPages(selectedPages);
+    setTileCustomRange(value);
+  }
+}
+function parseTileRanges(text,total){
+  const out=[];
+  String(text||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(part=>{
+    if(part.endsWith('-')){
+      const n=Number(part.slice(0,-1));if(n>=1&&n<=total)out.push(n);return;
+    }
+    if(part.includes('-')){
+      const bits=part.split('-');if(bits.length!==2)return;
+      const a=bits[0]==='end'?total:Number(bits[0]),b=bits[1]==='end'?total:Number(bits[1]);
+      if(!a||!b)return;
+      const step=a<=b?1:-1;
+      for(let n=a;step>0?n<=b:n>=b;n+=step)if(n>=1&&n<=total)out.push(n);
+    }else{
+      const n=part==='end'?total:Number(part);if(n>=1&&n<=total)out.push(n);
+    }
+  });
+  return [...new Set(out)];
+}
+function syncTileSelectionFromControls(){
+  if(!currentDoc||tool()!=='tilepages')return;
+  const scope=el('tilePageScopeV63')?.value||'all';
+  selectedPages.clear();
+  if(scope==='all'){
+    for(let n=1;n<=currentDoc.numPages;n++)selectedPages.add(n);
+  }else{
+    parseTileRanges(el('tilePagesV62')?.value||'',currentDoc.numPages).forEach(n=>selectedPages.add(n));
+  }
+  paintSelectionUi('tilepages');
+}
+function syncSelectionUi(k,writeBack=true){
+  paintSelectionUi(k);
+  if(writeBack)writeSelectionInput(k);
+}
+function syncSelectionFromTypedInput(k,value){
+  if(!currentDoc)return;
+  selectedPages=new Set(parseRanges(value,currentDoc.numPages));
+  paintSelectionUi(k);
+}
+function selectPattern(kind){
+  if(!currentDoc)return;
+  selectedPages.clear();
+  for(let n=1;n<=currentDoc.numPages;n++){
+    if(kind==='odd'&&n%2===1)selectedPages.add(n);
+    if(kind==='even'&&n%2===0)selectedPages.add(n);
+  }
+  syncSelectionUi(tool());
+}
+function bindPageDrag(c){
+  c.addEventListener('dragstart',e=>{
+    c.classList.add('is-dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',c.dataset.page);
+  });
+  c.addEventListener('dragend',()=>{c.classList.remove('is-dragging');syncReorderFromDom()});
+  c.addEventListener('dragover',e=>{
+    e.preventDefault();
+    const grid=c.parentElement,drag=grid.querySelector('.is-dragging');if(!drag||drag===c)return;
+    const r=c.getBoundingClientRect();
+    const before=e.clientY<r.top+r.height/2 || (Math.abs(e.clientY-(r.top+r.height/2))<r.height*.25 && e.clientX<r.left+r.width/2);
+    grid.insertBefore(drag,before?c:c.nextSibling);
+  });
+}
+function syncReorderFromDom(){
+  reorderPages=Array.from(document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)')).map(c=>Number(c.dataset.page));
+  setInput('reorderPageOrder',reorderPages.join(','));
+  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach((c,i)=>{
+    const state=c.querySelector('.pdf-v52-state');
+    if(state)state.textContent=`${i+1}`;
+  });
+}
+function parseOrderInput(text,total){
+  const out=[];
+  String(text||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(part=>{
+    if(part.endsWith('-'))return;
+    if(part.includes('-')){
+      const bits=part.split('-');
+      if(bits.length!==2)return;
+      const a=Number(bits[0]),b=Number(bits[1]);
+      if(!a||!b)return;
+      const step=a<=b?1:-1;
+      for(let n=a;step>0?n<=b:n>=b;n+=step)if(n>=1&&n<=total&&!out.includes(n))out.push(n);
+    }else{
+      const n=Number(part);if(n>=1&&n<=total&&!out.includes(n))out.push(n);
+    }
+  });
+  return out;
+}
+function applyTypedReorder(value){
+  if(!currentDoc)return;
+  const first=parseOrderInput(value,currentDoc.numPages);
+  if(!first.length)return;
+  const seen=new Set(first);
+  const order=[...first,...Array.from({length:currentDoc.numPages},(_,i)=>i+1).filter(n=>!seen.has(n))];
+  const grid=workspace().querySelector('.pdf-v52-grid');if(!grid)return;
+  const cards=new Map([...grid.querySelectorAll('.pdf-v52-page:not(.pdf-v52-file)')].map(c=>[Number(c.dataset.page),c]));
+  order.forEach(n=>{const c=cards.get(n);if(c)grid.appendChild(c)});
+  reorderPages=order;
+  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach((c,i)=>{
+    const state=c.querySelector('.pdf-v52-state');if(state)state.textContent=`${i+1}`;
+  });
+}
+function resetPageOrder(){
+  const grid=workspace().querySelector('.pdf-v52-grid');if(!grid)return;
+  [...grid.querySelectorAll('.pdf-v52-page')].sort((a,b)=>Number(a.dataset.page)-Number(b.dataset.page)).forEach(c=>grid.appendChild(c));
+  syncReorderFromDom();
+}
+function replaceSelectedFiles(list){
+  if(!Array.isArray(window.selectedFiles))return;
+  window.selectedFiles.splice(0,window.selectedFiles.length,...list);
+  if(typeof window.renderFileList==='function')try{window.renderFileList()}catch(_){}
+  const name=el('fileName');
+  if(name)name.textContent=list.length>1?`${list.length} ${t('tệp đã được chọn','files selected')}`:(list[0]?.name||t('Chưa có tệp nào được chọn','No file selected'));
+}
+function mergeSetKey(list){return list.map(sig).sort().join('|')}
+function syncMergeFromDom(){
+  const cards=[...workspace().querySelectorAll('.pdf-v52-file')];
+  const ordered=cards.map(c=>c._kohaFile).filter(Boolean);
+  if(ordered.length!==cards.length)return;
+  replaceSelectedFiles(ordered);
+  workspace().dataset.mergeKey=ordered.map(sig).join('|');
+}
+function bindMergeDrag(card){
+  card.draggable=true;
+  card.addEventListener('dragstart',e=>{
+    card.classList.add('is-dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','merge');
+  });
+  card.addEventListener('dragend',()=>{card.classList.remove('is-dragging');syncMergeFromDom()});
+  card.addEventListener('dragover',e=>{
+    e.preventDefault();
+    const grid=card.parentElement,drag=grid.querySelector('.is-dragging');if(!drag||drag===card)return;
+    const r=card.getBoundingClientRect();
+    const before=e.clientX<r.left+r.width/2;
+    grid.insertBefore(drag,before?card:card.nextSibling);
+  });
+}
+function resetMergeOrder(){
+  if(!mergeOriginal.length)return;
+  replaceSelectedFiles(mergeOriginal);
+  workspace().dataset.mergeKey='';
+  refresh();
+}
+function bindWorkspaceActions(k){
+  workspace().querySelectorAll('[data-page-action]').forEach(b=>b.addEventListener('click',()=>{
+    const a=b.dataset.pageAction;
+    if(a==='clear'){selectedPages.clear();syncSelectionUi(k)}
+    if(a==='odd'||a==='even')selectPattern(a);
+    if(a==='tile-all'){
+      const scope=el('tilePageScopeV63');if(scope){scope.value='all';scope.dispatchEvent(new Event('change',{bubbles:true}))}
+      syncTileSelectionFromControls();
+    }
+    if(a==='tile-clear'){selectedPages.clear();setTileCustomRange('');paintSelectionUi('tilepages')}
+    if(a==='reset-order')resetPageOrder();
+    if(a==='reset-merge')resetMergeOrder();
+  }));
+}
+async function renderPage(card,doc,myGen){
+  if(card.dataset.rendered==='1')return;
+  card.dataset.rendered='1';
+  try{
+    const num=Number(card.dataset.page),page=await doc.getPage(num);
+    if(myGen!==generation)return;
+    const base=page.getViewport({scale:1});
+    const target=150,scale=Math.min(0.42,Math.max(0.16,target/base.width));
+    const vp=page.getViewport({scale});
+    const canvas=card.querySelector('canvas'),ctx=canvas.getContext('2d',{alpha:false});
+    const dpr=Math.min(2,window.devicePixelRatio||1);
+    canvas.width=Math.max(1,Math.floor(vp.width*dpr));
+    canvas.height=Math.max(1,Math.floor(vp.height*dpr));
+    canvas.style.aspectRatio=`${vp.width}/${vp.height}`;
+    await page.render({canvasContext:ctx,viewport:page.getViewport({scale:scale*dpr})}).promise;
+    if(myGen!==generation)return;
+    card.querySelector('.pdf-v52-skeleton')?.remove();
+    card.classList.add('is-rendered');
+  }catch(err){
+    card.classList.add('is-error');
+    const sk=card.querySelector('.pdf-v52-skeleton');if(sk)sk.textContent=t('Không render được','Render failed');
+  }
+}
+function observeCards(doc,myGen){
+  if(observer)observer.disconnect();
+  observer=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{if(e.isIntersecting){observer.unobserve(e.target);renderPage(e.target,doc,myGen)}});
+  },{rootMargin:'500px 0px'});
+  document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page').forEach(c=>observer.observe(c));
+}
+async function loadSingle(k,file){
+  const myGen=++generation,key=sig(file);
+  const w=workspace();w.classList.remove('hidden');w.innerHTML='<div class="pdf-v52-loading">'+t('Đang đọc cấu trúc PDF…','Reading PDF structure…')+'</div>';
+  el('emptyPreview')?.classList.add('hidden');
+  const data=new Uint8Array(await file.arrayBuffer());
+  const doc=await pdfjsLib.getDocument({data}).promise;
+  if(myGen!==generation)return;
+  currentDoc=doc;currentKey=key;
+  w.innerHTML=headerHtml(k,doc.numPages,file)+'<div class="pdf-v52-grid"></div>';
+  bindWorkspaceActions(k);
+  const grid=w.querySelector('.pdf-v52-grid');
+  selectedPages.clear();
+  if(k==='split')parseRanges(el('splitRange')?.value,doc.numPages).forEach(n=>selectedPages.add(n));
+  if(k==='deletepages')parseRanges(el('deletePageRange')?.value,doc.numPages).forEach(n=>selectedPages.add(n));
+  if(k==='tilepages'){
+    const scope=el('tilePageScopeV63')?.value||'all';
+    if(scope==='all')for(let n=1;n<=doc.numPages;n++)selectedPages.add(n);
+    else parseTileRanges(el('tilePagesV62')?.value||'',doc.numPages).forEach(n=>selectedPages.add(n));
+  }
+  reorderPages=Array.from({length:doc.numPages},(_,i)=>i+1);
+  for(let n=1;n<=doc.numPages;n++)grid.appendChild(cardShell(n,k));
+  if(k==='split'||k==='deletepages'||k==='tilepages')syncSelectionUi(k,false);
+  if(k==='reorderpages')syncReorderFromDom();
+  observeCards(doc,myGen);
+}
+async function renderMerge(list){
+  const setKey=mergeSetKey(list);
+  if(setKey!==mergeOriginalSetKey){mergeOriginal=[...list];mergeOriginalSetKey=setKey}
+  const myGen=++generation,w=workspace();w.classList.remove('hidden');el('emptyPreview')?.classList.add('hidden');
+  w.dataset.mergeKey=list.map(sig).join('|');
+  w.innerHTML=`<div class="pdf-v52-head">
+    <div class="pdf-v57-headcopy"><strong>${t('Kéo thumbnail để đổi thứ tự gộp','Drag thumbnails to set merge order')}</strong><small>${t('Thứ tự nhìn thấy chính là thứ tự PDF đầu ra.','The visible order is the final PDF order.')}</small></div>
+    <div class="pdf-v57-headright"><div class="pdf-v52-meta"><span>${list.length} ${t('tệp','files')}</span></div>${toolbarHtml('merge')}</div>
+  </div><div class="pdf-v52-grid pdf-v52-files"></div>`;
+  bindWorkspaceActions('merge');
+  const grid=w.querySelector('.pdf-v52-grid');
+  for(let i=0;i<list.length;i++){
+    const file=list[i],card=document.createElement('article');card.className='pdf-v52-page pdf-v52-file';
+    card._kohaFile=file;
+    card.innerHTML=`<div class="pdf-v52-canvasbox"><div class="pdf-v52-skeleton"></div><canvas></canvas></div><footer><span title="${file.name.replace(/"/g,'&quot;')}">${i+1}. ${file.name}</span><b>${formatSize(file.size)}</b></footer>`;
+    bindMergeDrag(card);
+    grid.appendChild(card);
+    try{
+      const doc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+      if(myGen!==generation)return;
+      const p=await doc.getPage(1),base=p.getViewport({scale:1}),scale=Math.min(.42,150/base.width),vp=p.getViewport({scale});
+      const canvas=card.querySelector('canvas'),dpr=Math.min(2,window.devicePixelRatio||1);
+      canvas.width=Math.floor(vp.width*dpr);canvas.height=Math.floor(vp.height*dpr);canvas.style.aspectRatio=`${vp.width}/${vp.height}`;
+      await p.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport:p.getViewport({scale:scale*dpr})}).promise;
+      card.querySelector('.pdf-v52-skeleton')?.remove();card.classList.add('is-rendered');
+      doc.destroy();
+    }catch(_){card.classList.add('is-error')}
+  }
+}
+async function refresh(){
+  clearTimeout(renderTimer);
+  renderTimer=setTimeout(async()=>{
+    const k=tool(),list=files();managedFields(k);
+    if(k===MERGE_TOOL){
+      if(list.length)await renderMerge(list);else hideWorkspace();
+      return;
+    }
+    if(!PAGE_TOOLS.has(k)||!list.length){hideWorkspace();return}
+    const key=sig(list[0]);
+    if(currentKey===key&&currentDoc&&workspace().querySelector('.pdf-v52-grid')){
+      const title=workspace().querySelector('.pdf-v52-head');
+      if(title){title.outerHTML=headerHtml(k,currentDoc.numPages,list[0]);bindWorkspaceActions(k)}
+      document.querySelectorAll('#pdfPageWorkspaceV52 .pdf-v52-page:not(.pdf-v52-file)').forEach(c=>{
+        const n=Number(c.dataset.page),label=c.querySelector('footer span');
+        if(label)label.textContent=`${t('Trang','Page')} ${n}`;
+      });
+      if(k==='split'||k==='deletepages'||k==='tilepages')paintSelectionUi(k);
+      return;
+    }
+    try{await loadSingle(k,list[0])}
+    catch(err){
+      console.error('[PDF preview V57]',err);
+      const w=workspace();w.classList.remove('hidden');w.innerHTML='<div class="pdf-v52-error">'+t('Không thể tạo thumbnail cho PDF này. Công cụ xử lý vẫn có thể dùng bình thường.','Could not create thumbnails for this PDF. The processing tool can still be used.')+'</div>';
+    }
+  },80);
+}
+function bind(){
+  el('fileInput')?.addEventListener('change',()=>setTimeout(refresh,40));
+  el('apiTool')?.addEventListener('change',()=>{currentKey='';currentDoc=null;setTimeout(refresh,80)});
+  document.addEventListener('input',e=>{
+    if(!currentDoc)return;
+    if(e.target?.id==='splitRange'&&tool()==='split'){
+      syncSelectionFromTypedInput('split',e.target.value);
+      return;
+    }
+    if(e.target?.id==='deletePageRange'&&tool()==='deletepages'){
+      syncSelectionFromTypedInput('deletepages',e.target.value);
+      return;
+    }
+    if(e.target?.id==='tilePagesV62'&&tool()==='tilepages'){
+      selectedPages=new Set(parseTileRanges(e.target.value,currentDoc.numPages));
+      paintSelectionUi('tilepages');
+      return;
+    }
+  });
+  document.addEventListener('change',e=>{
+    if(e.target?.id==='reorderPageOrder'&&currentDoc&&tool()==='reorderpages'){
+      applyTypedReorder(e.target.value);
+    }
+    if(e.target?.id==='tilePageScopeV63'&&currentDoc&&tool()==='tilepages'){
+      setTimeout(syncTileSelectionFromControls,0);
+    }
+  });
+  document.addEventListener('tilepages:controls',()=>{
+    if(currentDoc&&tool()==='tilepages')setTimeout(syncTileSelectionFromControls,0);
+  });
+  document.addEventListener('keydown',e=>{
+    if(e.target?.id==='reorderPageOrder'&&e.key==='Enter'&&currentDoc&&tool()==='reorderpages'){
+      e.preventDefault();
+      applyTypedReorder(e.target.value);
+    }
+  });
+  document.addEventListener('click',e=>{
+    if(e.target.closest?.('[data-tool]'))setTimeout(refresh,100);
+  });
+  new MutationObserver(m=>{
+    if(m.some(x=>x.type==='attributes'&&x.attributeName==='lang'))setTimeout(refresh,50);
+    if(m.some(x=>x.type==='childList'))managedFields(tool());
+  }).observe(document.documentElement,{attributes:true,attributeFilter:['lang'],childList:true,subtree:true});
+  setInterval(()=>{
+    const list=files(),k=tool();
+    if((PAGE_TOOLS.has(k)||k===MERGE_TOOL)&&list.length){
+      const key=k===MERGE_TOOL?list.map(sig).join('|'):sig(list[0]);
+      const old=k===MERGE_TOOL?workspace().dataset.mergeKey:currentKey;
+      if(key!==old)refresh();
+    }
+  },900);
+  refresh();
+}
+window.addEventListener('load',bind);
+window.NLKH_PDFJS_VERSION='6.3.289';
+window.NLKH_PDF_PAGE_UX_V57=true;
+
+===== FILE: public/tool-modules/pdf/pdf-ui-v50.css =====
+.nlkh-capability-v51{margin:10px 0 14px;padding:11px 12px;border:1px solid var(--pdf-line);border-radius:9px;background:var(--pdf-surface-soft)}
+.nlkh-capability-head{display:flex;gap:10px;justify-content:space-between;align-items:flex-start}
+.nlkh-capability-head strong,.nlkh-inline-badge{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:var(--pdf-blue);color:#fff;font-size:9px;font-weight:800;letter-spacing:.04em}
+.nlkh-inline-badge.is-local{background:#178a57}
+.nlkh-capability-head span{color:var(--pdf-muted);font-size:10px;line-height:1.45;text-align:right}
+.nlkh-capability-warning,.nlkh-task-note{margin-top:8px;padding:9px 10px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);color:var(--pdf-muted);font-size:10px;line-height:1.5}
+.control-card>.processing-mode{margin:12px 0 0}
+.control-card>.offline-note{display:none!important}
+.nlkh-task-head{display:flex;align-items:center;gap:9px;margin-bottom:2px}
+.nlkh-task-head strong{font-size:13px}
+.nlkh-field{display:grid;gap:6px}
+.nlkh-field>label{font-size:10px;font-weight:800;color:var(--pdf-ink)}
+.nlkh-field>small{font-size:9px;line-height:1.45;color:var(--pdf-muted)}
+.nlkh-field input:not([type=checkbox]):not([type=color]),.nlkh-field select,.nlkh-field textarea{width:100%;min-height:38px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);color:var(--pdf-ink);padding:8px 10px;outline:none}
+.nlkh-field textarea{min-height:108px;resize:vertical}
+.nlkh-field input[type=color]{width:100%;min-height:38px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);padding:4px}
+.nlkh-field input:focus,.nlkh-field select:focus,.nlkh-field textarea:focus{border-color:var(--pdf-blue);box-shadow:0 0 0 3px rgba(49,87,246,.12)}
+.nlkh-check{display:flex!important;align-items:center;gap:8px;margin:0!important;padding:8px 9px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);font-size:10px;color:var(--pdf-ink)!important}
+.nlkh-check input{accent-color:var(--pdf-blue)}
+.nlkh-grid-2,.nlkh-grid-3{display:grid;gap:10px}
+.nlkh-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.nlkh-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.nlkh-prompt-presets{display:flex;flex-wrap:wrap;gap:7px}
+.nlkh-prompt-presets button{border:1px solid var(--pdf-line);border-radius:999px;background:var(--pdf-surface);color:var(--pdf-ink);padding:7px 10px;font-size:10px;cursor:pointer}
+.nlkh-prompt-presets button:hover{border-color:var(--pdf-blue);color:var(--pdf-blue)}
+.nlkh-ocr-langs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.nlkh-ocr-langs label{display:flex!important;align-items:center;gap:7px;margin:0!important;padding:9px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);color:var(--pdf-ink)!important;font-size:10px}
+.nlkh-ocr-langs input{accent-color:var(--pdf-blue)}
+.tool-options{display:grid;gap:10px}
+@media(max-width:650px){.nlkh-capability-head{display:grid}.nlkh-capability-head span{text-align:left}.nlkh-grid-2,.nlkh-grid-3,.nlkh-ocr-langs{grid-template-columns:1fr}}
+
+.ocr-v53-auto-note{display:grid;gap:4px;padding:10px 11px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);font-size:10px;line-height:1.5;color:var(--pdf-muted)}
+.ocr-v53-auto-note strong{font-size:10px;color:var(--pdf-ink)}
+.ocr-v53-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center}
+.ocr-v53-search{display:flex;align-items:center;gap:7px;min-height:38px;padding:0 10px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface)}
+.ocr-v53-search input{width:100%;min-width:0;border:0!important;box-shadow:none!important;outline:0;background:transparent;color:var(--pdf-ink);font-size:10px}
+.ocr-v53-count{padding:7px 9px;border-radius:999px;background:var(--pdf-surface-soft);border:1px solid var(--pdf-line);font-size:9px;font-weight:700;color:var(--pdf-muted);white-space:nowrap}
+.ocr-v53-presets{display:flex;flex-wrap:wrap;gap:6px}
+.ocr-v53-presets button,.ocr-v53-more{min-height:32px;padding:6px 9px;border:1px solid var(--pdf-line);border-radius:999px;background:var(--pdf-surface);color:var(--pdf-ink);font-size:9px;font-weight:700;cursor:pointer}
+.ocr-v53-presets button:hover,.ocr-v53-more:hover{border-color:var(--pdf-blue);color:var(--pdf-blue)}
+.ocr-v53-presets button.is-muted{color:var(--pdf-muted)}
+.ocr-v53-section,.ocr-v53-morebox{display:grid;gap:8px}
+.ocr-v53-section-title{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.ocr-v53-section-title strong{font-size:10px;color:var(--pdf-ink)}
+.ocr-v53-section-title span{font-size:9px;color:var(--pdf-muted);text-align:right}
+.ocr-v53-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:310px;overflow:auto;padding-right:2px}
+.ocr-v53-lang{display:flex!important;align-items:center;gap:8px;margin:0!important;padding:8px 9px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);cursor:pointer}
+.ocr-v53-lang:hover{border-color:var(--pdf-blue)}
+.ocr-v53-lang:has(input:checked){border-color:var(--pdf-blue);box-shadow:0 0 0 2px rgba(49,87,246,.09)}
+.ocr-v53-lang input{accent-color:var(--pdf-blue);flex:0 0 auto}
+.ocr-v53-lang span{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;width:100%}
+.ocr-v53-lang strong{font-size:9px;color:var(--pdf-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ocr-v53-lang small{font-size:8px;text-transform:uppercase;color:var(--pdf-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.ocr-v53-more{justify-self:start;border-radius:8px}
+.ocr-v53-morebox.hidden{display:none!important}
+@media(max-width:650px){.ocr-v53-toolbar{grid-template-columns:1fr}.ocr-v53-count{justify-self:start}.ocr-v53-grid{grid-template-columns:1fr}.ocr-v53-section-title{display:grid}.ocr-v53-section-title span{text-align:left}}
+
+/* TOOL FINDER V57 */
+.tool-finder-v57{position:relative;display:grid;gap:6px;margin-bottom:10px}
+.tool-finder-v57>label{font-size:10px;font-weight:750;color:var(--pdf-muted)}
+.tool-finder-v57__input{min-height:43px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--pdf-line);border-radius:9px;background:var(--pdf-surface-soft)}
+.tool-finder-v57__input:focus-within{border-color:var(--pdf-blue);box-shadow:0 0 0 3px rgba(49,87,246,.12)}
+.tool-finder-v57__input>span{color:var(--pdf-blue);font-size:18px;line-height:1}
+.tool-finder-v57__input input{min-width:0;width:100%;border:0!important;box-shadow:none!important;background:transparent!important;color:var(--pdf-ink);outline:0;padding:0!important;min-height:39px!important}
+.tool-finder-v57__input kbd{min-width:22px;padding:3px 6px;border:1px solid var(--pdf-line);border-bottom-width:2px;border-radius:5px;background:var(--pdf-surface);color:var(--pdf-muted);font-size:9px;text-align:center}
+.tool-finder-v57__results{position:absolute;z-index:30;top:calc(100% - 1px);left:0;right:0;max-height:310px;overflow:auto;padding:6px;border:1px solid var(--pdf-line);border-radius:10px;background:var(--pdf-surface);box-shadow:0 18px 44px rgba(15,24,39,.16)}
+.tool-finder-v57__results button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;border:0;border-radius:7px;background:transparent;color:var(--pdf-ink);padding:9px 10px;text-align:left;cursor:pointer}
+.tool-finder-v57__results button:hover,.tool-finder-v57__results button:focus{outline:0;background:var(--pdf-blue-soft)}
+.tool-finder-v57__results button span{min-width:0}.tool-finder-v57__results strong,.tool-finder-v57__results small{display:block}
+.tool-finder-v57__results strong{font-size:10px}.tool-finder-v57__results small{margin-top:3px;color:var(--pdf-muted);font-size:8px}
+.tool-finder-v57__results i{font-style:normal;color:var(--pdf-blue)}
+.tool-finder-v57__empty{padding:12px;text-align:center;color:var(--pdf-muted);font-size:9px}
+
+===== FILE: public/tool-modules/pdf/pdf-ui-v50.js =====
+(function(){
+'use strict';
+
+const PUBLIC_KEY='project_public_b518756fab3a8e6942a9330c23a7859a_YUAga5611529e21b17310f7e19ec3547395e1';
+
+const CAP={
+  compress:{offline:false,online:true},
+  merge:{offline:true,online:true},
+  split:{offline:true,online:true},
+  tilepages:{offline:true,online:false},
+  splitsmart:{offline:false,online:true},
+  pdfocr:{offline:false,online:true},
+  unlock:{offline:false,online:true},
+  protect:{offline:false,online:true},
+  rotate:{offline:true,online:true},
+  watermark:{offline:true,online:true},
+  pdfa:{offline:false,online:true},
+  validatepdfa:{offline:false,online:true},
+  wordpdf:{offline:false,online:true},
+  powerpointpdf:{offline:false,online:true},
+  excelpdf:{offline:false,online:true},
+  pdfjpg:{offline:true,online:true},
+  imagepdf:{offline:true,online:true},
+  htmlpdf:{offline:false,online:true},
+  pagenumber:{offline:true,online:false},
+  extract:{offline:true,online:true},
+  repair:{offline:false,online:true},
+  deletepages:{offline:true,online:false},
+  reorderpages:{offline:true,online:false},
+  compressimage:{offline:true,online:true},
+  upscaleimage:{offline:false,online:true},
+  resizeimage:{offline:true,online:true},
+  cropimage:{offline:true,online:true},
+  rotateimage:{offline:true,online:true},
+  convertimage:{offline:true,online:true},
+  repairimage:{offline:false,online:true},
+  watermarkimage:{offline:true,online:true},
+  removebackgroundimage:{offline:false,online:true}
+};
+
+const API_ALIAS={wordpdf:'officepdf',powerpointpdf:'officepdf',excelpdf:'officepdf'};
+const OFFICE=new Set(['wordpdf','powerpointpdf','excelpdf']);
+const PROTECTED_UI=new Set(['watermark','pagenumber','cropimage','tilepages']);
+let lastTool='';
+let renderQueued=false;
+
+function en(){return String(document.documentElement.lang||'vi').toLowerCase().startsWith('en')}
+function t(vi,enText){return en()?enText:vi}
+function el(id){return document.getElementById(id)}
+function tool(){return el('apiTool')?.value||''}
+function files(){try{return Array.from(window.selectedFiles||[])}catch(_){return[]}}
+function mode(){return (localStorage.getItem('nlkh_pdf_mode')||'offline').toLowerCase()==='online'?'online':'offline'}
+function modeBtn(m){return document.querySelector('.processing-mode [data-mode="'+m+'"]')}
+function cap(k){return CAP[k]||{offline:false,online:true}}
+function setStatus(vi,enText,type='info'){
+  const s=el('statusMessage'); if(!s)return;
+  s.textContent=t(vi,enText); s.className='status-message status--'+type;
+}
+function htmlPdfUrlV59(){
+  return String(el('htmlPdfUrl')?.value||'').trim();
+}
+function validHtmlPdfUrlV59(){
+  try{
+    const u=new URL(htmlPdfUrlV59());
+    return (u.protocol==='http:'||u.protocol==='https:')&&!!u.hostname;
+  }catch(_){return false}
+}
+function syncProcessReadyV59(){
+  const b=el('processButton');if(!b)return;
+  b.disabled=tool()==='htmlpdf'?!validHtmlPdfUrlV59():files().length===0;
+}
+function setBusy(on){
+  const l=el('loader'),txt=el('processButtonText'),b=el('processButton');
+  if(l)l.style.display=on?'block':'none';
+  if(txt)txt.style.display=on?'none':'block';
+  if(b)b.disabled=on||(tool()==='htmlpdf'?!validHtmlPdfUrlV59():files().length===0);
+}
+function setMode(m){
+  const b=modeBtn(m);
+  if(b&&!b.hidden&&!b.disabled){
+    if(mode()!==m)b.click();
+  }else localStorage.setItem('nlkh_pdf_mode',m);
+}
+function addTools(){
+  const s=el('apiTool'); if(!s)return;
+  const g=Array.from(s.querySelectorAll('optgroup')).find(x=>/PDF/i.test(x.label||''))||s;
+  if(!s.querySelector('[value="splitsmart"]')){
+    const o=document.createElement('option'); o.value='splitsmart'; o.textContent='Tách PDF thông minh bằng AI';
+    const a=s.querySelector('[value="split"]'); a?a.insertAdjacentElement('afterend',o):g.appendChild(o);
+  }
+  if(!s.querySelector('[value="pdfocr"]')){
+    const o=document.createElement('option'); o.value='pdfocr'; o.textContent='OCR PDF';
+    const a=s.querySelector('[value="splitsmart"]'); a?a.insertAdjacentElement('afterend',o):g.appendChild(o);
+  }
+}
+const TOOL_GROUPS_V57={
+  organize:['Sắp xếp & trang','Organize & Pages'],
+  improve:['Tối ưu & nhận dạng','Optimize & OCR'],
+  edit:['Chỉnh sửa & đánh dấu','Edit & Mark'],
+  topdf:['Chuyển sang PDF','Convert to PDF'],
+  frompdf:['Xuất từ PDF','Export from PDF'],
+  security:['Bảo mật PDF','PDF Security'],
+  images:['Công cụ hình ảnh','Image Tools']
+};
+const TOOL_META_V57={
+  merge:{g:'organize',vi:'Gộp PDF',en:'Merge PDF',k:'gop noi merge combine join'},
+  split:{g:'organize',vi:'Tách PDF',en:'Split PDF',k:'tach cat chia split ranges'},
+  tilepages:{g:'organize',vi:'Chia nhỏ trang PDF',en:'Tile PDF Pages',k:'chia nho trang tile poster a0 a1 a2 a3 a4 a5 a6 2 4 6 8 paper grid'},
+  splitsmart:{g:'organize',vi:'Tách PDF thông minh bằng AI',en:'Smart Split PDF with AI',k:'tach ai smart hoa don hop dong chuong invoice contract'},
+  deletepages:{g:'organize',vi:'Xóa trang PDF',en:'Delete PDF Pages',k:'xoa trang delete remove page'},
+  reorderpages:{g:'organize',vi:'Sắp xếp trang PDF',en:'Reorder PDF Pages',k:'sap xep trang thu tu reorder organize page'},
+  rotate:{g:'organize',vi:'Xoay PDF',en:'Rotate PDF',k:'xoay rotate page'},
+  compress:{g:'improve',vi:'Nén PDF',en:'Compress PDF',k:'nen giam dung luong compress size zip'},
+  pdfocr:{g:'improve',vi:'OCR PDF',en:'OCR PDF',k:'ocr scan nhan dang chu searchable text'},
+  repair:{g:'improve',vi:'Sửa PDF',en:'Repair PDF',k:'sua hong repair corrupt fix'},
+  pdfa:{g:'improve',vi:'PDF → PDF/A',en:'PDF → PDF/A',k:'pdfa luu tru archive long term'},
+  validatepdfa:{g:'improve',vi:'Kiểm tra PDF/A',en:'Validate PDF/A',k:'kiem tra validate pdfa compliance archive iso'},
+  watermark:{g:'edit',vi:'Đóng dấu PDF',en:'Watermark PDF',k:'dong dau watermark ban quyen text image'},
+  pagenumber:{g:'edit',vi:'Đánh số trang',en:'Page Numbers',k:'danh so trang number page'},
+  wordpdf:{g:'topdf',vi:'Word → PDF',en:'Word → PDF',k:'word doc docx office pdf'},
+  powerpointpdf:{g:'topdf',vi:'PowerPoint → PDF',en:'PowerPoint → PDF',k:'powerpoint ppt pptx office pdf'},
+  excelpdf:{g:'topdf',vi:'Excel → PDF',en:'Excel → PDF',k:'excel xls xlsx office pdf'},
+  imagepdf:{g:'topdf',vi:'Ảnh → PDF',en:'Image → PDF',k:'anh hinh jpg png image pdf'},
+  htmlpdf:{g:'topdf',vi:'Web / URL → PDF',en:'Web / URL → PDF',k:'web url html website trang web link to pdf'},
+  pdfjpg:{g:'frompdf',vi:'PDF → JPG',en:'PDF → JPG',k:'pdf jpg jpeg image export'},
+  extract:{g:'frompdf',vi:'Trích xuất văn bản',en:'Extract Text',k:'trich xuat van ban text extract data'},
+  protect:{g:'security',vi:'Bảo vệ PDF',en:'Protect PDF',k:'bao ve mat khau password encrypt security'},
+  unlock:{g:'security',vi:'Mở khóa PDF',en:'Unlock PDF',k:'mo khoa mat khau password unlock decrypt'},
+  compressimage:{g:'images',vi:'Nén ảnh',en:'Compress Image',k:'nen anh image compress'},
+  upscaleimage:{g:'images',vi:'Nâng độ phân giải ảnh',en:'Upscale Image',k:'nang do phan giai upscale image 2x 4x quality'},
+  resizeimage:{g:'images',vi:'Đổi kích thước ảnh',en:'Resize Image',k:'doi kich thuoc resize image width height'},
+  cropimage:{g:'images',vi:'Cắt ảnh',en:'Crop Image',k:'cat anh crop image'},
+  rotateimage:{g:'images',vi:'Xoay ảnh',en:'Rotate Image',k:'xoay anh rotate image'},
+  convertimage:{g:'images',vi:'Đổi định dạng ảnh',en:'Convert Image',k:'doi dinh dang convert jpg png gif heic'},
+  repairimage:{g:'images',vi:'Sửa ảnh lỗi',en:'Repair Image',k:'sua anh loi hong repair image corrupt broken jpg jpeg'},
+  watermarkimage:{g:'images',vi:'Đóng dấu ảnh',en:'Watermark Image',k:'dong dau anh watermark image'},
+  removebackgroundimage:{g:'images',vi:'Xóa nền ảnh',en:'Remove Image Background',k:'xoa nen background remove image'}
+};
+function normalizeToolQueryV57(v){
+  return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/\s+/g,' ').trim();
+}
+function chooseToolV57(id){
+  const s=el('apiTool');if(!s||!s.querySelector('[value="'+id+'"]'))return;
+  s.value=id;s.dispatchEvent(new Event('change',{bubbles:true}));
+  const q=el('toolSearchV57'),r=el('toolSearchResultsV57');if(q)q.value='';if(r){r.classList.add('hidden');r.innerHTML=''}
+}
+function renderToolFinderV57(){
+  const q=el('toolSearchV57'),box=el('toolSearchResultsV57');if(!q||!box)return;
+  const term=normalizeToolQueryV57(q.value);
+  q.setAttribute('aria-expanded',term?'true':'false');
+  if(!term){box.classList.add('hidden');box.innerHTML='';return}
+  const matches=Object.entries(TOOL_META_V57).map(([id,m])=>{
+    const hay=normalizeToolQueryV57([m.vi,m.en,m.k,TOOL_GROUPS_V57[m.g][0],TOOL_GROUPS_V57[m.g][1]].join(' '));
+    let score=hay.includes(term)?1:0;
+    const name=normalizeToolQueryV57(en()?m.en:m.vi);
+    if(name.startsWith(term))score+=3;else if(name.includes(term))score+=2;
+    return {id,m,score};
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||(en()?a.m.en.localeCompare(b.m.en):a.m.vi.localeCompare(b.m.vi))).slice(0,8);
+  if(!matches.length){box.innerHTML='<div class="tool-finder-v57__empty">'+t('Không tìm thấy công cụ phù hợp.','No matching tool found.')+'</div>';box.classList.remove('hidden');return}
+  box.innerHTML=matches.map((x,i)=>'<button type="button" role="option" data-find-tool="'+x.id+'" data-result-index="'+i+'"><span><strong>'+(en()?x.m.en:x.m.vi)+'</strong><small>'+TOOL_GROUPS_V57[x.m.g][en()?1:0]+'</small></span><i>→</i></button>').join('');
+  box.classList.remove('hidden');
+  box.querySelectorAll('[data-find-tool]').forEach(b=>b.addEventListener('click',()=>chooseToolV57(b.dataset.findTool)));
+}
+function ensureToolFinderV57(){
+  const q=el('toolSearchV57');if(!q||q.dataset.boundV57==='1')return;
+  q.dataset.boundV57='1';
+  q.addEventListener('input',renderToolFinderV57);
+  q.addEventListener('focus',renderToolFinderV57);
+  q.addEventListener('keydown',e=>{
+    const box=el('toolSearchResultsV57'),items=[...box.querySelectorAll('[data-find-tool]')];
+    if(e.key==='Escape'){box.classList.add('hidden');q.blur();return}
+    if(!items.length)return;
+    const active=document.activeElement?.dataset?.resultIndex;
+    let i=Number.isFinite(Number(active))?Number(active):-1;
+    if(e.key==='ArrowDown'){e.preventDefault();items[Math.min(items.length-1,i+1)].focus()}
+    if(e.key==='ArrowUp'){e.preventDefault();items[Math.max(0,i<=0?0:i-1)].focus()}
+    if(e.key==='Enter'&&items[0]){e.preventDefault();chooseToolV57(items[0].dataset.findTool)}
+  });
+  const box=el('toolSearchResultsV57');
+  if(box)box.addEventListener('keydown',e=>{
+    const items=[...box.querySelectorAll('[data-find-tool]')],i=items.indexOf(document.activeElement);
+    if(e.key==='ArrowDown'){e.preventDefault();items[Math.min(items.length-1,i+1)]?.focus()}
+    if(e.key==='ArrowUp'){e.preventDefault();if(i<=0)q.focus();else items[i-1]?.focus()}
+    if(e.key==='Escape'){box.classList.add('hidden');q.focus()}
+    if(e.key==='Enter'&&document.activeElement?.dataset?.findTool)chooseToolV57(document.activeElement.dataset.findTool)
+  });
+  document.addEventListener('click',e=>{if(!e.target.closest?.('#toolFinderV57'))el('toolSearchResultsV57')?.classList.add('hidden')});
+  document.addEventListener('keydown',e=>{
+    if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){e.preventDefault();q.focus()}
+  });
+}
+function localizeToolNames(){
+  const s=el('apiTool'); if(!s)return;
+  Object.entries(TOOL_META_V57).forEach(([id,m])=>{const o=s.querySelector('[value="'+id+'"]');if(o)o.textContent=en()?m.en:m.vi});
+  s.querySelectorAll('optgroup[data-group]').forEach(g=>{const v=TOOL_GROUPS_V57[g.dataset.group];if(v)g.label=v[en()?1:0]});
+  document.querySelectorAll('.quick-tool[data-tool]').forEach(b=>{const m=TOOL_META_V57[b.dataset.tool],strong=b.querySelector('strong');if(m&&strong)strong.textContent=en()?m.en:m.vi});
+  const title=el('selectedToolName'),o=s.options[s.selectedIndex];if(title&&o)title.textContent=o.textContent;
+  const finderLabel=el('toolFinderLabelV57');if(finderLabel)finderLabel.textContent=t('Tìm nhanh công cụ','Find a tool');
+  const q=el('toolSearchV57');if(q)q.placeholder=t('Gõ: gộp, OCR, Word, mật khẩu...','Try: merge, OCR, Word, password...');
+  const browse=document.querySelector('.select-label[for="apiTool"]');if(browse)browse.textContent=t('Duyệt theo nhóm','Browse by category');
+  const intro=document.querySelector('.studio-intro');if(intro)intro.textContent=t('32 công cụ được sắp theo việc bạn muốn làm: trang, tối ưu, chỉnh sửa, chuyển đổi, bảo mật và hình ảnh.','32 tools are organized by what you want to do: pages, optimize, edit, convert, secure, and images.');
+  const metric=document.querySelector('.studio-metrics div:nth-child(2) span');if(metric)metric.textContent=t('Nhóm tác vụ rõ ràng','Clear task groups');
+  ensureToolFinderV57();renderToolFinderV57();
+}
+function placeMode(){
+  const s=el('apiTool'),m=document.querySelector('.processing-mode');
+  if(!s||!m)return;
+  if(m.previousElementSibling!==s)s.insertAdjacentElement('afterend',m);
+  const old=document.querySelector('.offline-note'); if(old)old.style.display='none';
+}
+function card(){
+  let c=el('nlkh-capability-v51');
+  if(!c){c=document.createElement('div');c.id='nlkh-capability-v51';c.className='nlkh-capability-v51'}
+  const m=document.querySelector('.processing-mode');
+  if(m&&c.previousElementSibling!==m)m.insertAdjacentElement('afterend',c);
+  return c;
+}
+function renderCapability(changed){
+  const k=tool(),c=cap(k),off=modeBtn('offline'),on=modeBtn('online');
+  if(off){off.hidden=!c.offline;off.disabled=!c.offline}
+  if(on){on.hidden=!c.online;on.disabled=!c.online}
+  if(changed){
+    if(c.offline)setMode('offline'); else if(c.online)setMode('online');
+  }else{
+    if(mode()==='offline'&&!c.offline&&c.online)setMode('online');
+    if(mode()==='online'&&!c.online&&c.offline)setMode('offline');
+  }
+  const box=card(); if(!box)return;
+  const active=mode();
+  const badge=c.offline&&c.online?'OFFLINE + ONLINE':c.offline?t('CHỈ OFFLINE','OFFLINE ONLY'):t('CHỈ ONLINE','ONLINE ONLY');
+  const privacy=active==='offline'
+    ? t('Tài liệu không rời thiết bị.','The document stays on this device.')
+    : t('File sẽ được gửi đến dịch vụ xử lý Online.','The file will be sent to the Online processing service.');
+  box.innerHTML='<div class="nlkh-capability-head"><strong>'+badge+'</strong><span>'+privacy+'</span></div>'+
+    ((!c.offline&&c.online)?'<div class="nlkh-capability-warning">'+
+      t('Không có bản Offline đã được kiểm chứng cho tác vụ này.','No verified Offline implementation is enabled for this task.')+
+    '</div>':'');
+}
+function field(label,html,note=''){return '<div class="nlkh-field"><label>'+label+'</label>'+html+(note?'<small>'+note+'</small>':'')+'</div>'}
+function select(id,options,value){
+  return '<select id="'+id+'">'+options.map(x=>'<option value="'+x[0]+'"'+(x[0]===value?' selected':'')+'>'+x[1]+'</option>').join('')+'</select>';
+}
+function input(id,type='text',value='',attrs=''){return '<input id="'+id+'" type="'+type+'" value="'+String(value).replace(/"/g,'&quot;')+'" '+attrs+'>'}
+function checkbox(id,label,checked=false){
+  return '<label class="nlkh-check"><input id="'+id+'" type="checkbox" '+(checked?'checked':'')+'><span>'+label+'</span></label>';
+}
+function note(vi,enText){return '<div class="nlkh-task-note">'+t(vi,enText)+'</div>'}
+function onlineBadge(){return '<span class="nlkh-inline-badge">ONLINE</span>'}
+function offlineBadge(){return '<span class="nlkh-inline-badge is-local">OFFLINE</span>'}
+
+function officeHtml(k){
+  const m={wordpdf:['Word','DOC / DOCX'],excelpdf:['Excel','XLS / XLSX'],powerpointpdf:['PowerPoint','PPT / PPTX']}[k];
+  return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+m[0]+' → PDF</strong></div>'+
+    note('Không có setting giả. iLoveAPI Office → PDF tự chuyển tài liệu sang PDF. Hỗ trợ '+m[1]+'.',
+         'No fake settings are shown. iLoveAPI Office → PDF converts the document directly. Supports '+m[1]+'.');
+}
+function optionsHtml(k){
+  const m=mode();
+  if(k==='htmlpdf')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Web / URL → PDF','Web / URL → PDF')+'</strong></div>'+
+    field(t('Địa chỉ trang web công khai','Public webpage URL'),'<input id="htmlPdfUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://example.com/page">',t('Trang phải truy cập được công khai bằng HTTP/HTTPS.','The page must be publicly reachable over HTTP/HTTPS.'))+
+    note('Dịch vụ Online sẽ truy cập URL này và tạo PDF. Không cần tải file lên từ máy.','The Online service will fetch this URL and create a PDF. No local file upload is required.')+
+    note('V59 chỉ dùng Basic Web → PDF. Các tùy chọn A4, landscape, margin và single-page chưa bật vì tài liệu REST hiện chưa nhất quán với guide.','V59 uses Basic Web → PDF only. A4, landscape, margin, and single-page options stay disabled because the REST reference and guide are currently inconsistent.');
+  if(OFFICE.has(k))return officeHtml(k);
+  if(k==='splitsmart')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Tách PDF thông minh','Smart Split PDF')+'</strong></div>'+
+    field(t('Yêu cầu tách','Split instructions'),'<textarea id="smartSplitPrompt" rows="5" placeholder="'+t('Ví dụ: Tách mỗi hóa đơn thành một file PDF riêng.','Example: Split each invoice into a separate PDF file.')+'"></textarea>')+
+    '<div class="nlkh-prompt-presets"><button type="button" data-prompt="'+t('Tách mỗi hóa đơn thành một file PDF riêng.','Split each invoice into a separate PDF file.')+'">'+t('Mỗi hóa đơn','Each invoice')+'</button><button type="button" data-prompt="'+t('Tách mỗi hợp đồng hoặc phụ lục độc lập thành một file.','Split each independent contract or appendix into a separate file.')+'">'+t('Mỗi hợp đồng','Each contract')+'</button><button type="button" data-prompt="'+t('Tách tài liệu theo từng chương chính.','Split the document by main chapters.')+'">'+t('Theo chương','By chapter')+'</button></div>'+
+    note('AI cần đọc nội dung PDF trên dịch vụ Online để xác định điểm tách.','AI reads the PDF through the Online service to determine split points.');
+  if(k==='pdfocr')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('OCR PDF','OCR PDF')+'</strong></div>'+
+    note('Dùng cho PDF scan/ảnh để tạo lớp chữ có thể tìm kiếm và sao chép.','Use scanned/image PDFs to create searchable and copyable text.')+
+    field(t('Ngôn ngữ tài liệu','Document languages'),'<div class="nlkh-ocr-langs"><label><input type="checkbox" name="ocrLang" value="vie" checked> '+t('Tiếng Việt','Vietnamese')+'</label><label><input type="checkbox" name="ocrLang" value="eng" checked> English</label><label><input type="checkbox" name="ocrLang" value="chi_sim"> '+t('Trung giản thể','Chinese (Simplified)')+'</label><label><input type="checkbox" name="ocrLang" value="jpn"> '+t('Tiếng Nhật','Japanese')+'</label></div>');
+  if(k==='compress')return field(t('Mức độ nén','Compression level'),select('compressionLevel',[
+    ['low',t('Nén thấp · chất lượng cao','Low · high quality')],
+    ['recommended',t('Khuyến nghị','Recommended')],
+    ['extreme',t('Nén cao · file nhỏ','Extreme · smaller file')]
+  ],'recommended'));
+  if(k==='merge')return note('Thêm nhiều PDF rồi kéo sắp xếp ở bảng bên phải. Không có setting thừa.','Add multiple PDFs and drag to reorder them in the right panel. No unnecessary settings.');
+  if(k==='split'){
+    const splitModes=m==='offline'
+      ? [['ranges',t('Theo khoảng trang','Page ranges')],['fixed_range',t('Mỗi N trang','Every N pages')]]
+      : [['ranges',t('Theo khoảng trang','Page ranges')],['fixed_range',t('Mỗi N trang','Every N pages')],['filesize',t('Theo dung lượng tối đa','Maximum file size')]];
+    let sm=el('splitMode')?.value||'ranges';
+    if(!splitModes.some(x=>x[0]===sm))sm='ranges';
+    return field(t('Kiểu tách','Split mode'),select('splitMode',splitModes,sm))+
+    (sm==='ranges'?field(t('Khoảng trang','Page ranges'),input('splitRange','text','', 'placeholder="1-3,5,8-10"'),t('Mỗi khoảng tạo thành một PDF riêng.','Each range becomes a separate PDF.')):'')+
+    (sm==='fixed_range'?field(t('Số trang mỗi file','Pages per file'),input('splitFixedRange','number','1','min="1" step="1"')):'')+
+    (sm==='filesize'?field(t('Dung lượng tối đa','Maximum file size'),input('splitFilesize','number','10','min="1" step="1"'),t('MB trên mỗi file đầu ra.','MB per output file.')):'')+
+    (m==='offline'?note('Offline tạo nhiều PDF thật ngay trên thiết bị. Chế độ chia theo dung lượng chỉ có ở Online.','Offline creates real multiple PDFs on-device. Maximum-file-size splitting is available Online only.'):'');
+  }
+  if(k==='unlock')return field(t('Mật khẩu hiện tại','Current password'),input('passwordInput','password','','autocomplete="current-password"'))+
+    checkbox('showPassword',t('Hiện mật khẩu','Show password'))+
+    note('Chỉ mở khóa khi bạn biết mật khẩu. Công cụ không dò hoặc bẻ khóa mật khẩu.','Unlock only when you know the password. This tool does not crack passwords.');
+  if(k==='protect')return field(t('Mật khẩu mới','New password'),input('passwordInput','password','','autocomplete="new-password"'))+
+    field(t('Nhập lại mật khẩu','Confirm password'),input('passwordConfirm','password','','autocomplete="new-password"'))+
+    checkbox('showPassword',t('Hiện mật khẩu','Show password'));
+  if(k==='rotate'||k==='rotateimage')return field(t('Góc xoay','Rotation'),select('rotateAngle',[
+    ['90',t('90° sang phải','90° right')],['180','180°'],['270',t('270° · sang trái','270° · left')]
+  ],'90'))+note(k==='rotate'?t('Áp dụng cho toàn bộ trang của PDF.','Applied to all PDF pages.'):t('Xoay ảnh đã chọn.','Rotate the selected image.'));
+  if(k==='pdfa')return field(t('Chuẩn PDF/A','PDF/A conformance'),select('pdfaConformance',[
+    ['pdfa-2b','PDF/A-2b · '+t('khuyến nghị','recommended')],
+    ['pdfa-1b','PDF/A-1b'],['pdfa-1a','PDF/A-1a'],['pdfa-2u','PDF/A-2u'],['pdfa-2a','PDF/A-2a'],
+    ['pdfa-3b','PDF/A-3b'],['pdfa-3u','PDF/A-3u'],['pdfa-3a','PDF/A-3a']
+  ],'pdfa-2b'))+checkbox('pdfaDowngrade',t('Cho phép hạ chuẩn nếu chuyển đổi lỗi','Allow conformance downgrade if needed'),true);
+  if(k==='validatepdfa')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Kiểm tra PDF/A','Validate PDF/A')+'</strong></div>'+
+    field(t('Chuẩn cần kiểm tra','Conformance to validate'),select('validatePdfaConformance',[
+      ['pdfa-1b','PDF/A-1b'],['pdfa-1a','PDF/A-1a'],
+      ['pdfa-2b','PDF/A-2b'],['pdfa-2u','PDF/A-2u'],['pdfa-2a','PDF/A-2a'],
+      ['pdfa-3b','PDF/A-3b'],['pdfa-3u','PDF/A-3u'],['pdfa-3a','PDF/A-3a']
+    ],'pdfa-2b'))+
+    note('Công cụ chỉ kiểm tra mức tuân thủ và trả kết quả xác thực; không tạo một PDF mới.','This tool validates conformance and returns a validation result; it does not create a new PDF.');
+  if(k==='pdfjpg'){
+    if(m==='offline')return '<div class="nlkh-task-head">'+offlineBadge()+'<strong>'+t('PDF → JPG tại máy','Local PDF → JPG')+'</strong></div>'+
+      field(t('Độ phân giải','Render resolution'),select('pdfJpgScale',[
+        ['1.5',t('108 DPI · nhẹ','108 DPI · light')],
+        ['2',t('144 DPI · khuyến nghị','144 DPI · recommended')],
+        ['3',t('216 DPI · chất lượng cao','216 DPI · high quality')]
+      ],'2'))+
+      field(t('Chất lượng JPG','JPEG quality'),select('pdfJpgQuality',[
+        ['0.82',t('82% · file nhỏ','82% · smaller')],
+        ['0.9',t('90% · khuyến nghị','90% · recommended')],
+        ['0.96',t('96% · cao','96% · high')]
+      ],'0.9'))+
+      note('Offline render từng trang thành JPG. Trích xuất ảnh gốc nhúng trong PDF chỉ có ở Online.','Offline renders every page to JPG. Extracting original embedded images is Online-only.');
+    return field(t('Chế độ','Mode'),select('pdfJpgMode',[
+      ['pages',t('Chuyển từng trang thành JPG','Convert every page to JPG')],
+      ['extract',t('Trích xuất ảnh có trong PDF','Extract embedded images')]
+    ],'pages'));
+  }
+  if(k==='imagepdf'){
+    if(m==='offline')return note('Offline hiện ghép ảnh thành PDF theo đúng kích thước ảnh, không thêm lề. Chuyển Online để chọn A4/Letter, hướng trang và lề.','Offline currently creates PDF pages at image size with no margin. Switch Online for A4/Letter, orientation and margin.');
+    return '<div class="nlkh-grid-3">'+
+      field(t('Khổ trang','Page size'),select('imagePdfPageSize',[['fit',t('Vừa ảnh','Fit image')],['A4','A4'],['letter','Letter']],'fit'))+
+      field(t('Hướng trang','Orientation'),select('imagePdfOrientation',[['portrait',t('Dọc','Portrait')],['landscape',t('Ngang','Landscape')]],'portrait'))+
+      field(t('Lề (px)','Margin (px)'),input('imagePdfMargin','number','0','min="0" step="1"'))+
+    '</div>'+checkbox('imagePdfMerge',t('Gộp tất cả ảnh vào một PDF','Merge all images into one PDF'),true);
+  }
+  if(k==='extract'){
+    if(m==='offline')return '<div class="nlkh-task-head">'+offlineBadge()+'<strong>'+t('Trích xuất text tại máy','Local text extraction')+'</strong></div>'+
+      checkbox('extractPageMarkers',t('Thêm tiêu đề phân cách từng trang','Include page separators'),true)+
+      note('Offline chỉ đọc text layer có sẵn trong PDF. PDF scan/ảnh không có text layer cần dùng OCR PDF Online.','Offline reads the existing PDF text layer only. Scanned/image PDFs without a text layer require Online OCR.');
+    return checkbox('extractDetailed',t('Xuất dữ liệu chi tiết: trang, vị trí, font, cỡ chữ…','Detailed output: page, position, font, font size…'))+
+      note('API Extract hiện trích xuất văn bản. Không ghi nhãn “text + ảnh” khi engine chưa làm việc đó.','The Extract API currently extracts text. It is not labelled “text + images” unless the engine supports both.');
+  }
+  if(k==='repair')return note('Không có setting bổ sung. Hệ thống sẽ thử khôi phục cấu trúc PDF bị lỗi.','No extra settings. The service will attempt to recover the damaged PDF structure.');
+  if(k==='deletepages')return field(t('Trang cần xóa','Pages to delete'),input('deletePageRange','text','', 'placeholder="2,4-6"'),t('Ví dụ: 2,4-6. Không thể xóa toàn bộ trang.','Example: 2,4-6. You cannot delete every page.'));
+  if(k==='reorderpages')return field(t('Thứ tự trang mới','New page order'),input('reorderPageOrder','text','', 'placeholder="3,1,2,4-6"'),t('Trang không ghi sẽ được nối ở cuối theo thứ tự cũ.','Unlisted pages are appended in their original order.'));
+  if(k==='compressimage')return field(t('Mức độ nén','Compression level'),select('compressionLevel',[
+    ['low',t('Nén thấp','Low')],['recommended',t('Khuyến nghị','Recommended')],['extreme',t('Nén cao','Extreme')]
+  ],'recommended'));
+  if(k==='resizeimage'){
+    const rm=(m==='online'?(el('resizeMode')?.value||'pixels'):'pixels');
+    return (m==='online'?field(t('Cách đổi kích thước','Resize mode'),select('resizeMode',[
+      ['pixels',t('Theo pixel','Pixels')],['percentage',t('Theo phần trăm','Percentage')]
+    ],rm)):'')+
+    (rm==='pixels'?'<div class="nlkh-grid-2">'+field(t('Rộng (px)','Width (px)'),input('resizeWidth','number','','min="1"'))+field(t('Cao (px)','Height (px)'),input('resizeHeight','number','','min="1"'))+'</div>':
+      field(t('Tỷ lệ (%)','Percentage (%)'),input('resizePercentage','number','50','min="1" max="1000"')))+
+    checkbox('maintainAspectRatio',t('Giữ nguyên tỷ lệ','Keep aspect ratio'),true)+
+    (m==='online'?checkbox('noEnlargeIfSmaller',t('Không phóng to ảnh nhỏ hơn kích thước yêu cầu','Do not enlarge smaller images'),true):'');
+  }
+  if(k==='cropimage')return '<div class="nlkh-grid-2">'+
+    field('X',input('cropX','number','0','min="0"'))+field('Y',input('cropY','number','0','min="0"'))+
+    field(t('Rộng','Width'),input('cropWidth','number','','min="1"'))+field(t('Cao','Height'),input('cropHeight','number','','min="1"'))+
+    '</div>'+note('V51 giữ nhập tọa độ chính xác. Crop kéo-thả cần renderer canvas riêng và chưa được giả lập.','V51 keeps precise numeric cropping. Drag-to-crop needs a dedicated canvas renderer and is not faked.');
+  if(k==='convertimage'){
+    const opts=m==='offline'
+      ? [['jpg','JPG'],['png','PNG']]
+      : [['jpg','JPG'],['png','PNG'],['gif','GIF'],['gif_animation',t('GIF động','Animated GIF')],['heic','HEIC']];
+    const to=el('convertTo')?.value||'jpg';
+    return field(t('Định dạng đầu ra','Output format'),select('convertTo',opts,opts.some(x=>x[0]===to)?to:'jpg'))+
+      ((m==='online'&&(to==='gif_animation'))?'<div class="nlkh-grid-2">'+
+        field(t('Thời gian mỗi ảnh (1/100 giây)','Frame time (1/100 sec)'),input('gifTime','number','50','min="1"'))+
+        field(t('Lặp','Loop'),select('gifLoop',[['1',t('Có','Yes')],['0',t('Không','No')]],'1'))+'</div>':'');
+  }
+  if(k==='upscaleimage')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Nâng độ phân giải ảnh','Upscale Image')+'</strong></div>'+
+    field(t('Mức phóng đại','Upscale multiplier'),select('upscaleMultiplier',[['2','2×'],['4','4×']],'2'))+
+    note('API chính thức chỉ hỗ trợ 2× hoặc 4×. Ảnh được gửi tới dịch vụ Online để xử lý.','The official API supports 2× or 4× only. The image is sent to the Online service for processing.');
+  if(k==='repairimage')return '<div class="nlkh-task-head">'+onlineBadge()+'<strong>'+t('Sửa ảnh lỗi','Repair Image')+'</strong></div>'+
+    note('Dùng cho ảnh JPG/JPEG bị hỏng hoặc không đọc được. Không có setting giả.','Designed for corrupted or broken JPG/JPEG images. No fake settings are shown.');
+  if(k==='watermarkimage'){
+    const wm=m==='offline'?'text':(el('watermarkMode')?.value||'text');
+    return (m==='online'?field(t('Loại dấu','Watermark type'),select('watermarkMode',[['text',t('Văn bản','Text')],['image',t('Hình ảnh','Image')]],wm)):'<input type="hidden" id="watermarkMode" value="text">')+
+      (wm==='text'?field(t('Nội dung','Text'),input('watermarkText','text','KOHA'))+
+        '<div class="nlkh-grid-3">'+
+        field(t('Font','Font'),select('watermarkFontFamily',[['Arial Unicode MS','Arial Unicode MS'],['Arial','Arial'],['Verdana','Verdana'],['Courier','Courier'],['Times New Roman','Times New Roman']],'Arial Unicode MS'))+
+        field(t('Kiểu chữ','Font style'),select('watermarkFontStyle',[['',t('Thường','Regular')],['Bold',t('Đậm','Bold')],['Italic',t('Nghiêng','Italic')]],''))+
+        field(t('Cỡ chữ','Font size'),input('watermarkFontSize','number','48','min="1"'))+'</div>'+
+        field(t('Màu chữ','Text color'),input('watermarkFontColor','color','#000000')) :
+        field(t('Ảnh dấu','Watermark image'),'<input id="watermarkImageInput" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg">'))+
+      '<div class="nlkh-grid-3">'+
+      field(t('Vị trí','Position'),select('watermarkPosition',[
+        ['Center',t('Giữa','Center')],['NorthWest',t('Trên trái','Top left')],['NorthEast',t('Trên phải','Top right')],
+        ['SouthWest',t('Dưới trái','Bottom left')],['SouthEast',t('Dưới phải','Bottom right')]
+      ],'Center'))+
+      field(t('Độ trong suốt','Opacity'),input('watermarkTransparency','number','50','min="1" max="100"'))+
+      field(t('Góc xoay','Rotation'),input('watermarkRotation','number','0','min="0" max="360"'))+
+      '</div>'+(m==='online'?checkbox('watermarkMosaic',t('Lặp dấu 9 vị trí','Mosaic watermark')):'')+
+      (m==='offline'?note('Offline đóng dấu ảnh hiện chỉ hỗ trợ văn bản.','Offline image watermark currently supports text only.'):'');
+  }
+  if(k==='removebackgroundimage')return note('Không có setting API bổ sung. Ảnh được gửi đến dịch vụ Online để tách nền.','No extra API settings. The image is sent to the Online service for background removal.');
+  return '';
+}
+function processLabel(k){
+  const m={
+    compress:['Nén PDF','Compress PDF'],merge:['Gộp PDF','Merge PDF'],split:['Tách PDF','Split PDF'],tilepages:['Chia nhỏ trang','Tile PDF pages'],
+    splitsmart:['Phân tích & tách PDF','Analyze & split PDF'],pdfocr:['OCR PDF','OCR PDF'],
+    unlock:['Mở khóa PDF','Unlock PDF'],protect:['Bảo vệ PDF','Protect PDF'],rotate:['Xoay PDF','Rotate PDF'],
+    watermark:['Đóng dấu PDF','Watermark PDF'],pdfa:['Chuyển sang PDF/A','Convert to PDF/A'],validatepdfa:['Kiểm tra PDF/A','Validate PDF/A'],
+    wordpdf:['Chuyển Word sang PDF','Convert Word to PDF'],powerpointpdf:['Chuyển PowerPoint sang PDF','Convert PowerPoint to PDF'],
+    excelpdf:['Chuyển Excel sang PDF','Convert Excel to PDF'],pdfjpg:['Chuyển PDF sang JPG','Convert PDF to JPG'],
+    imagepdf:['Tạo PDF từ ảnh','Create PDF from images'],htmlpdf:['Tạo PDF từ web','Create PDF from web'],pagenumber:['Đánh số trang','Add page numbers'],
+    extract:['Trích xuất văn bản','Extract text'],repair:['Sửa PDF','Repair PDF'],deletepages:['Xóa trang','Delete pages'],
+    reorderpages:['Sắp xếp trang','Reorder pages'],compressimage:['Nén ảnh','Compress image'],upscaleimage:['Nâng độ phân giải','Upscale image'],resizeimage:['Đổi kích thước','Resize image'],
+    cropimage:['Cắt ảnh','Crop image'],rotateimage:['Xoay ảnh','Rotate image'],convertimage:['Chuyển đổi ảnh','Convert image'],repairimage:['Sửa ảnh lỗi','Repair image'],
+    watermarkimage:['Đóng dấu ảnh','Watermark image'],removebackgroundimage:['Xóa nền ảnh','Remove background']
+  }[k]||['Bắt đầu xử lý','Start processing'];
+  return t(m[0],m[1]);
+}
+function fileConfig(k){
+  if(OFFICE.has(k))return {accept:k==='wordpdf'?'.doc,.docx':k==='excelpdf'?'.xls,.xlsx':'.ppt,.pptx',multi:false,label:t('Chọn tài liệu Office','Choose Office document')};
+  if(['compressimage','upscaleimage','resizeimage','cropimage','rotateimage','convertimage','repairimage','watermarkimage','removebackgroundimage','imagepdf'].includes(k))
+    return {accept:'image/*',multi:k==='imagepdf'||k==='watermarkimage',label:t('Chọn ảnh','Choose image')};
+  return {accept:'application/pdf,.pdf',multi:k==='merge'||k==='watermark',label:t('Chọn PDF','Choose PDF')};
+}
+function applyFileConfig(k){
+  const f=el('fileInput'),box=el('uploadBox'); if(!f||!box)return;
+  const urlOnly=k==='htmlpdf';
+  box.classList.toggle('hidden',urlOnly);
+  if(urlOnly){
+    el('fileListContainer')?.classList.add('hidden');
+    el('previewArea')?.classList.add('hidden');
+    syncProcessReadyV59();
+    return;
+  }
+  const c=fileConfig(k); f.accept=c.accept; f.multiple=c.multi;
+  const strong=box.querySelector('label strong'); if(strong)strong.textContent=c.label;
+  const small=box.querySelector('label small'); if(small)small.textContent=t('Kéo thả hoặc nhấn để chọn đúng định dạng của công cụ.','Drop or click to choose a supported file type.');
+}
+function bindOptions(k){
+  const box=el('toolOptions'); if(!box)return;
+  box.querySelectorAll('[data-prompt]').forEach(b=>b.addEventListener('click',()=>{const a=el('smartSplitPrompt');if(a)a.value=b.dataset.prompt||''}));
+  ['splitMode','resizeMode','convertTo','watermarkMode'].forEach(id=>{const n=el(id);if(n)n.addEventListener('change',()=>renderOptions(k))});
+  const show=el('showPassword'); if(show)show.addEventListener('change',()=>{['passwordInput','passwordConfirm'].forEach(id=>{const x=el(id);if(x)x.type=show.checked?'text':'password'})});
+  const wm=el('watermarkImageInput'); if(wm)wm.addEventListener('change',e=>{window.watermarkFile=e.target.files?.[0]||null});
+  const url=el('htmlPdfUrl');if(url){
+    url.addEventListener('input',syncProcessReadyV59);
+    url.addEventListener('change',syncProcessReadyV59);
+    setTimeout(syncProcessReadyV59,0);
+  }
+  box.querySelectorAll('input,select,textarea').forEach(n=>{
+    n.addEventListener('input',()=>{if(typeof window.updateImagePreview==='function')try{window.updateImagePreview()}catch(_){}});
+    n.addEventListener('change',()=>{if(typeof window.updateImagePreview==='function')try{window.updateImagePreview()}catch(_){}});
+  });
+}
+function captureOptionStateV63(){
+  const state=[];
+  document.querySelectorAll('#toolOptions input,#toolOptions select,#toolOptions textarea').forEach((n,i)=>{
+    if(n.type==='file')return;
+    const key=n.id?`id:${n.id}`:(n.name?`name:${n.name}|value:${n.value}`:`index:${i}`);
+    state.push({key,value:n.value,checked:'checked'in n?n.checked:null});
+  });
+  return state;
+}
+function restoreOptionStateV63(state){
+  if(!Array.isArray(state))return;
+  const controls=[...document.querySelectorAll('#toolOptions input,#toolOptions select,#toolOptions textarea')];
+  state.forEach(s=>{
+    let n=null;
+    if(s.key.startsWith('id:'))n=document.getElementById(s.key.slice(3));
+    else if(s.key.startsWith('name:')){
+      const body=s.key.slice(5),cut=body.indexOf('|value:'),name=cut>=0?body.slice(0,cut):body,value=cut>=0?body.slice(cut+7):'';
+      n=controls.find(x=>x.name===name&&x.value===value)||null;
+    }else if(s.key.startsWith('index:'))n=controls[Number(s.key.slice(6))]||null;
+    if(!n||n.type==='file')return;
+    if(s.checked!==null&&'checked'in n)n.checked=s.checked;
+    if(!['checkbox','radio'].includes(n.type))n.value=s.value;
+  });
+  if(tool()==='htmlpdf')syncProcessReadyV59();
+}
+function renderOptions(k){
+  if(PROTECTED_UI.has(k))return;
+  const box=el('toolOptions'); if(!box)return;
+  box.innerHTML=optionsHtml(k); box.classList.remove('hidden'); bindOptions(k);
+}
+function resetFilesOnly(){
+  try{
+    if(typeof window.resetAll==='function')window.resetAll();
+    else{
+      window.selectedFiles=[]; const f=el('fileInput');if(f)f.value='';
+      el('resultContainer')?.classList.add('hidden'); el('previewArea')?.classList.add('hidden');
+    }
+  }catch(_){}
+}
+function sync(reason=''){
+  if(renderQueued)return; renderQueued=true;
+  setTimeout(()=>{
+    renderQueued=false;
+    const preserved=reason==='lang'?captureOptionStateV63():null;
+    addTools();placeMode();localizeToolNames();
+    const k=tool(),changed=k!==lastTool;
+    if(changed&&lastTool)resetFilesOnly();
+    lastTool=k;
+    renderCapability(changed);
+    applyFileConfig(k);
+    const txt=el('processButtonText'); if(txt)txt.textContent=processLabel(k);
+    const ocrOwnsLang=reason==='lang'&&k==='pdfocr';
+    if(!ocrOwnsLang)renderOptions(k);
+    if(preserved&&!ocrOwnsLang)restoreOptionStateV63(preserved);
+    localizeToolNames();
+  },0);
+}
+
+function validateFileType(k,list){
+  const good=list.every(f=>{
+    const n=(f.name||'').toLowerCase();
+    if(k==='wordpdf')return /\.(doc|docx)$/.test(n);
+    if(k==='excelpdf')return /\.(xls|xlsx)$/.test(n);
+    if(k==='powerpointpdf')return /\.(ppt|pptx)$/.test(n);
+    if(['compressimage','upscaleimage','resizeimage','cropimage','rotateimage','convertimage','repairimage','watermarkimage','removebackgroundimage','imagepdf'].includes(k))return /^image\//.test(f.type)||/\.(png|jpe?g|gif|webp|bmp|tiff?|heic)$/i.test(n);
+    return f.type==='application/pdf'||/\.pdf$/i.test(n);
+  });
+  if(!good)throw new Error(t('Tệp đã chọn không đúng định dạng của công cụ.','The selected file type is not supported by this tool.'));
+}
+async function authToken(){
+  const r=await fetch('https://api.ilovepdf.com/v1/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({public_key:PUBLIC_KEY})});
+  if(!r.ok)throw new Error(t('Không lấy được token iLoveAPI.','Could not get iLoveAPI token.'));
+  return (await r.json()).token;
+}
+async function uploadFile(server,task,auth,file){
+  const fd=new FormData();fd.append('task',task);fd.append('file',file);
+  const r=await fetch('https://'+server+'/v1/upload',{method:'POST',headers:{Authorization:auth},body:fd});
+  if(!r.ok)throw new Error(await r.text());
+  return (await r.json()).server_filename;
+}
+async function uploadCloudUrlV59(server,task,auth,url){
+  const r=await fetch('https://'+server+'/v1/upload',{
+    method:'POST',
+    headers:{Authorization:auth,'Content-Type':'application/json;charset=UTF-8'},
+    body:JSON.stringify({task,cloud_file:url})
+  });
+  if(!r.ok)throw new Error(await r.text());
+  const data=await r.json();
+  if(!data.server_filename)throw new Error(t('Dịch vụ không trả server_filename cho URL.','The service did not return server_filename for the URL.'));
+  let filename='';
+  try{
+    const parsed=new URL(url);
+    const parts=parsed.pathname.split('/').filter(Boolean);
+    filename=parts[parts.length-1]||parsed.hostname;
+  }catch(_){}
+  return {server_filename:data.server_filename,filename:filename||'webpage'};
+}
+function requireValue(id,messageVi,messageEn){
+  const v=String(el(id)?.value||'').trim(); if(!v)throw new Error(t(messageVi,messageEn)); return v;
+}
+function numberValue(id,fallback=0){const n=Number(el(id)?.value);return Number.isFinite(n)?n:fallback}
+async function runOnline(){
+  const k=tool(),list=files();
+  if(k!=='htmlpdf'&&!list.length)throw new Error(t('Vui lòng chọn ít nhất một tệp.','Please select at least one file.'));
+  if(k!=='htmlpdf')validateFileType(k,list);
+  if(k==='htmlpdf'&&!validHtmlPdfUrlV59())throw new Error(t('Hãy nhập URL công khai hợp lệ bắt đầu bằng http:// hoặc https://.','Enter a valid public URL starting with http:// or https://.'));
+  if(k==='protect'){
+    const p=requireValue('passwordInput','Hãy nhập mật khẩu mới.','Enter a new password.');
+    if(p!==String(el('passwordConfirm')?.value||''))throw new Error(t('Hai mật khẩu không khớp.','Passwords do not match.'));
+  }
+  if(k==='splitsmart')requireValue('smartSplitPrompt','Hãy nhập yêu cầu tách PDF cho AI.','Enter Smart Split instructions.');
+  if(k==='pdfocr'&&!document.querySelector('input[name="ocrLang"]:checked'))throw new Error(t('Hãy chọn ít nhất một ngôn ngữ OCR.','Select at least one OCR language.'));
+
+  const api=API_ALIAS[k]||k;
+  setStatus('Đang xác thực dịch vụ Online…','Authenticating Online service…');
+  const token=await authToken(),auth='Bearer '+token;
+  const sr=await fetch('https://api.ilovepdf.com/v1/start/'+api,{headers:{Authorization:auth}});
+  if(!sr.ok)throw new Error(await sr.text());
+  const task=await sr.json();
+
+  let stampServer='';
+  const needsStamp=(k==='watermark'||k==='watermarkimage')&&el('watermarkMode')?.value==='image';
+  if(needsStamp){
+    const stamp=window.watermarkFile;
+    if(!stamp)throw new Error(t('Hãy chọn ảnh dấu.','Choose a watermark image.'));
+    setStatus('Đang tải ảnh dấu…','Uploading watermark image…');
+    stampServer=await uploadFile(task.server,task.task,auth,stamp);
+  }
+
+  const uploaded=[];
+  if(k==='htmlpdf'){
+    const url=htmlPdfUrlV59();
+    setStatus('Đang gửi URL để dịch vụ lấy trang web…','Sending URL for the service to fetch the webpage…');
+    uploaded.push(await uploadCloudUrlV59(task.server,task.task,auth,url));
+  }else{
+    for(let i=0;i<list.length;i++){
+      setStatus('Đang tải tệp '+(i+1)+'/'+list.length+'…','Uploading file '+(i+1)+'/'+list.length+'…');
+      const server_filename=await uploadFile(task.server,task.task,auth,list[i]);
+      const item={server_filename,filename:list[i].name};
+      if(k==='unlock')item.password=requireValue('passwordInput','Hãy nhập mật khẩu hiện tại.','Enter the current password.');
+      if(k==='rotate'||k==='rotateimage')item.rotate=numberValue('rotateAngle',90);
+      uploaded.push(item);
+    }
+  }
+
+  const body={task:task.task,tool:api,files:uploaded};
+  if(k==='compress'||k==='compressimage')body.compression_level=el('compressionLevel')?.value||'recommended';
+  if(k==='split'){
+    const sm=el('splitMode')?.value||'ranges'; body.split_mode=sm;
+    if(sm==='ranges')body.ranges=requireValue('splitRange','Hãy nhập khoảng trang.','Enter page ranges.');
+    if(sm==='fixed_range')body.fixed_range=Math.max(1,numberValue('splitFixedRange',1));
+    if(sm==='filesize')body.filesize=Math.max(1,numberValue('splitFilesize',10));
+  }
+  if(k==='splitsmart')body.prompt=requireValue('smartSplitPrompt','Hãy nhập yêu cầu tách PDF.','Enter split instructions.');
+  if(k==='pdfocr')body.ocr_languages=Array.from(document.querySelectorAll('input[name="ocrLang"]:checked')).map(x=>x.value);
+  if(k==='protect')body.password=requireValue('passwordInput','Hãy nhập mật khẩu mới.','Enter a new password.');
+  if(k==='pdfa'){body.conformance=el('pdfaConformance')?.value||'pdfa-2b';body.allow_downgrade=!!el('pdfaDowngrade')?.checked}
+  if(k==='validatepdfa'){body.conformance=el('validatePdfaConformance')?.value||'pdfa-2b';body.allow_downgrade=false}
+  if(k==='pdfjpg')body.pdfjpg_mode=el('pdfJpgMode')?.value||'pages';
+  if(k==='imagepdf'){
+    body.orientation=el('imagePdfOrientation')?.value||'portrait';
+    body.margin=Math.max(0,numberValue('imagePdfMargin',0));
+    body.pagesize=el('imagePdfPageSize')?.value||'fit';
+    body.merge_after=!!el('imagePdfMerge')?.checked;
+  }
+  if(k==='extract')body.detailed=!!el('extractDetailed')?.checked;
+  if(k==='upscaleimage')body.multiplier=Number(el('upscaleMultiplier')?.value||2);
+  if(k==='resizeimage'){
+    const rm=el('resizeMode')?.value||'pixels'; body.resize_mode=rm;
+    if(rm==='pixels'){body.pixels_width=numberValue('resizeWidth',0);body.pixels_height=numberValue('resizeHeight',0)}
+    else body.percentage=Math.max(1,numberValue('resizePercentage',50));
+    body.maintain_ratio=!!el('maintainAspectRatio')?.checked;
+    body.no_enlarge_if_smaller=!!el('noEnlargeIfSmaller')?.checked;
+  }
+  if(k==='cropimage'){
+    body.x=Math.max(0,numberValue('cropX',0)); body.y=Math.max(0,numberValue('cropY',0));
+    body.width=Math.max(1,numberValue('cropWidth',0)); body.height=Math.max(1,numberValue('cropHeight',0));
+    if(!numberValue('cropWidth',0)||!numberValue('cropHeight',0))throw new Error(t('Hãy nhập chiều rộng và chiều cao vùng cắt.','Enter crop width and height.'));
+  }
+  if(k==='convertimage'){
+    body.to=el('convertTo')?.value||'jpg';
+    if(body.to==='gif_animation'){body.gif_time=Math.max(1,numberValue('gifTime',50));body.gif_loop=Number(el('gifLoop')?.value||1)}
+  }
+  if(k==='watermark'){
+    const pos=(el('watermarkPosition')?.value||'middle-center').split('-');
+    body.mode=el('watermarkMode')?.value||'text';
+    if(body.mode==='text'){
+      body.text=el('watermarkText')?.value||'KOHA';
+      body.font_size=Math.max(1,numberValue('watermarkFontSize',48));
+      body.font_color=el('watermarkFontColor')?.value||'#000000';
+      body.font_family=el('watermarkFontFamily')?.value||'Arial Unicode MS';
+      body.font_style=el('watermarkFontStyle')?.value||null;
+    }else body.image=stampServer;
+    body.vertical_position=pos[0]||'middle'; body.horizontal_position=pos[1]||'center';
+    body.transparency=Math.min(100,Math.max(1,numberValue('watermarkTransparency',50)));
+    body.rotation=((numberValue('watermarkRotation',0)%360)+360)%360;
+    body.vertical_position_adjustment=numberValue('watermarkVerticalAdjust',0);
+    body.horizontal_position_adjustment=numberValue('watermarkHorizontalAdjust',0);
+    if(el('watermarkPages'))body.pages=el('watermarkPages').value||'all';
+    if(el('watermarkMosaic'))body.mosaic=!!el('watermarkMosaic').checked;
+    if(el('watermarkLayer'))body.layer=el('watermarkLayer').value||'above';
+  }
+  if(k==='watermarkimage'){
+    const wm=el('watermarkMode')?.value||'text';
+    const e={
+      type:wm,
+      gravity:el('watermarkPosition')?.value||'Center',
+      vertical_adjustment_percent:0,horizontal_adjustment_percent:0,
+      rotation:((numberValue('watermarkRotation',0)%360)+360)%360,
+      transparency:Math.min(100,Math.max(1,numberValue('watermarkTransparency',50))),
+      mosaic:!!el('watermarkMosaic')?.checked
+    };
+    if(wm==='text'){
+      e.text=el('watermarkText')?.value||'KOHA'; e.font_family=el('watermarkFontFamily')?.value||'Arial Unicode MS';
+      e.font_style=el('watermarkFontStyle')?.value||null; e.font_size=Math.max(1,numberValue('watermarkFontSize',48));
+      e.font_color=el('watermarkFontColor')?.value||'#000000';
+    }else e.image=stampServer;
+    body.elements=[e];
+  }
+
+  setStatus('Đang xử lý trên máy chủ…','Processing on server…');
+  const pr=await fetch('https://'+task.server+'/v1/process',{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!pr.ok)throw new Error(await pr.text());
+  const result=await pr.json();
+  if(result.status!=='TaskSuccess')throw new Error(result.status_text||result.status||'Task failed');
+  if(k==='validatepdfa'){
+    const validation=Array.isArray(result.validations)?result.validations[0]:null;
+    const rawStatus=String(validation?.status??result.validated??t('Không có trạng thái','No status returned'));
+    const target=el('validatePdfaConformance')?.value||'pdfa-2b';
+    const c=el('resultContainer'),link=el('downloadLink');
+    if(c){
+      c.classList.remove('hidden');
+      const h=c.querySelector('h3'),p=c.querySelector('p');
+      if(h)h.textContent=t('Kết quả kiểm tra PDF/A','PDF/A validation result');
+      if(p)p.textContent=target+' · '+rawStatus;
+    }
+    if(link){link.style.display='none';link.removeAttribute('href')}
+    window.finalDownloadUrl=null;window.finalDownloadFilename=null;window.downloadAuthHeader=null;
+    setStatus('Đã hoàn tất kiểm tra PDF/A.','PDF/A validation completed.','success');
+    return;
+  }
+  const resultLink=el('downloadLink');if(resultLink)resultLink.style.display='';
+  window.finalDownloadUrl='https://'+task.server+'/v1/download/'+task.task;
+  window.finalDownloadFilename=result.download_filename||'result';
+  window.downloadAuthHeader=auth;
+  const link=el('downloadLink');if(link)link.textContent=t('Tải: ','Download: ')+window.finalDownloadFilename;
+  el('resultContainer')?.classList.remove('hidden');
+  setStatus('Xử lý Online thành công.','Online processing completed.','success');
+}
+
+document.addEventListener('click',e=>{
+  const p=e.target.closest?.('#processButton');
+  if(p&&mode()==='online'){
+    e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
+    (async()=>{try{setBusy(true);el('resultContainer')?.classList.add('hidden');await runOnline()}catch(err){console.error('[PDF V51]',err);setStatus('Lỗi Online: '+err.message,'Online error: '+err.message,'error')}finally{setBusy(false)}})();
+    return;
+  }
+  const q=e.target.closest?.('[data-tool]');
+  if(q&&!q.closest('#toolOptions'))sync('quick');
+},true);
+
+document.addEventListener('change',e=>{
+  if(e.target===el('apiTool'))sync('tool');
+  if(e.target?.closest?.('.processing-mode'))sync('mode');
+},true);
+
+new MutationObserver(m=>{
+  if(m.some(x=>x.type==='attributes'&&x.attributeName==='lang'))sync('lang');
+}).observe(document.documentElement,{attributes:true,attributeFilter:['lang']});
+
+window.addEventListener('load',()=>sync('load'));
+window.NLKH_PDF_CAPABILITIES_V51=CAP;
+})();
+
+;(()=>{ 'use strict';
+const OCR_V53_LANGS=[
+['vie','Tiếng Việt','Vietnamese','popular'],
+['eng','Tiếng Anh','English','popular'],
+['chi_sim','Tiếng Trung giản thể','Chinese (Simplified)','popular'],
+['chi_tra','Tiếng Trung phồn thể','Chinese (Traditional)','popular'],
+['jpn','Tiếng Nhật','Japanese','popular'],
+['kor','Tiếng Hàn','Korean','popular'],
+['fra','Tiếng Pháp','French','popular'],
+['deu','Tiếng Đức','German','popular'],
+['spa','Tiếng Tây Ban Nha','Spanish','popular'],
+['por','Tiếng Bồ Đào Nha','Portuguese','popular'],
+['ita','Tiếng Ý','Italian','popular'],
+['rus','Tiếng Nga','Russian','popular'],
+['tha','Tiếng Thái','Thai','popular'],
+['ind','Tiếng Indonesia','Indonesian','popular'],
+['msa','Tiếng Mã Lai','Malay','popular'],
+['khm','Tiếng Khmer','Khmer','popular'],
+['lao','Tiếng Lào','Lao','popular'],
+['ara','Tiếng Ả Rập','Arabic','popular'],
+['hin','Tiếng Hindi','Hindi','popular'],
+['nld','Tiếng Hà Lan','Dutch','popular'],
+['pol','Tiếng Ba Lan','Polish','popular'],
+['tur','Tiếng Thổ Nhĩ Kỳ','Turkish','popular'],
+['ukr','Tiếng Ukraina','Ukrainian','popular'],
+['ces','Tiếng Séc','Czech','popular'],
+['dan','Tiếng Đan Mạch','Danish','popular'],
+['fin','Tiếng Phần Lan','Finnish','popular'],
+['nor','Tiếng Na Uy','Norwegian','popular'],
+['swe','Tiếng Thụy Điển','Swedish','popular'],
+['afr','Tiếng Afrikaans','Afrikaans','more'],
+['amh','Tiếng Amhara','Amharic','more'],
+['asm','Tiếng Assam','Assamese','more'],
+['aze','Tiếng Azerbaijan','Azerbaijani','more'],
+['aze_cyrl','Azerbaijan (Cyrillic)','Azerbaijani (Cyrillic)','more'],
+['bel','Tiếng Belarus','Belarusian','more'],
+['ben','Tiếng Bengal','Bengali','more'],
+['bod','Tiếng Tây Tạng','Tibetan','more'],
+['bos','Tiếng Bosnia','Bosnian','more'],
+['bre','Tiếng Breton','Breton','more'],
+['bul','Tiếng Bulgaria','Bulgarian','more'],
+['cat','Tiếng Catalan','Catalan','more'],
+['ceb','Tiếng Cebuano','Cebuano','more'],
+['chr','Tiếng Cherokee','Cherokee','more'],
+['cos','Tiếng Corsica','Corsican','more'],
+['cym','Tiếng Wales','Welsh','more'],
+['deu_latf','Đức Fraktur','German Fraktur','more'],
+['dzo','Tiếng Dzongkha','Dzongkha','more'],
+['ell','Tiếng Hy Lạp','Greek','more'],
+['enm','Tiếng Anh Trung cổ','Middle English','more'],
+['epo','Tiếng Esperanto','Esperanto','more'],
+['equ','Tiếng Quechua Ecuador','Quechua (Ecuador)','more'],
+['est','Tiếng Estonia','Estonian','more'],
+['eus','Tiếng Basque','Basque','more'],
+['fao','Tiếng Faroe','Faroese','more'],
+['fas','Tiếng Ba Tư','Persian','more'],
+['fil','Tiếng Filipino','Filipino','more'],
+['frm','Tiếng Pháp Trung cổ','Middle French','more'],
+['fry','Tiếng Tây Frisia','Western Frisian','more'],
+['gla','Tiếng Gaelic Scotland','Scottish Gaelic','more'],
+['gle','Tiếng Ireland','Irish','more'],
+['glg','Tiếng Galicia','Galician','more'],
+['grc','Tiếng Hy Lạp cổ','Ancient Greek','more'],
+['guj','Tiếng Gujarat','Gujarati','more'],
+['hat','Tiếng Creole Haiti','Haitian Creole','more'],
+['heb','Tiếng Hebrew','Hebrew','more'],
+['hrv','Tiếng Croatia','Croatian','more'],
+['hun','Tiếng Hungary','Hungarian','more'],
+['hye','Tiếng Armenia','Armenian','more'],
+['iku','Tiếng Inuktitut','Inuktitut','more'],
+['isl','Tiếng Iceland','Icelandic','more'],
+['ita_old','Tiếng Ý cổ','Old Italian','more'],
+['jav','Tiếng Java','Javanese','more'],
+['kan','Tiếng Kannada','Kannada','more'],
+['kat','Tiếng Georgia','Georgian','more'],
+['kat_old','Tiếng Georgia cổ','Old Georgian','more'],
+['kaz','Tiếng Kazakhstan','Kazakh','more'],
+['kir','Tiếng Kyrgyz','Kyrgyz','more'],
+['kmr','Tiếng Kurd Kurmanji','Kurdish (Kurmanji)','more'],
+['kor_vert','Tiếng Hàn dọc','Korean Vertical','more'],
+['lat','Tiếng Latin','Latin','more'],
+['lav','Tiếng Latvia','Latvian','more'],
+['lit','Tiếng Litva','Lithuanian','more'],
+['ltz','Tiếng Luxembourg','Luxembourgish','more'],
+['mal','Tiếng Malayalam','Malayalam','more'],
+['mar','Tiếng Marathi','Marathi','more'],
+['mkd','Tiếng Macedonia','Macedonian','more'],
+['mlt','Tiếng Malta','Maltese','more'],
+['mon','Tiếng Mông Cổ','Mongolian','more'],
+['mri','Tiếng Māori','Māori','more'],
+['mya','Tiếng Myanmar','Burmese','more'],
+['nep','Tiếng Nepal','Nepali','more'],
+['oci','Tiếng Occitan','Occitan','more'],
+['ori','Tiếng Odia','Odia','more'],
+['pan','Tiếng Punjab','Punjabi','more'],
+['pus','Tiếng Pashto','Pashto','more'],
+['que','Tiếng Quechua','Quechua','more'],
+['ron','Tiếng Romania','Romanian','more'],
+['san','Tiếng Phạn','Sanskrit','more'],
+['sin','Tiếng Sinhala','Sinhala','more'],
+['slk','Tiếng Slovakia','Slovak','more'],
+['slv','Tiếng Slovenia','Slovenian','more'],
+['snd','Tiếng Sindhi','Sindhi','more'],
+['spa_old','Tiếng Tây Ban Nha cổ','Old Spanish','more'],
+['sqi','Tiếng Albania','Albanian','more'],
+['srp','Tiếng Serbia (Cyrillic)','Serbian (Cyrillic)','more'],
+['srp_latn','Tiếng Serbia (Latin)','Serbian (Latin)','more'],
+['sun','Tiếng Sunda','Sundanese','more'],
+['swa','Tiếng Swahili','Swahili','more'],
+['syr','Tiếng Syriac','Syriac','more'],
+['tam','Tiếng Tamil','Tamil','more'],
+['tat','Tiếng Tatar','Tatar','more'],
+['tel','Tiếng Telugu','Telugu','more'],
+['tgk','Tiếng Tajik','Tajik','more'],
+['tgl','Tiếng Tagalog','Tagalog','more'],
+['tir','Tiếng Tigrinya','Tigrinya','more'],
+['ton','Tiếng Tonga','Tongan','more'],
+['uig','Tiếng Uyghur','Uyghur','more'],
+['urd','Tiếng Urdu','Urdu','more'],
+['uzb','Tiếng Uzbek','Uzbek','more'],
+['uzb_cyrl','Uzbek (Cyrillic)','Uzbek (Cyrillic)','more'],
+['yid','Tiếng Yiddish','Yiddish','more'],
+['yor','Tiếng Yoruba','Yoruba','more']
+];
+const OCR_V53_PRESETS={
+  vi_en:['vie','eng'],
+  east_asia:['chi_sim','chi_tra','jpn','kor'],
+  asean:['vie','eng','tha','ind','msa','khm','lao','mya','tgl'],
+  west_europe:['eng','fra','deu','spa','por','ita','nld'],
+  east_europe:['rus','ukr','pol','ces','slk','hun','ron','bul','hrv','srp','srp_latn'],
+  south_asia:['eng','hin','ben','tam','tel','mal','mar','guj','pan','urd','nep'],
+  middle_east:['ara','fas','heb','tur','urd']
+};
+const $=id=>document.getElementById(id);
+const isEn=()=>String(document.documentElement.lang||'vi').toLowerCase().startsWith('en');
+const tx=(vi,en)=>isEn()?en:vi;
+function isOcr(){return $('apiTool')?.value==='pdfocr'}
+function selected(){return new Set(Array.from(document.querySelectorAll('input[name="ocrLang"]:checked')).map(x=>x.value))}
+function setSelected(codes){
+  const wanted=new Set(codes);
+  document.querySelectorAll('#ocrLangGridV53 input[name="ocrLang"],#ocrLangMoreGridV53 input[name="ocrLang"]').forEach(x=>x.checked=wanted.has(x.value));
+  updateCount();
+}
+function updateCount(){
+  const n=selected().size,c=$('ocrLangCountV53');
+  if(c)c.textContent=n?tx(`${n} ngôn ngữ đã chọn`,`${n} language${n===1?'':'s'} selected`):tx('Chưa chọn ngôn ngữ','No language selected');
+}
+function filter(){
+  const q=String($('ocrLangSearchV53')?.value||'').trim().toLowerCase();
+  let moreMatch=false;
+  document.querySelectorAll('#ocrLangGridV53 .ocr-v53-lang,#ocrLangMoreGridV53 .ocr-v53-lang').forEach(item=>{
+    const match=!q||item.dataset.search.includes(q);
+    item.hidden=!match;
+    if(match&&item.closest('#ocrLangMoreGridV53'))moreMatch=true;
+  });
+  if(q&&moreMatch){
+    $('ocrMoreV53')?.classList.remove('hidden');
+    const b=$('ocrMoreToggleV53');if(b)b.innerHTML=`${tx('Thu gọn','Show less')} <span>↑</span>`;
+  }
+}
+function render(){
+  if(!isOcr())return;
+  const box=$('toolOptions');if(!box)return;
+  if(box.dataset.ocrV53==='1'){localize();return}
+  const before=selected();
+  const initial=before.size?[...before]:['vie','eng'];
+  box.dataset.ocrV53='1';
+  box.innerHTML=`<div class="nlkh-task-head"><span class="nlkh-inline-badge">OCR · ONLINE</span><strong>OCR PDF</strong></div>
+    <div class="nlkh-task-note">${tx('Dùng cho PDF scan/ảnh để tạo lớp chữ có thể tìm kiếm và sao chép.','Use scanned/image PDFs to create searchable and copyable text.')}</div>
+    <div class="ocr-v53-auto-note"><strong>${tx('Về chế độ Tự động','About Auto mode')}</strong><span>${tx('iLoveAPI hiện yêu cầu gửi danh sách ocr_languages; tài liệu API không công bố chế độ tự nhận diện ngôn ngữ. Vì vậy KOHA không tạo Auto giả.','iLoveAPI currently expects an ocr_languages list; its API documentation does not expose automatic language detection. KOHA therefore does not fake an Auto mode.')}</span></div>
+    <div class="ocr-v53-toolbar">
+      <div class="ocr-v53-search"><span>⌕</span><input id="ocrLangSearchV53" type="search" placeholder="${tx('Tìm ngôn ngữ…','Search languages…')}"></div>
+      <div id="ocrLangCountV53" class="ocr-v53-count"></div>
+    </div>
+    <div class="ocr-v53-presets">
+      <button type="button" data-ocr-preset="vi_en">${tx('Việt + English','Vietnamese + English')}</button>
+      <button type="button" data-ocr-preset="east_asia">${tx('Đông Á','East Asia')}</button>
+      <button type="button" data-ocr-preset="asean">ASEAN</button>
+      <button type="button" data-ocr-preset="west_europe">${tx('Tây Âu','Western Europe')}</button>
+      <button type="button" data-ocr-preset="east_europe">${tx('Đông Âu','Eastern Europe')}</button>
+      <button type="button" data-ocr-preset="south_asia">${tx('Nam Á','South Asia')}</button>
+      <button type="button" data-ocr-preset="middle_east">${tx('Trung Đông','Middle East')}</button>
+      <button type="button" id="ocrClearV53" class="is-muted">${tx('Xóa chọn','Clear')}</button>
+    </div>
+    <div class="ocr-v53-section"><div class="ocr-v53-section-title"><strong>${tx('Phổ biến','Common')}</strong><span>${tx('Chọn một hoặc nhiều ngôn ngữ có trong tài liệu.','Choose one or more languages present in the document.')}</span></div>
+      <div id="ocrLangGridV53" class="ocr-v53-grid"></div>
+    </div>
+    <button type="button" id="ocrMoreToggleV53" class="ocr-v53-more">${tx('Hiện thêm ngôn ngữ','Show more languages')} <span>↓</span></button>
+    <div id="ocrMoreV53" class="ocr-v53-morebox hidden"><div class="ocr-v53-section-title"><strong>${tx('Tất cả ngôn ngữ API','All API languages')}</strong><span>${tx('Danh sách theo mã OCR chính thức.','List based on official OCR language codes.')}</span></div><div id="ocrLangMoreGridV53" class="ocr-v53-grid"></div></div>`;
+  const common=$('ocrLangGridV53'),more=$('ocrLangMoreGridV53');
+  OCR_V53_LANGS.forEach(([code,vi,en,group])=>{
+    const label=document.createElement('label');
+    label.className='ocr-v53-lang';
+    label.dataset.search=`${code} ${vi} ${en}`.toLowerCase();
+    label.innerHTML=`<input type="checkbox" name="ocrLang" value="${code}"><span><strong>${isEn()?en:vi}</strong><small>${code}</small></span>`;
+    (group==='popular'?common:more).appendChild(label);
+  });
+  setSelected(initial);
+  $('ocrLangSearchV53')?.addEventListener('input',filter);
+  box.querySelectorAll('[data-ocr-preset]').forEach(b=>b.addEventListener('click',()=>setSelected(OCR_V53_PRESETS[b.dataset.ocrPreset]||[])));
+  $('ocrClearV53')?.addEventListener('click',()=>setSelected([]));
+  $('ocrMoreToggleV53')?.addEventListener('click',()=>{
+    const m=$('ocrMoreV53'),show=m.classList.contains('hidden');
+    m.classList.toggle('hidden',!show);
+    $('ocrMoreToggleV53').innerHTML=show?`${tx('Thu gọn','Show less')} <span>↑</span>`:`${tx('Hiện thêm ngôn ngữ','Show more languages')} <span>↓</span>`;
+  });
+  box.addEventListener('change',e=>{if(e.target.matches('input[name="ocrLang"]'))updateCount()});
+}
+function localize(){
+  if(!isOcr())return;
+  const box=$('toolOptions');if(!box||box.dataset.ocrV53!=='1')return;
+  const keep=[...selected()];
+  box.dataset.ocrV53='0';render();setSelected(keep);
+}
+document.addEventListener('change',e=>{if(e.target===$('apiTool'))setTimeout(render,50)},true);
+document.addEventListener('click',e=>{if(e.target.closest?.('[data-tool]'))setTimeout(render,80)},true);
+new MutationObserver(m=>{
+  if(m.some(x=>x.type==='attributes'&&x.attributeName==='lang'))setTimeout(localize,20);
+  if(isOcr()&&$('toolOptions')&&!$('toolOptions').querySelector('#ocrLangGridV53'))setTimeout(render,20);
+}).observe(document.documentElement,{attributes:true,attributeFilter:['lang'],childList:true,subtree:true});
+window.addEventListener('load',()=>setTimeout(render,80));
+window.NLKH_OCR_LANGUAGES_V53=OCR_V53_LANGS.map(x=>x[0]);
+})();
+
+===== FILE: public/tool-modules/pdf/tile-pages-v62.css =====
+.tile-v62{display:grid;gap:11px}.tile-v62 label{display:grid;gap:5px;font-size:9px;font-weight:750;color:var(--pdf-ink)}.tile-v62 label small{font-size:8px;font-weight:500;color:var(--pdf-muted)}.tile-v62 select,.tile-v62 input{width:100%;min-height:39px;border:1px solid var(--pdf-line);border-radius:7px;background:var(--pdf-surface);color:var(--pdf-ink);padding:7px 9px}.tile-v62-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.tile-v62-head strong,.tile-v62-head small{display:block}.tile-v62-head strong{font-size:12px}.tile-v62-head small{margin-top:3px;font-size:8px;line-height:1.45;color:var(--pdf-muted)}.tile-v62-head>span{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:#178a57;color:#fff;font-size:8px;font-weight:850}.tile-v62-examples{display:flex;gap:6px;flex-wrap:wrap}.tile-v62-examples span{padding:5px 7px;border-radius:999px;background:var(--pdf-blue-soft);color:var(--pdf-blue);font-size:8px;font-weight:800}.tile-v62-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tile-v62-warning,.tile-v62-note{padding:8px 9px;border:1px solid var(--pdf-line);border-radius:7px;background:var(--pdf-surface-soft);font-size:8px;line-height:1.5;color:var(--pdf-muted)}.tile-v62-preview{display:grid;grid-template-columns:92px minmax(0,1fr);align-items:center;gap:12px;padding:10px;border:1px solid var(--pdf-line);border-radius:9px;background:var(--pdf-surface-soft)}.tile-v62-preview>div:last-child strong,.tile-v62-preview>div:last-child small{display:block}.tile-v62-preview>div:last-child strong{font-size:9px;line-height:1.45;color:var(--pdf-ink)}.tile-v62-preview>div:last-child small{margin-top:5px;font-size:8px;line-height:1.45;color:var(--pdf-muted)}.tile-v62-diagram{position:relative;width:76px;height:108px;margin:auto;border:2px solid var(--pdf-ink);background:var(--pdf-surface);box-shadow:0 5px 14px rgba(20,30,55,.08)}.tile-v62-diagram i{position:absolute;border:1px dashed var(--pdf-blue);display:grid;place-items:center;font-style:normal;box-sizing:border-box}.tile-v62-diagram b{font-size:7px;color:var(--pdf-blue);background:var(--pdf-surface);padding:1px 3px;border-radius:4px}@media(max-width:520px){.tile-v62-preview{grid-template-columns:1fr}.tile-v62-grid2{grid-template-columns:1fr 1fr}}
+
+===== FILE: public/tool-modules/pdf/tile-pages-v62.js =====
+(function(){
+'use strict';
+const A=[['A0',2383.94,3370.39],['A1',1683.78,2383.94],['A2',1190.55,1683.78],['A3',841.89,1190.55],['A4',595.28,841.89],['A5',419.53,595.28],['A6',297.64,419.53],['A7',209.76,297.64],['A8',147.40,209.76],['A9',104.88,147.40],['A10',73.70,104.88]];
+const MAX=500;
+let st={mode:'paper',target:'down2',parts:'4',rows:2,cols:2,pageScope:'all',pages:'1'},info=null,res=null,token=0;
+const el=id=>document.getElementById(id),tool=()=>el('apiTool')?.value||'',isTile=()=>tool()==='tilepages';
+const en=()=>String(document.documentElement.lang||'vi').toLowerCase().startsWith('en');
+const t=(vi,enx)=>en()?enx:vi,files=()=>{try{return Array.from(window.selectedFiles||[])}catch(_){return[]}},mm=pt=>pt*25.4/72;
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function status(vi,enx,type='info'){const s=el('statusMessage');if(s){s.textContent=t(vi,enx);s.className='status-message status--'+type}}
+function busy(on){const b=el('processButton'),l=el('loader'),tx=el('processButtonText');if(l)l.style.display=on?'block':'none';if(tx)tx.style.display=on?'none':'block';if(b)b.disabled=on||files().length!==1}
+function save(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},700)}
+async function lib(){if(window.PDFLib?.PDFDocument)return window.PDFLib;if(typeof window.ensurePDFLib!=='function')throw new Error(t('Không tìm thấy pdf-lib local.','Local pdf-lib loader was not found.'));return window.ensurePDFLib()}
+function detectA(w,h){const x=Math.min(w,h),y=Math.max(w,h);let b=null;A.forEach(([name,sw,sh],index)=>{const e=Math.max(Math.abs(x-Math.min(sw,sh))/Math.min(sw,sh),Math.abs(y-Math.max(sw,sh))/Math.max(sw,sh));if(!b||e<b.err)b={name,index,err:e}});return b&&b.err<=.025?b:null}
+function splitLong(r){if(r.width>=r.height){const w=r.width/2;return[{x:r.x,y:r.y,width:w,height:r.height},{x:r.x+w,y:r.y,width:r.width-w,height:r.height}]}const h=r.height/2;return[{x:r.x,y:r.y+h,width:r.width,height:r.height-h},{x:r.x,y:r.y,width:r.width,height:h}]}
+function isoRects(box,n){let a=[{...box}];for(let i=0;i<n;i++)a=a.flatMap(splitLong);return a}
+function dims(parts,w,h){const p=h>=w;if(parts==='2')return p?{rows:2,cols:1}:{rows:1,cols:2};if(parts==='4')return{rows:2,cols:2};if(parts==='6')return p?{rows:3,cols:2}:{rows:2,cols:3};if(parts==='8')return p?{rows:4,cols:2}:{rows:2,cols:4};if(parts==='9')return{rows:3,cols:3};return{rows:Math.max(1,Math.min(10,+st.rows||1)),cols:Math.max(1,Math.min(10,+st.cols||1))}}
+function gridRects(b,d){const out=[],w=b.width/d.cols,h=b.height/d.rows;for(let r=0;r<d.rows;r++)for(let c=0;c<d.cols;c++)out.push({x:b.x+c*w,y:b.y+b.height-(r+1)*h,width:c===d.cols-1?b.width-c*w:w,height:r===d.rows-1?b.height-r*h:h});return out}
+function parsePages(v,total){const s=String(v||'').trim().toLowerCase();if(!s)throw new Error(t('Hãy nhập trang cần chia.','Enter pages to tile.'));const out=[];for(const part of s.split(',').map(x=>x.trim()).filter(Boolean)){if(part.includes('-')){const q=part.split('-');if(q.length!==2)throw new Error(t('Khoảng trang sai: ','Invalid page range: ')+part);const a=q[0]==='end'?total:+q[0],b=q[1]==='end'?total:+q[1];if(!Number.isInteger(a)||!Number.isInteger(b)||a<1||b<1)throw new Error(t('Khoảng trang sai: ','Invalid page range: ')+part);const step=a<=b?1:-1;for(let n=a;step>0?n<=b:n>=b;n+=step)if(n<=total&&!out.includes(n-1))out.push(n-1)}else{const n=part==='end'?total:+part;if(!Number.isInteger(n)||n<1||n>total)throw new Error(t('Trang không hợp lệ: ','Invalid page: ')+part);if(!out.includes(n-1))out.push(n-1)}}if(!out.length)throw new Error(t('Không có trang hợp lệ.','No valid pages.'));return out}
+function targetIndex(si){if(st.target==='down1')return si+1;if(st.target==='down2')return si+2;if(st.target==='down3')return si+3;return A.findIndex(x=>x[0]===st.target)}
+function plan(page){const b=page.getCropBox?page.getCropBox():{x:0,y:0,width:page.getWidth(),height:page.getHeight()};if(st.mode==='paper'){const src=detectA(b.width,b.height);if(!src)throw new Error(t('Có trang không nhận diện được là khổ ISO A (sai số cho phép 2.5%). Hãy dùng “Theo số phần”.','A page is not recognized as an ISO A size (2.5% tolerance). Use “By number of parts”.'));const ti=targetIndex(src.index);if(ti<0||ti>=A.length)throw new Error(t('Khổ đích nằm ngoài A0–A10.','Target is outside A0–A10.'));if(ti<=src.index)throw new Error(t(`Khổ đích ${A[ti][0]} phải nhỏ hơn khổ nguồn ${src.name}.`,`Target ${A[ti][0]} must be smaller than source ${src.name}.`));return{rects:isoRects(b,ti-src.index),source:src.name,target:A[ti][0]}}const d=dims(st.parts,b.width,b.height);return{rects:gridRects(b,d),d}}
+function boxes(p,r){if(typeof p.setMediaBox!=='function'||typeof p.setCropBox!=='function')throw new Error(t('pdf-lib hiện tại thiếu API page box cần thiết.','The current pdf-lib build lacks required page-box APIs.'));for(const m of ['setMediaBox','setCropBox','setBleedBox','setTrimBox','setArtBox'])if(typeof p[m]==='function')p[m](r.x,r.y,r.width,r.height)}
+async function process(){const f=files();if(f.length!==1)throw new Error(t('Hãy chọn đúng một PDF.','Choose exactly one PDF.'));const L=await lib(),src=await L.PDFDocument.load(new Uint8Array(await f[0].arrayBuffer()),{ignoreEncryption:false});const ids=st.pageScope==='all'?Array.from({length:src.getPageCount()},(_,i)=>i):parsePages(st.pages,src.getPageCount());const plans=[];let total=0;for(const idx of ids){const p=plan(src.getPage(idx));total+=p.rects.length;plans.push({idx,...p})}if(total>MAX)throw new Error(t(`Kết quả sẽ tạo ${total} trang, vượt giới hạn an toàn ${MAX}. Hãy xử lý ít trang hơn.`,`This would create ${total} pages, above the safe limit of ${MAX}. Process fewer pages.`));const out=await L.PDFDocument.create();let n=0;for(const p of plans)for(const r of p.rects){n++;status(`Đang tạo mảnh ${n}/${total}…`,`Creating tile ${n}/${total}…`);const [piece]=await out.copyPages(src,[p.idx]);boxes(piece,r);out.addPage(piece)}const bytes=await out.save(),base=(f[0].name||'document').replace(/\.pdf$/i,'');return{blob:new Blob([bytes],{type:'application/pdf'}),name:base+'-chia-nho-trang.pdf',count:total}}
+function read(){st.mode=el('tileModeV62')?.value||st.mode;st.target=el('tileTargetV62')?.value||st.target;st.parts=el('tilePartsV62')?.value||st.parts;st.rows=Math.max(1,Math.min(10,+el('tileRowsV62')?.value||st.rows));st.cols=Math.max(1,Math.min(10,+el('tileColsV62')?.value||st.cols));st.pageScope=el('tilePageScopeV63')?.value||st.pageScope;if(st.pageScope==='custom'&&el('tilePagesV62'))st.pages=String(el('tilePagesV62').value||'').trim()}
+const opt=(v,l,c)=>`<option value="${v}"${v===c?' selected':''}>${l}</option>`;
+function targetOpts(){return[opt('down1',t('Nhỏ hơn 1 cấp · 2 tờ','1 size smaller · 2 sheets'),st.target),opt('down2',t('Nhỏ hơn 2 cấp · 4 tờ','2 sizes smaller · 4 sheets'),st.target),opt('down3',t('Nhỏ hơn 3 cấp · 8 tờ','3 sizes smaller · 8 sheets'),st.target),...A.map(x=>opt(x[0],x[0],st.target))].join('')}
+function partOpts(){return['2','4','6','8','9','custom'].map(v=>opt(v,v==='custom'?t('Tùy chỉnh hàng × cột','Custom rows × columns'):t(`Chia ${v} phần`,`Split into ${v} parts`),st.parts)).join('')}
+function previewRects(){const b={x:0,y:0,width:100,height:141.421};if(st.mode==='paper'){let n=st.target==='down1'?1:st.target==='down2'?2:st.target==='down3'?3:(info?.iso?Math.max(1,A.findIndex(x=>x[0]===st.target)-info.iso.index):2);return isoRects(b,Math.min(6,n))}return gridRects(b,dims(st.parts,b.width,b.height))}
+function diagram(){const rs=previewRects(),W=100,H=141.421;return `<div class="tile-v62-diagram">${rs.map((r,i)=>`<i style="left:${r.x/W*100}%;top:${(H-r.y-r.height)/H*100}%;width:${r.width/W*100}%;height:${r.height/H*100}%"><b>${i+1}</b></i>`).join('')}</div>`}
+function summary(){if(!info)return t('Chọn PDF để xem khổ trang đầu.','Choose a PDF to inspect the first page size.');const s=`${mm(info.width).toFixed(1)} × ${mm(info.height).toFixed(1)} mm`;if(st.mode==='paper'){if(!info.iso)return t(`Trang đầu: ${s} · không nhận diện được khổ A.`,`First page: ${s} · no ISO A size detected.`);const ti=targetIndex(info.iso.index);if(ti<=info.iso.index||ti>=A.length)return t(`Trang đầu: ${s} ≈ ${info.iso.name} · chọn khổ nhỏ hơn.`,`First page: ${s} ≈ ${info.iso.name} · choose a smaller target.`);return `${s} ≈ ${info.iso.name} → ${2**(ti-info.iso.index)} × ${A[ti][0]}`}const d=dims(st.parts,info.width,info.height),tw=info.width/d.cols,th=info.height/d.rows,a=detectA(tw,th);return `${s} → ${d.cols}×${d.rows} = ${d.cols*d.rows} ${t('phần','parts')} · ${mm(tw).toFixed(1)} × ${mm(th).toFixed(1)} mm${a?' ≈ '+a.name:''}`}
+function render(){if(!isTile())return;const b=el('toolOptions');if(!b)return;const pb=el('processButtonText');if(pb)pb.textContent=t('Chia nhỏ trang','Tile PDF pages');b.classList.remove('hidden');b.dataset.tilePagesV62='1';b.innerHTML=`<div class="tile-v62"><div class="tile-v62-head"><div><strong>${t('Chia nhỏ trang PDF','Tile PDF Pages')}</strong><small>${t('Local · giữ PDF dạng vector/text, không raster hóa cả trang.','Local · keeps PDF vector/text; no full-page rasterization.')}</small></div><span>OFFLINE</span></div><label>${t('Cách chia','Split method')}<select id="tileModeV62">${opt('paper',t('Theo khổ giấy ISO A','By ISO A paper size'),st.mode)}${opt('parts',t('Theo số phần','By number of parts'),st.mode)}</select></label>${st.mode==='paper'?`<label>${t('Khổ đích','Target paper size')}<select id="tileTargetV62">${targetOpts()}</select></label><div class="tile-v62-examples"><span>A4 → 2×A5</span><span>A1 → 4×A3</span><span>A0 → 8×A3</span></div>`:`<label>${t('Số phần','Number of parts')}<select id="tilePartsV62">${partOpts()}</select></label>${st.parts==='custom'?`<div class="tile-v62-grid2"><label>${t('Số hàng','Rows')}<input id="tileRowsV62" type="number" min="1" max="10" value="${st.rows}"></label><label>${t('Số cột','Columns')}<input id="tileColsV62" type="number" min="1" max="10" value="${st.cols}"></label></div>`:''}<div class="tile-v62-warning">${t('2/4/8 có thể khớp chuỗi khổ A. 6/9 hoặc lưới tùy chỉnh thường không phải khổ A tiêu chuẩn.','2/4/8 can match A-series sizes. 6/9 or custom grids are usually not standard A sizes.')}</div>`}<label>${t('Phạm vi trang','Page range')}<select id="tilePageScopeV63">${opt('all',t('Tất cả trang','All pages'),st.pageScope)}${opt('custom',t('Tùy chọn trang','Custom pages'),st.pageScope)}</select></label>${st.pageScope==='custom'?`<label>${t('Trang cần chia','Pages to tile')}<input id="tilePagesV62" type="text" value="${esc(st.pages)}" placeholder="1-3,5 · 4-end"><small>${t('Nhập trang hoặc khoảng trang. Có thể click thumbnail bên phải để chọn.','Enter pages or ranges. You can also click thumbnails on the right.')}</small></label>`:''}<div class="tile-v62-preview">${diagram()}<div><strong id="tileSummaryV62">${esc(summary())}</strong><small>${t('Thứ tự: trên xuống, trái sang phải. Một PDF kết quả chứa tất cả mảnh.','Order: top-to-bottom, left-to-right. One result PDF contains all tiles.')}</small></div></div><div class="tile-v62-note">${t('Dùng tốt cho bản vẽ/khổ lớn cần in trên giấy nhỏ. Tài liệu phụ thuộc link, form hoặc annotation tương tác nên kiểm tra lại sau khi chia.','Good for large-format/technical pages printed on smaller sheets. Verify documents that depend on interactive links, forms, or annotations.')}</div></div>`;bind();document.dispatchEvent(new CustomEvent('tilepages:controls'))}
+function updatePreviewSummary(){const d=document.querySelector('.tile-v62-diagram');if(d)d.outerHTML=diagram();const s=el('tileSummaryV62');if(s)s.textContent=summary()}
+function bind(){
+  for(const id of ['tileModeV62','tileTargetV62','tilePartsV62','tileRowsV62','tileColsV62','tilePageScopeV63','tilePagesV62']){
+    const n=el(id);if(!n)continue;
+    n.addEventListener(id==='tilePagesV62'?'input':'change',()=>{
+      const oldScope=st.pageScope;read();
+      if(id==='tilePageScopeV63'&&st.pageScope==='custom'&&(st.pages==='all'||!st.pages))st.pages='1';
+      if(['tileModeV62','tilePartsV62','tilePageScopeV63'].includes(id))render();else{updatePreviewSummary();if(id==='tilePagesV62')document.dispatchEvent(new CustomEvent('tilepages:controls'))}
+    });
+  }
+}
+async function inspect(){const me=++token,f=files()[0];if(!isTile()||!f){info=null;if(isTile())render();return}try{const L=await lib(),doc=await L.PDFDocument.load(new Uint8Array(await f.arrayBuffer()),{ignoreEncryption:false});if(me!==token||!isTile())return;const p=doc.getPage(0),b=p.getCropBox?p.getCropBox():{width:p.getWidth(),height:p.getHeight()};info={width:b.width,height:b.height,iso:detectA(b.width,b.height)};render()}catch(e){console.warn('[Tile V63 inspect]',e);if(me===token){info=null;render()}}}
+function sync(){if(!isTile())return;localStorage.setItem('nlkh_pdf_mode','offline');setTimeout(()=>{if(isTile()){render();inspect()}},20)}
+document.addEventListener('click',e=>{const p=e.target.closest?.('#processButton');if(p&&isTile()){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();(async()=>{try{read();busy(true);res=null;el('resultContainer')?.classList.add('hidden');const o=await process();res=o;const c=el('resultContainer'),a=el('downloadLink');if(c){c.classList.remove('hidden');const h=c.querySelector('h3'),p=c.querySelector('p');if(h)h.textContent=t('Đã chia nhỏ trang PDF','PDF pages tiled');if(p)p.textContent=t(`Đã tạo ${o.count} trang đầu ra. Tài liệu không rời thiết bị.`,`Created ${o.count} output pages. The document stayed on this device.`)}if(a){a.style.display='';a.removeAttribute('href');a.textContent=t('Tải PDF đã chia nhỏ ↓','Download tiled PDF ↓')}status('Chia nhỏ trang hoàn tất.','Page tiling completed.','success')}catch(err){console.error('[Tile V63]',err);status('Lỗi: '+err.message,'Error: '+err.message,'error')}finally{busy(false)}})();return}const d=e.target.closest?.('#downloadLink');if(d&&isTile()&&res){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();save(res.blob,res.name)}},true);
+el('apiTool')?.addEventListener('change',()=>{if(isTile())sync()});el('fileInput')?.addEventListener('change',()=>{if(isTile())setTimeout(inspect,60)});el('clearButton')?.addEventListener('click',()=>{res=null;info=null;if(isTile())setTimeout(render,30)});new MutationObserver(m=>{if(isTile()&&m.some(x=>x.type==='attributes'&&x.attributeName==='lang'))render()}).observe(document.documentElement,{attributes:true,attributeFilter:['lang']});sync();window.NLKH_TILE_PDF_V63=true;
+})();
+
+===== FILE: public/tool-modules/pdf/v48.css =====
+.processing-mode{background:var(--module-card,#fff)!important;color:var(--module-text,#111827)!important}.processing-mode *{color:inherit}.processing-mode__buttons button{background:transparent}.processing-mode__buttons button[data-mode="offline"].active{background:#dc2626!important;border-color:#dc2626!important;color:#fff!important}.processing-mode__buttons button[data-mode="online"].active{background:#2563eb!important;border-color:#2563eb!important;color:#fff!important}.mode-badge.is-offline{background:#dc2626!important;color:#fff!important}.mode-badge.is-online{background:#2563eb!important;color:#fff!important}.offline-note{color:var(--module-muted,#64748b)!important;opacity:1!important}html[data-theme="dark"] body,html.dark body{color:#f8fafc!important}html[data-theme="dark"] .processing-mode,html.dark .processing-mode{--module-card:#0f1b2b;--module-text:#f1f5f9;--module-muted:#cbd5e1;border-color:#334155!important}html[data-theme="dark"] #toolOptions,html.dark #toolOptions{color:#f8fafc!important}html[data-theme="dark"] #toolOptions label,html.dark #toolOptions label{color:#f8fafc!important}html[data-theme="dark"] #toolOptions input:not([type=color]),html[data-theme="dark"] #toolOptions select,html.dark #toolOptions input:not([type=color]),html.dark #toolOptions select{background:#0d1725!important;color:#f8fafc!important;border-color:#52627a!important}html[data-theme="dark"] #toolOptions input[type=color],html.dark #toolOptions input[type=color]{background:#0d1725!important;border:1px solid #52627a!important}html[data-theme="dark"] #toolOptions .text-gray-500,html[data-theme="dark"] #toolOptions .text-gray-600,html.dark #toolOptions .text-gray-500,html.dark #toolOptions .text-gray-600{color:#cbd5e1!important}.processing-mode__copy small{opacity:1!important;color:var(--module-muted,#64748b)!important}
+
+===== FILE: public/tool-modules/pdf/watermark-image-fix-v4.js =====
+(function(){
+'use strict';
+
+let offlineResults=[];
+let stampObjectUrl=null;
+let previewObjectUrl=null;
+let previewTimer=null;
+let lastTool='';
+const state={
+  mode:'text',
+  text:'KOHA',
+  fontFamily:'Arial',
+  fontStyle:'Bold',
+  fontSize:42,
+  fontColor:'#111111',
+  pages:'all',
+  position:'middle-center',
+  horizontalAdjust:0,
+  verticalAdjust:0,
+  transparency:50,
+  rotation:0,
+  mosaic:false,
+  layer:'above',
+  imageScale:30,
+  previewPage:1,
+  previewFile:0
+};
+
+function el(id){return document.getElementById(id)}
+function isWatermark(){return el('apiTool')?.value==='watermark'}
+function isOffline(){return (localStorage.getItem('nlkh_pdf_mode')||'offline')==='offline'}
+function en(){return String(document.documentElement.lang||'vi').toLowerCase().startsWith('en')}
+function t(vi,enText){return en()?enText:vi}
+function selected(){try{return Array.from(window.selectedFiles||[])}catch(_){return[]}}
+function setStatus(vi,enText,type='info'){
+  if(typeof window.setStatus==='function'){window.setStatus(t(vi,enText),type);return}
+  const s=el('statusMessage');if(!s)return;s.textContent=t(vi,enText);s.className='status-message status--'+type;
+}
+function clamp(n,a,b){return Math.min(b,Math.max(a,Number(n)||0))}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function modeValue(){return state.mode==='image'?'image':'text'}
+function saveState(){
+  state.mode=el('watermarkMode')?.value||state.mode;
+  state.text=el('watermarkText')?.value??state.text;
+  state.fontFamily=el('watermarkFontFamily')?.value||state.fontFamily;
+  state.fontStyle=el('watermarkFontStyle')?.value??state.fontStyle;
+  state.fontSize=clamp(el('watermarkFontSize')?.value||state.fontSize,8,240);
+  state.fontColor=el('watermarkFontColor')?.value||state.fontColor;
+  state.pages=el('watermarkPages')?.value||state.pages;
+  state.position=el('watermarkPosition')?.value||state.position;
+  state.horizontalAdjust=Number(el('watermarkHorizontalAdjust')?.value||0);
+  state.verticalAdjust=Number(el('watermarkVerticalAdjust')?.value||0);
+  state.transparency=clamp(el('watermarkTransparency')?.value||state.transparency,1,100);
+  state.rotation=((Number(el('watermarkRotation')?.value||0)%360)+360)%360;
+  state.mosaic=!!el('watermarkMosaic')?.checked;
+  state.layer=el('watermarkLayer')?.value||state.layer;
+  state.imageScale=clamp(el('watermarkImageScale')?.value||state.imageScale,3,95);
+  state.previewPage=Math.max(1,Number(el('wmPreviewPage')?.value||state.previewPage));
+  state.previewFile=Math.max(0,Number(el('wmPreviewFile')?.value||state.previewFile));
+}
+function option(v,label,current){return `<option value="${v}"${v===current?' selected':''}>${label}</option>`}
+function field(label,html,note=''){return `<div class="wm54-field"><label>${label}</label>${html}${note?`<small>${note}</small>`:''}</div>`}
+function commonHtml(){
+  return `<div class="wm54-grid wm54-grid-3">
+    ${field(t('Trang áp dụng','Pages'),`<input id="watermarkPages" value="${esc(state.pages)}" placeholder="all · 1,3,5-9">`,t('all hoặc 1,3,5-9','all or 1,3,5-9'))}
+    ${field(t('Vị trí','Position'),`<select id="watermarkPosition">
+      ${option('top-left',t('Trên trái','Top left'),state.position)}
+      ${option('top-center',t('Trên giữa','Top center'),state.position)}
+      ${option('top-right',t('Trên phải','Top right'),state.position)}
+      ${option('middle-left',t('Giữa trái','Middle left'),state.position)}
+      ${option('middle-center',t('Giữa','Center'),state.position)}
+      ${option('middle-right',t('Giữa phải','Middle right'),state.position)}
+      ${option('bottom-left',t('Dưới trái','Bottom left'),state.position)}
+      ${option('bottom-center',t('Dưới giữa','Bottom center'),state.position)}
+      ${option('bottom-right',t('Dưới phải','Bottom right'),state.position)}
+    </select>`)}
+    ${field(t('Độ đậm (%)','Opacity (%)'),`<input id="watermarkTransparency" type="number" min="1" max="100" value="${state.transparency}">`)}
+    ${field(t('Lệch ngang (px)','Horizontal offset (px)'),`<input id="watermarkHorizontalAdjust" type="number" step="1" value="${state.horizontalAdjust}">`)}
+    ${field(t('Lệch dọc (px)','Vertical offset (px)'),`<input id="watermarkVerticalAdjust" type="number" step="1" value="${state.verticalAdjust}">`)}
+    ${field(t('Góc xoay','Rotation'),`<input id="watermarkRotation" type="number" min="0" max="360" value="${state.rotation}">`)}
+  </div>
+  <div class="wm54-checkrow">
+    <label><input id="watermarkMosaic" type="checkbox"${state.mosaic?' checked':''}><span>${t('Lặp dấu 3×3','3×3 mosaic')}</span></label>
+    ${isOffline()?'':`<label class="wm54-layer"><span>${t('Lớp','Layer')}</span><select id="watermarkLayer">${option('above',t('Trên nội dung','Above content'),state.layer)}${option('below',t('Dưới nội dung','Below content'),state.layer)}</select></label>`}
+  </div>`;
+}
+function textHtml(){
+  return `<div class="wm54-panel">
+    ${field(t('Nội dung dấu','Watermark text'),`<textarea id="watermarkText" rows="3" placeholder="${t('Nhập nội dung watermark','Enter watermark text')}">${esc(state.text)}</textarea>`)}
+    <div class="wm54-grid wm54-grid-4">
+      ${field(t('Font','Font'),`<select id="watermarkFontFamily">
+        ${option('Arial Unicode MS','Arial Unicode MS',state.fontFamily)}
+        ${option('Arial','Arial',state.fontFamily)}
+        ${option('Verdana','Verdana',state.fontFamily)}
+        ${option('Courier','Courier',state.fontFamily)}
+        ${option('Times New Roman','Times New Roman',state.fontFamily)}
+      </select>`)}
+      ${field(t('Kiểu chữ','Style'),`<select id="watermarkFontStyle">
+        ${option('',t('Thường','Regular'),state.fontStyle)}
+        ${option('Bold',t('Đậm','Bold'),state.fontStyle)}
+        ${option('Italic',t('Nghiêng','Italic'),state.fontStyle)}
+      </select>`)}
+      ${field(t('Cỡ chữ','Font size'),`<input id="watermarkFontSize" type="number" min="8" max="240" value="${state.fontSize}">`)}
+      ${field(t('Màu','Color'),`<input id="watermarkFontColor" type="color" value="${esc(state.fontColor)}">`)}
+    </div>
+    ${isOffline()?`<div class="wm54-note">${t('Offline: chữ được render thành ảnh trong trình duyệt rồi nhúng vào PDF, nên hỗ trợ tiếng Việt mà không tải font lên server.','Offline: text is rendered to an image in the browser and embedded into the PDF, so Vietnamese works without uploading fonts.')}</div>`:''}
+  </div>`;
+}
+function imageHtml(){
+  const f=window.watermarkFile;
+  return `<div class="wm54-panel">
+    <div class="wm54-imagebox">
+      <div class="wm54-thumb">${f&&stampObjectUrl?`<img src="${stampObjectUrl}" alt="">`:`<span>${t('Chưa chọn ảnh','No image')}</span>`}</div>
+      <div class="wm54-imagecopy">
+        <strong>${f?esc(f.name):t('Ảnh dấu PNG/JPG','PNG/JPG stamp image')}</strong>
+        <small>${f?`${Math.max(1,Math.round(f.size/1024))} KB`:t('Chọn PNG hoặc JPG/JPEG.','Choose PNG or JPG/JPEG.')}</small>
+        <div class="wm54-imageactions">
+          <label for="watermarkImageInput">${f?t('Đổi ảnh','Change image'):t('Chọn ảnh','Choose image')}</label>
+          ${f?`<button type="button" id="wmRemoveImage">${t('Xóa ảnh','Remove')}</button>`:''}
+          <input id="watermarkImageInput" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
+        </div>
+      </div>
+    </div>
+    ${isOffline()?field(t('Kích thước ảnh (% chiều rộng trang)','Image size (% of page width)'),`<input id="watermarkImageScale" type="range" min="3" max="95" value="${state.imageScale}"><output id="wmScaleValue">${state.imageScale}%</output>`,t('Online dùng kích thước ảnh theo engine dịch vụ; thanh này chỉ áp dụng Offline/preview.','Online sizing is handled by the service; this slider applies to Offline/preview only.')):''}
+  </div>`;
+}
+function previewHtml(){
+  const list=selected();
+  return `<div class="wm54-preview">
+    <div class="wm54-previewhead">
+      <strong>${t('Xem trước PDF thật','Live PDF preview')}</strong>
+      <select id="wmPreviewFile">${list.map((f,i)=>option(String(i),`${i+1}. ${esc(f.name)}`,String(Math.min(state.previewFile,list.length-1)))).join('')}</select>
+      <span>${t('Trang','Page')}</span>
+      <button type="button" id="wmPrevPage">‹</button>
+      <input id="wmPreviewPage" type="number" min="1" value="${state.previewPage}">
+      <button type="button" id="wmNextPage">›</button>
+      <small id="wmPreviewStatus"></small>
+    </div>
+    <div id="wmPreviewEmpty" class="wm54-previewempty">${t('Chọn PDF để xem vị trí watermark trước khi xử lý.','Choose a PDF to preview watermark placement before processing.')}</div>
+    <iframe id="wmPreviewFrame" class="wm54-frame" title="PDF watermark preview" hidden></iframe>
+  </div>`;
+}
+function html(){
+  return `<div class="wm54">
+    <div class="wm54-top">
+      <div><strong>${t('Đóng dấu PDF','Watermark PDF')}</strong><small>${isOffline()?t('Tài liệu không rời thiết bị','Document stays on device'):t('File sẽ được gửi đến dịch vụ xử lý','File will be sent to processing service')}</small></div>
+      <div class="wm54-tabs" role="tablist">
+        <button type="button" data-wm-mode="text" class="${modeValue()==='text'?'active':''}">${t('Văn bản','Text')}</button>
+        <button type="button" data-wm-mode="image" class="${modeValue()==='image'?'active':''}">${t('Hình ảnh','Image')}</button>
+      </div>
+    </div>
+    <input type="hidden" id="watermarkMode" value="${modeValue()}">
+    ${modeValue()==='text'?textHtml():imageHtml()}
+    ${commonHtml()}
+    ${previewHtml()}
+  </div>`;
+}
+function ensureStyles(){
+  if(el('wm54-style'))return;
+  const s=document.createElement('style');s.id='wm54-style';s.textContent=`
+  .wm54{display:grid;gap:12px}.wm54-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .wm54-top>div:first-child strong{display:block;font-size:13px}.wm54-top>div:first-child small{display:block;margin-top:3px;color:var(--pdf-muted);font-size:9px}
+  .wm54-tabs{display:flex;gap:4px;padding:3px;border:1px solid var(--pdf-line);border-radius:9px;background:var(--pdf-surface)}
+  .wm54-tabs button{border:0;border-radius:6px;background:transparent;color:var(--pdf-muted);padding:7px 11px;font-size:10px;font-weight:800;cursor:pointer}
+  .wm54-tabs button.active{background:var(--pdf-blue);color:#fff}.wm54-panel{display:grid;gap:10px}
+  .wm54-grid{display:grid;gap:9px}.wm54-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}.wm54-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .wm54-field{display:grid;gap:5px}.wm54-field>label{font-size:9px;font-weight:800;color:var(--pdf-ink)}.wm54-field>small{font-size:8px;line-height:1.4;color:var(--pdf-muted)}
+  .wm54-field input:not([type=color]):not([type=range]),.wm54-field select,.wm54-field textarea{width:100%;min-height:36px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);color:var(--pdf-ink);padding:8px 9px}
+  .wm54-field textarea{resize:vertical;min-height:74px}.wm54-field input[type=color]{width:100%;height:36px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);padding:4px}
+  .wm54-field input[type=range]{width:100%}.wm54-field output{font-size:9px;color:var(--pdf-blue);font-weight:800}
+  .wm54-checkrow{display:flex;flex-wrap:wrap;gap:8px}.wm54-checkrow>label{display:flex;align-items:center;gap:7px;padding:8px 9px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface);font-size:9px;font-weight:700}
+  .wm54-checkrow input{accent-color:var(--pdf-blue)}.wm54-layer select{border:0;background:transparent;color:var(--pdf-ink);font-size:9px}
+  .wm54-note{padding:9px 10px;border:1px solid var(--pdf-line);border-radius:8px;background:var(--pdf-surface-soft);color:var(--pdf-muted);font-size:9px;line-height:1.5}
+  .wm54-imagebox{display:grid;grid-template-columns:92px 1fr;gap:12px;align-items:center;padding:10px;border:1px dashed var(--pdf-line);border-radius:9px;background:var(--pdf-surface)}
+  .wm54-thumb{width:92px;height:92px;display:grid;place-items:center;border:1px solid var(--pdf-line);border-radius:8px;overflow:hidden;background:var(--pdf-surface-soft);font-size:9px;color:var(--pdf-muted)}
+  .wm54-thumb img{width:100%;height:100%;object-fit:contain}.wm54-imagecopy strong,.wm54-imagecopy small{display:block}.wm54-imagecopy strong{font-size:11px}.wm54-imagecopy small{margin-top:4px;font-size:9px;color:var(--pdf-muted)}
+  .wm54-imageactions{display:flex;gap:7px;margin-top:9px}.wm54-imageactions label,.wm54-imageactions button{border:1px solid var(--pdf-line);border-radius:7px;background:var(--pdf-surface-soft);color:var(--pdf-ink);padding:7px 9px;font-size:9px;font-weight:800;cursor:pointer}
+  .wm54-preview{border:1px solid var(--pdf-line);border-radius:9px;overflow:hidden;background:#20242b}.wm54-previewhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px;background:var(--pdf-surface);border-bottom:1px solid var(--pdf-line)}
+  .wm54-previewhead strong{font-size:10px;margin-right:auto}.wm54-previewhead select,.wm54-previewhead input{min-height:30px;border:1px solid var(--pdf-line);border-radius:6px;background:var(--pdf-surface-soft);color:var(--pdf-ink);padding:5px 7px;font-size:9px}
+  .wm54-previewhead select{max-width:210px}.wm54-previewhead input{width:58px}.wm54-previewhead button{width:30px;height:30px;border:1px solid var(--pdf-line);border-radius:6px;background:var(--pdf-surface-soft);color:var(--pdf-ink);cursor:pointer}
+  .wm54-previewhead small{font-size:8px;color:var(--pdf-muted);flex-basis:100%}.wm54-previewempty{padding:34px 12px;text-align:center;color:#aeb6c3;font-size:9px}.wm54-frame{width:100%;height:480px;border:0;background:#30343b}
+  @media(max-width:700px){.wm54-top{display:grid}.wm54-grid-3,.wm54-grid-4{grid-template-columns:1fr 1fr}.wm54-imagebox{grid-template-columns:1fr}.wm54-thumb{width:100%;height:140px}.wm54-frame{height:380px}}
+  @media(max-width:480px){.wm54-grid-3,.wm54-grid-4{grid-template-columns:1fr}}
+  `;document.head.appendChild(s);
+}
+function captureBeforeRender(){if(isWatermark())saveState()}
+function render(){
+  if(!isWatermark())return;
+  ensureStyles();captureBeforeRender();
+  const box=el('toolOptions');if(!box)return;
+  box.innerHTML=html();box.classList.remove('hidden');box.dataset.watermarkProV54='1';
+  bind();
+  schedulePreview();
+}
+function bind(){
+  document.querySelectorAll('[data-wm-mode]').forEach(b=>b.onclick=()=>{saveState();state.mode=b.dataset.wmMode;const mode=el('watermarkMode');if(mode)mode.value=state.mode;render()});
+  const img=el('watermarkImageInput');if(img)img.onchange=e=>{
+    const f=e.target.files?.[0];if(!f)return;
+    if(!/^image\/(png|jpeg)$/i.test(f.type)&&!/\.(png|jpe?g)$/i.test(f.name)){setStatus('Ảnh dấu chỉ hỗ trợ PNG/JPG.','Stamp image must be PNG/JPG.','error');return}
+    window.watermarkFile=f;
+    if(stampObjectUrl)URL.revokeObjectURL(stampObjectUrl);stampObjectUrl=URL.createObjectURL(f);render();
+  };
+  const rm=el('wmRemoveImage');if(rm)rm.onclick=()=>{window.watermarkFile=null;if(stampObjectUrl){URL.revokeObjectURL(stampObjectUrl);stampObjectUrl=null}render()};
+  const scale=el('watermarkImageScale');if(scale)scale.oninput=()=>{el('wmScaleValue').textContent=scale.value+'%';saveState();schedulePreview()};
+  ['watermarkText','watermarkFontFamily','watermarkFontStyle','watermarkFontSize','watermarkFontColor','watermarkPages','watermarkPosition','watermarkHorizontalAdjust','watermarkVerticalAdjust','watermarkTransparency','watermarkRotation','watermarkMosaic','watermarkLayer'].forEach(id=>{
+    const n=el(id);if(!n)return;n.addEventListener('input',()=>{saveState();schedulePreview()});n.addEventListener('change',()=>{saveState();schedulePreview()});
+  });
+  const pf=el('wmPreviewFile');if(pf)pf.onchange=()=>{saveState();state.previewPage=1;render()};
+  const pp=el('wmPreviewPage');if(pp)pp.onchange=()=>{saveState();schedulePreview()};
+  const prev=el('wmPrevPage');if(prev)prev.onclick=()=>{state.previewPage=Math.max(1,Number(el('wmPreviewPage')?.value||1)-1);el('wmPreviewPage').value=state.previewPage;schedulePreview()};
+  const next=el('wmNextPage');if(next)next.onclick=()=>{state.previewPage=Number(el('wmPreviewPage')?.value||1)+1;el('wmPreviewPage').value=state.previewPage;schedulePreview()};
+}
+async function ensurePdfLib(){
+  if(window.PDFLib?.PDFDocument)return window.PDFLib;
+  if(typeof window.ensurePDFLib!=='function')throw new Error('PDF engine loader unavailable.');
+  return window.ensurePDFLib();
+}
+function hexToRgb(hex){
+  const h=String(hex||'#000000').replace('#','').padEnd(6,'0');
+  return {r:parseInt(h.slice(0,2),16),g:parseInt(h.slice(2,4),16),b:parseInt(h.slice(4,6),16)};
+}
+async function textPng(text,fontFamily,fontStyle,fontSize,color){
+  const dpr=2,pad=Math.max(12,fontSize*.35),weight=fontStyle==='Bold'?'700':'400',italic=fontStyle==='Italic'?'italic':'normal';
+  const probe=document.createElement('canvas'),pctx=probe.getContext('2d');
+  pctx.font=`${italic} ${weight} ${fontSize*dpr}px "${fontFamily}", Arial, sans-serif`;
+  const lines=String(text||'KOHA').split(/\r?\n/),width=Math.max(...lines.map(x=>pctx.measureText(x||' ').width),fontSize*dpr);
+  const lineH=fontSize*dpr*1.25,w=Math.ceil(width+pad*dpr*2),h=Math.ceil(lines.length*lineH+pad*dpr*2);
+  const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');
+  ctx.font=pctx.font;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillStyle=color||'#000';
+  lines.forEach((line,i)=>ctx.fillText(line||' ',pad*dpr,pad*dpr+i*lineH));
+  const blob=await new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(new Error('Canvas export failed')),'image/png'));
+  return {bytes:new Uint8Array(await blob.arrayBuffer()),width:w/dpr,height:h/dpr};
+}
+function parsePages(spec,total){
+  const s=String(spec||'all').trim().toLowerCase();if(!s||s==='all')return Array.from({length:total},(_,i)=>i);
+  const out=new Set();
+  s.split(',').map(x=>x.trim()).filter(Boolean).forEach(part=>{
+    if(part.includes('-')){
+      const [aa,bb]=part.split('-'),a=aa===''?1:(aa==='end'?total:Number(aa)),b=bb==='end'?total:Number(bb);
+      if(Number.isFinite(a)&&Number.isFinite(b))for(let n=Math.max(1,Math.min(a,b));n<=Math.min(total,Math.max(a,b));n++)out.add(n-1);
+    }else{
+      const n=part==='end'?total:Number(part);if(n>=1&&n<=total)out.add(n-1);
+    }
+  });
+  return [...out].sort((a,b)=>a-b);
+}
+function placement(pageW,pageH,stampW,stampH){
+  const [v,h]=String(state.position||'middle-center').split('-');
+  const margin=24;
+  let x=h==='left'?margin:h==='right'?pageW-stampW-margin:(pageW-stampW)/2;
+  let y=v==='bottom'?margin:v==='top'?pageH-stampH-margin:(pageH-stampH)/2;
+  x+=Number(state.horizontalAdjust||0);
+  y+=Number(state.verticalAdjust||0);
+  return {x,y};
+}
+function positions(pageW,pageH,stampW,stampH){
+  if(!state.mosaic)return [placement(pageW,pageH,stampW,stampH)];
+  const xs=[pageW*.18-stampW/2,pageW*.5-stampW/2,pageW*.82-stampW/2],ys=[pageH*.18-stampH/2,pageH*.5-stampH/2,pageH*.82-stampH/2],out=[];
+  ys.forEach(y=>xs.forEach(x=>out.push({x:x+state.horizontalAdjust,y:y+state.verticalAdjust})));return out;
+}
+async function embedStamp(doc){
+  if(modeValue()==='image'){
+    const f=window.watermarkFile;if(!f)throw new Error(t('Hãy chọn ảnh dấu.','Choose a stamp image.'));
+    const bytes=new Uint8Array(await f.arrayBuffer());
+    const img=/png/i.test(f.type)||/\.png$/i.test(f.name)?await doc.embedPng(bytes):await doc.embedJpg(bytes);
+    return {img,ratio:img.height/img.width};
+  }
+  if(!String(state.text||'').trim())throw new Error(t('Hãy nhập nội dung watermark.','Enter watermark text.'));
+  const r=await textPng(state.text,state.fontFamily,state.fontStyle,state.fontSize,state.fontColor);
+  return {img:await doc.embedPng(r.bytes),ratio:r.height/r.width,textWidth:r.width};
+}
+function stampSize(page,stamp){
+  let w;
+  if(modeValue()==='image')w=page.getWidth()*(state.imageScale/100);
+  else w=Math.min(page.getWidth()*.78,Math.max(30,stamp.textWidth||state.fontSize*4));
+  return {w,h:w*stamp.ratio};
+}
+async function stampDocument(file,onlyPage=null){
+  await ensurePdfLib();saveState();
+  const src=await PDFLib.PDFDocument.load(new Uint8Array(await file.arrayBuffer()),{ignoreEncryption:false});
+  let doc=src;
+  if(onlyPage!==null){
+    const out=await PDFLib.PDFDocument.create(),idx=Math.max(0,Math.min(src.getPageCount()-1,onlyPage));
+    const [p]=await out.copyPages(src,[idx]);out.addPage(p);doc=out;
+  }
+  const stamp=await embedStamp(doc),pages=doc.getPages();
+  const targets=onlyPage!==null?[0]:parsePages(state.pages,pages.length);
+  for(const idx of targets){
+    const p=pages[idx];if(!p)continue;
+    const size=stampSize(p,stamp);
+    for(const pos of positions(p.getWidth(),p.getHeight(),size.w,size.h)){
+      p.drawImage(stamp.img,{x:pos.x,y:pos.y,width:size.w,height:size.h,opacity:state.transparency/100,rotate:PDFLib.degrees(state.rotation)});
+    }
+  }
+  return new Blob([await doc.save()],{type:'application/pdf'});
+}
+function schedulePreview(){
+  clearTimeout(previewTimer);previewTimer=setTimeout(updatePreview,160);
+}
+async function updatePreview(){
+  if(!isWatermark())return;
+  saveState();const list=selected(),empty=el('wmPreviewEmpty'),frame=el('wmPreviewFrame'),status=el('wmPreviewStatus');
+  if(!list.length){if(empty)empty.hidden=false;if(frame)frame.hidden=true;if(status)status.textContent='';return}
+  const fi=Math.min(state.previewFile,list.length-1),file=list[fi];state.previewFile=fi;
+  try{
+    await ensurePdfLib();
+    const src=await PDFLib.PDFDocument.load(new Uint8Array(await file.arrayBuffer()),{ignoreEncryption:true});
+    const total=src.getPageCount();state.previewPage=Math.min(total,Math.max(1,state.previewPage));
+    if(el('wmPreviewPage')){el('wmPreviewPage').max=String(total);el('wmPreviewPage').value=String(state.previewPage)}
+    src.destroy?.();
+    if(modeValue()==='image'&&!window.watermarkFile){if(empty){empty.hidden=false;empty.textContent=t('Chọn ảnh dấu để xem preview.','Choose a stamp image to preview.')}if(frame)frame.hidden=true;return}
+    const blob=await stampDocument(file,state.previewPage-1);
+    if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=URL.createObjectURL(blob);
+    if(frame){frame.src=previewObjectUrl+'#toolbar=0&navpanes=0&view=FitH';frame.hidden=false}
+    if(empty)empty.hidden=true;
+    if(status)status.textContent=`${t('Trang','Page')} ${state.previewPage}/${total}${!isOffline()&&state.layer==='below'?' · '+t('Preview hiển thị vị trí; layer below áp dụng khi xử lý Online.','Preview shows placement; below layer is applied during Online processing.'):''}`;
+  }catch(err){
+    console.error('[WM54 preview]',err);if(empty){empty.hidden=false;empty.textContent=t('Không tạo được preview: ','Preview unavailable: ')+err.message}if(frame)frame.hidden=true;
+  }
+}
+function setBusy(on){
+  const l=el('loader'),txt=el('processButtonText'),b=el('processButton');
+  if(l)l.style.display=on?'block':'none';if(txt)txt.style.display=on?'none':'block';if(b)b.disabled=on||!selected().length;
+}
+function showOfflineResults(results){
+  offlineResults=results;const c=el('resultContainer'),link=el('downloadLink');if(c)c.classList.remove('hidden');
+  if(link)link.textContent=results.length===1?t('Tải: ','Download: ')+results[0].name:t('Tải ','Download ')+results.length+' PDF';
+  setStatus('Đóng dấu Offline thành công. Tài liệu không rời thiết bị.','Offline watermark completed. The document stayed on this device.','success');
+}
+async function runOffline(){
+  saveState();const list=selected();if(!list.length)throw new Error(t('Vui lòng chọn PDF.','Please choose a PDF.'));
+  if(modeValue()==='image'&&!window.watermarkFile)throw new Error(t('Hãy chọn ảnh dấu.','Choose a stamp image.'));
+  const results=[];
+  for(let i=0;i<list.length;i++){
+    setStatus(`Đang đóng dấu Offline ${i+1}/${list.length}…`,`Applying Offline watermark ${i+1}/${list.length}…`);
+    results.push({blob:await stampDocument(list[i]),name:list[i].name.replace(/\.pdf$/i,'')+'-watermarked.pdf'});
+  }
+  showOfflineResults(results);
+}
+function saveBlob(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},800)}
+async function downloadOffline(){
+  if(!offlineResults.length)return;
+  if(offlineResults.length===1){saveBlob(offlineResults[0].blob,offlineResults[0].name);return}
+  for(const r of offlineResults){saveBlob(r.blob,r.name);await new Promise(x=>setTimeout(x,180))}
+}
+function processOfflineIntercept(e){
+  if(!isWatermark()||!isOffline())return;
+  e.preventDefault();e.stopImmediatePropagation();
+  (async()=>{try{setBusy(true);el('resultContainer')?.classList.add('hidden');await runOffline()}catch(err){console.error('[WM54]',err);setStatus('Lỗi: '+err.message,'Error: '+err.message,'error')}finally{setBusy(false)}})();
+}
+function downloadOfflineIntercept(e){
+  if(!isWatermark()||!isOffline()||!offlineResults.length)return;
+  e.preventDefault();e.stopImmediatePropagation();downloadOffline();
+}
+function sync(){
+  const now=el('apiTool')?.value||'';
+  if(now==='watermark'){
+    if(lastTool!=='watermark'){offlineResults=[];state.previewPage=1}
+    const box=el('toolOptions');
+    if(box&&box.dataset.watermarkProV54!=='1')render();
+  }
+  lastTool=now;
+}
+window.addEventListener('load',()=>{
+  ensureStyles();sync();
+  el('apiTool')?.addEventListener('change',()=>setTimeout(sync,30));
+  el('fileInput')?.addEventListener('change',()=>setTimeout(()=>{if(isWatermark())render()},60));
+  el('processButton')?.addEventListener('click',processOfflineIntercept,true);
+  el('downloadLink')?.addEventListener('click',downloadOfflineIntercept,true);
+  document.addEventListener('click',e=>{if(e.target.closest?.('[data-tool]'))setTimeout(sync,40)},true);
+  new MutationObserver(m=>{
+    if(m.some(x=>x.type==='attributes'&&x.attributeName==='lang')){if(isWatermark())render()}
+    if(isWatermark()&&el('toolOptions')?.dataset.watermarkProV54!=='1')setTimeout(sync,20);
+  }).observe(document.documentElement,{attributes:true,attributeFilter:['lang'],childList:true,subtree:true});
+});
+window.NLKH_WATERMARK_PDF_V54=true;
+})();

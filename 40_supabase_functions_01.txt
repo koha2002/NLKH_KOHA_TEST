@@ -1,0 +1,2329 @@
+
+===== FILE: supabase/functions/_shared/auth.ts =====
+import{createClient}from"npm:@supabase/supabase-js@2";
+function serviceKey(){
+  const legacy=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if(legacy)return legacy;
+  try{return JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}").default||""}catch{return""}
+}
+function publicKey(){
+  const legacy=Deno.env.get("SUPABASE_ANON_KEY");
+  if(legacy)return legacy;
+  try{return JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS")||"{}").default||""}catch{return""}
+}
+export function adminClient(){
+  const url=Deno.env.get("SUPABASE_URL")!,key=serviceKey();
+  if(!url||!key)throw new Error("Missing Supabase service secret");
+  return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+}
+export function callerClient(req:Request){
+  const url=Deno.env.get("SUPABASE_URL")!,key=publicKey();
+  if(!url||!key)throw new Error("Missing Supabase public key");
+  return createClient(url,key,{global:{headers:{Authorization:req.headers.get("Authorization")||""}},auth:{persistSession:false,autoRefreshToken:false}});
+}
+export async function caller(req:Request){
+  const c=callerClient(req),{data:{user}}=await c.auth.getUser();
+  if(!user)return{user:null,profile:null,permissions:[] as string[]};
+  const admin=adminClient(),{data:profile}=await admin.from("profiles").select("id,email,role_id,status,roles(permissions)").eq("id",user.id).maybeSingle();
+  const role=(profile as any)?.roles;
+  return{user,profile,permissions:Array.isArray(role?.permissions)?role.permissions:[]};
+}
+export function hasPermission(ctx:any,p:string){
+  return ctx?.profile?.status==="active"&&(ctx.permissions?.includes("*")||ctx.permissions?.includes(p));
+}
+
+===== FILE: supabase/functions/_shared/cors.ts =====
+export function corsHeaders(req: Request) {
+  const allowed=(Deno.env.get("ALLOWED_ORIGINS")||"").split(",").map(x=>x.trim()).filter(Boolean);
+  const origin=req.headers.get("origin")||"";
+  const allowOrigin=allowed.includes("*")||allowed.includes(origin)?(origin||"*"):(allowed[0]||"*");
+  return {
+    "Access-Control-Allow-Origin":allowOrigin,
+    "Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-scheduler-secret",
+    "Access-Control-Allow-Methods":"POST, OPTIONS",
+    "Vary":"Origin"
+  };
+}
+export function json(req:Request,body:unknown,status=200){
+  return new Response(JSON.stringify(body),{status,headers:{...corsHeaders(req),"Content-Type":"application/json"}});
+}
+
+===== FILE: supabase/functions/_shared/crypto.ts =====
+const enc=new TextEncoder(),dec=new TextDecoder();
+function b64(bytes:Uint8Array){let s="";for(const b of bytes)s+=String.fromCharCode(b);return btoa(s)}
+function unb64(s:string){const raw=atob(s);return Uint8Array.from(raw,c=>c.charCodeAt(0))}
+async function getKey(){
+  const secret=Deno.env.get("INTEGRATION_SECRETS_KEY");
+  if(!secret||secret.length<32)throw new Error("INTEGRATION_SECRETS_KEY phải >= 32 ký tự");
+  const digest=await crypto.subtle.digest("SHA-256",enc.encode(secret));
+  return crypto.subtle.importKey("raw",digest,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+}
+export async function encryptSecret(value:string){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const out=await crypto.subtle.encrypt({name:"AES-GCM",iv},await getKey(),enc.encode(value));
+  return`v1.${b64(iv)}.${b64(new Uint8Array(out))}`;
+}
+export async function decryptSecret(value:string){
+  const[ver,iv,cipher]=value.split(".");
+  if(ver!=="v1"||!iv||!cipher)throw new Error("Ciphertext format invalid");
+  const out=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(iv)},await getKey(),unb64(cipher));
+  return dec.decode(out);
+}
+
+===== FILE: supabase/functions/cloudflare-redirect-sync/index.ts =====
+import { adminClient, caller, hasPermission } from "../_shared/auth.ts";
+import { json, corsHeaders } from "../_shared/cors.ts";
+
+const API = "https://api.cloudflare.com/client/v4";
+const BULK_RULE_REF = "nlkh_admin_bulk_redirects";
+const SINGLE_REF_PREFIX = "nlkh_admin_single_";
+const SINGLE_PHASE = "http_request_dynamic_redirect";
+
+function cfg() {
+  const account = Deno.env.get("CLOUDFLARE_ACCOUNT_ID") || "";
+  const token = Deno.env.get("CLOUDFLARE_API_TOKEN") || "";
+  const zoneId = (Deno.env.get("CLOUDFLARE_ZONE_ID") || "").trim();
+  const listName = (Deno.env.get("CLOUDFLARE_REDIRECT_LIST_NAME") || "nlkh_admin_redirects")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .slice(0, 50);
+
+  const allowedHosts = (
+    Deno.env.get("REDIRECT_ALLOWED_HOSTS") ||
+    "koha.io.vn,nguyenlekhanhhoa.com,nguyenlekhanhhoa.name.vn"
+  )
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+
+  const defaultTargetHost = (
+    Deno.env.get("REDIRECT_DEFAULT_TARGET_HOST") || "nguyenlekhanhhoa.com"
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!account || !token) {
+    throw new Error(
+      "Thiếu CLOUDFLARE_ACCOUNT_ID hoặc CLOUDFLARE_API_TOKEN trong Supabase Edge secrets.",
+    );
+  }
+
+  return { account, token, zoneId, listName, allowedHosts, defaultTargetHost };
+}
+
+async function cf(path: string, init: RequestInit = {}) {
+  const { token } = cfg();
+
+  const r = await fetch(`${API}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
+
+  const text = await r.text();
+  let body: any = {};
+
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { raw: text };
+  }
+
+  if (!r.ok || body.success === false) {
+    const msg =
+      body?.errors?.map((x: any) => x.message).filter(Boolean).join("; ") ||
+      body?.messages?.map((x: any) => x.message).filter(Boolean).join("; ") ||
+      body?.raw ||
+      `HTTP ${r.status}`;
+
+    const e: any = new Error(`Cloudflare: ${msg}`);
+    e.status = r.status;
+    throw e;
+  }
+
+  return body.result;
+}
+
+async function waitOperation(account: string, id?: string) {
+  if (!id) return;
+
+  for (let i = 0; i < 30; i++) {
+    const result: any = await cf(
+      `/accounts/${account}/rules/lists/bulk_operations/${id}`,
+    );
+
+    if (result?.status === "completed") return;
+    if (result?.status === "failed") {
+      throw new Error("Cloudflare bulk operation failed.");
+    }
+
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  throw new Error(
+    "Cloudflare bulk operation chưa hoàn tất sau 15 giây; thử đồng bộ lại sau.",
+  );
+}
+
+function normalizeTarget(target: string, defaultHost: string) {
+  const t = String(target || "").trim();
+  if (/^https?:\/\//i.test(t)) return t;
+  return `https://${defaultHost}${t.startsWith("/") ? t : `/${t}`}`;
+}
+
+function normalizeHost(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
+}
+
+function normalizePath(value: unknown) {
+  return String(value || "/").trim() || "/";
+}
+
+function cfString(value: string) {
+  return JSON.stringify(value);
+}
+
+function stableRef(id: unknown) {
+  return `${SINGLE_REF_PREFIX}${String(id || "row")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .slice(0, 100)}`;
+}
+
+function writableRule(rule: any) {
+  const out: any = {
+    action: rule.action,
+    expression: rule.expression,
+  };
+
+  if (rule.ref) out.ref = rule.ref;
+  if (rule.description) out.description = rule.description;
+  if (rule.action_parameters) out.action_parameters = rule.action_parameters;
+  if (typeof rule.enabled === "boolean") out.enabled = rule.enabled;
+  if (rule.logging) out.logging = rule.logging;
+
+  return out;
+}
+
+async function findZoneId(host: string, account: string) {
+  let zones: any[];
+
+  try {
+    zones = await cf(`/zones?name=${encodeURIComponent(host)}`);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `${msg}. Để Admin tự tìm Zone ID, CLOUDFLARE_API_TOKEN cần quyền Zone → Zone → Read cho ${host}.`,
+    );
+  }
+
+  const zone = (zones || []).find(
+    (z: any) =>
+      String(z?.name || "").toLowerCase() === host &&
+      (!z?.account?.id || z.account.id === account),
+  );
+
+  if (!zone?.id) {
+    throw new Error(
+      `Không tìm thấy Cloudflare Zone ID cho ${host}. Hãy cấp Zone → Zone → Read cho API token.`,
+    );
+  }
+
+  return zone.id as string;
+}
+
+async function syncBulkRedirects(
+  account: string,
+  listName: string,
+  items: any[],
+) {
+  const lists: any[] = await cf(`/accounts/${account}/rules/lists`);
+
+  let list = lists.find(
+    (x: any) => x.name === listName && x.kind === "redirect",
+  );
+
+  if (!list) {
+    list = await cf(`/accounts/${account}/rules/lists`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: listName,
+        description: "NLKH Admin managed cross-domain redirects",
+        kind: "redirect",
+      }),
+    });
+  }
+
+  const op: any = await cf(
+    `/accounts/${account}/rules/lists/${list.id}/items`,
+    {
+      method: "PUT",
+      body: JSON.stringify(items),
+    },
+  );
+
+  await waitOperation(account, op?.operation_id);
+
+  const ruleSpec = {
+    ref: BULK_RULE_REF,
+    expression: `http.request.full_uri in $${listName}`,
+    description: "NLKH Admin managed cross-domain Bulk Redirects",
+    action: "redirect",
+    action_parameters: {
+      from_list: {
+        name: listName,
+        key: "http.request.full_uri",
+      },
+    },
+    enabled: true,
+  };
+
+  let entry: any = null;
+
+  try {
+    entry = await cf(
+      `/accounts/${account}/rulesets/phases/http_request_redirect/entrypoint`,
+    );
+  } catch (e) {
+    if ((e as any)?.status !== 404) throw e;
+  }
+
+  if (!entry?.id) {
+    await cf(`/accounts/${account}/rulesets`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "NLKH redirects",
+        kind: "root",
+        phase: "http_request_redirect",
+        rules: [ruleSpec],
+      }),
+    });
+    return;
+  }
+
+  const existing = (entry.rules || []).find(
+    (r: any) =>
+      r.ref === BULK_RULE_REF ||
+      r.action_parameters?.from_list?.name === listName,
+  );
+
+  if (existing?.id) {
+    await cf(
+      `/accounts/${account}/rulesets/${entry.id}/rules/${existing.id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(ruleSpec),
+      },
+    );
+  } else {
+    await cf(`/accounts/${account}/rulesets/${entry.id}/rules`, {
+      method: "POST",
+      body: JSON.stringify(ruleSpec),
+    });
+  }
+}
+
+async function syncSingleRedirects(
+  zoneId: string,
+  rules: any[],
+) {
+  let entry: any = null;
+
+  try {
+    entry = await cf(
+      `/zones/${zoneId}/rulesets/phases/${SINGLE_PHASE}/entrypoint`,
+    );
+  } catch (e) {
+    if ((e as any)?.status !== 404) throw e;
+  }
+
+  if (!entry?.id) {
+    if (!rules.length) return;
+
+    await cf(`/zones/${zoneId}/rulesets`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "NLKH Admin Single Redirects",
+        description:
+          "NLKH Admin managed same-domain canonical redirects",
+        kind: "zone",
+        phase: SINGLE_PHASE,
+        rules,
+      }),
+    });
+
+    return;
+  }
+
+  // Giữ nguyên các Single Redirect không do NLKH Admin quản lý.
+  const foreignRules = (entry.rules || [])
+    .filter(
+      (r: any) =>
+        !String(r?.ref || "").startsWith(SINGLE_REF_PREFIX),
+    )
+    .map(writableRule);
+
+  await cf(`/zones/${zoneId}/rulesets/${entry.id}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      description:
+        entry.description ||
+        "NLKH Admin managed same-domain canonical redirects",
+      rules: [...foreignRules, ...rules],
+    }),
+  });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders(req) });
+  }
+
+  if (req.method !== "POST") {
+    return json(req, { error: "Chỉ hỗ trợ POST." }, 405);
+  }
+
+  const admin = adminClient();
+
+  try {
+    const ctx = await caller(req);
+
+    if (!hasPermission(ctx, "seo.manage")) {
+      return json(
+        req,
+        { error: "Bạn không có quyền đồng bộ Redirect." },
+        403,
+      );
+    }
+
+    const {
+      account,
+      zoneId,
+      listName,
+      allowedHosts,
+      defaultTargetHost,
+    } = cfg();
+
+    const { data: rows, error } = await admin
+      .from("redirects")
+      .select("*")
+      .eq("active", true)
+      .order("source_host")
+      .order("source_path");
+
+    if (error) throw error;
+
+    const rejected: any[] = [];
+    const bulkItems: any[] = [];
+    const bulkRows: any[] = [];
+    const singleRules: any[] = [];
+    const singleRows: any[] = [];
+
+    for (const row of rows || []) {
+      const host = normalizeHost(row.source_host);
+      const path = normalizePath(row.source_path);
+
+      if (!allowedHosts.includes(host)) {
+        rejected.push({
+          id: row.id,
+          reason: `Host ${host} chưa nằm trong REDIRECT_ALLOWED_HOSTS.`,
+        });
+        continue;
+      }
+
+      if (!path.startsWith("/") || path.includes("..")) {
+        rejected.push({
+          id: row.id,
+          reason: `Path ${path} không hợp lệ.`,
+        });
+        continue;
+      }
+
+      const target = normalizeTarget(
+        String(row.target_url || ""),
+        defaultTargetHost,
+      );
+
+      if (!target) {
+        rejected.push({
+          id: row.id,
+          reason: "Thiếu target URL.",
+        });
+        continue;
+      }
+
+      const sourceUrl = `https://${host}${path}`;
+
+      if (target.toLowerCase() === sourceUrl.toLowerCase()) {
+        rejected.push({
+          id: row.id,
+          reason: "Redirect trỏ về chính nó.",
+        });
+        continue;
+      }
+
+      if (host !== defaultTargetHost) {
+        bulkItems.push({
+          redirect: {
+            source_url: sourceUrl,
+            target_url: target,
+            status_code: Number(row.status_code || 301),
+            preserve_query_string: row.preserve_query !== false,
+            include_subdomains: !!row.include_subdomains,
+            subpath_matching: !!row.subpath_matching,
+            preserve_path_suffix: !!row.preserve_path_suffix,
+          },
+          comment: String(
+            row.note || `Admin redirect ${host}${path}`,
+          ).slice(0, 500),
+        });
+
+        bulkRows.push(row);
+        continue;
+      }
+
+      // Same-domain canonical redirect: quản lý bằng Single Redirect.
+      // Hiện hỗ trợ exact path, đúng với nhóm /cv/, /software/, /tools/.../
+      if (row.subpath_matching || row.preserve_path_suffix) {
+        rejected.push({
+          id: row.id,
+          reason:
+            "Same-domain Single Redirect hiện chỉ hỗ trợ exact path; hãy tắt Khớp mọi path con và Giữ phần path phía sau.",
+        });
+        continue;
+      }
+
+      singleRules.push({
+        ref: stableRef(row.id),
+        expression:
+          `(http.host eq ${cfString(host)} and ` +
+          `http.request.uri.path eq ${cfString(path)})`,
+        description: String(
+          row.note || `NLKH Admin same-domain ${path} -> ${target}`,
+        ).slice(0, 500),
+        action: "redirect",
+        action_parameters: {
+          from_value: {
+            target_url: {
+              value: target,
+            },
+            status_code: Number(row.status_code || 301),
+            preserve_query_string: row.preserve_query !== false,
+          },
+        },
+        enabled: true,
+      });
+
+      singleRows.push(row);
+    }
+
+    // 1) Chỉ redirect khác domain vào Bulk Redirects.
+    await syncBulkRedirects(account, listName, bulkItems);
+
+    // 2) Redirect cùng domain vào zone-level Single Redirects.
+    const resolvedZoneId =
+      zoneId || await findZoneId(defaultTargetHost, account);
+    await syncSingleRedirects(resolvedZoneId, singleRules);
+
+    const syncedRows = [...bulkRows, ...singleRows];
+    const syncedIds = syncedRows.map((x: any) => x.id);
+
+    if (syncedIds.length) {
+      await admin
+        .from("redirects")
+        .update({
+          cloudflare_synced_at: new Date().toISOString(),
+          cloudflare_error: null,
+        })
+        .in("id", syncedIds);
+    }
+
+    for (const x of rejected) {
+      await admin
+        .from("redirects")
+        .update({ cloudflare_error: x.reason })
+        .eq("id", x.id);
+    }
+
+    return json(req, {
+      ok: true,
+      message:
+        `Đã đồng bộ ${bulkItems.length} Bulk + ` +
+        `${singleRules.length} Single Redirect lên Cloudflare.`,
+      bulk_count: bulkItems.length,
+      single_count: singleRules.length,
+      rejected,
+      list: listName,
+      zone_id: resolvedZoneId,
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+
+    try {
+      await admin
+        .from("redirects")
+        .update({ cloudflare_error: message })
+        .eq("active", true);
+    } catch {
+      // Không che lỗi gốc nếu việc ghi trạng thái lỗi thất bại.
+    }
+
+    return json(req, { error: message }, 500);
+  }
+});
+
+===== FILE: supabase/functions/integration-proxy/index.ts =====
+import{adminClient,caller,hasPermission}from"../_shared/auth.ts";import{decryptSecret}from"../_shared/crypto.ts";import{json,corsHeaders}from"../_shared/cors.ts";
+function repl(v:any,secret:string,payload:any,placeholder:string):any{if(typeof v==="string"){let o=v.split(placeholder).join(secret);return o.replace(/\{\{payload\.([a-zA-Z0-9_]+)\}\}/g,(_,k)=>String(payload?.[k]??""))}if(Array.isArray(v))return v.map(x=>repl(x,secret,payload,placeholder));if(v&&typeof v==="object")return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,repl(x,secret,payload,placeholder)]));return v}
+Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});try{
+ const scheduler=req.headers.get("x-scheduler-secret"),serverCall=!!scheduler&&scheduler===Deno.env.get("SCHEDULER_SECRET");
+ const ctx=serverCall?{user:{id:"scheduler"},profile:{status:"active"},permissions:["*"]}:await caller(req);
+ const body=await req.json(),slug=String(body.slug||"");if(!slug)return json(req,{error:"Missing slug"},400);
+ const admin=adminClient(),{data:i,error}=await admin.from("api_integrations").select("*").eq("slug",slug).eq("active",true).maybeSingle();if(error||!i)return json(req,{error:"Integration not found"},404);
+ if(!serverCall){if(i.scope==="authenticated"&&!ctx.user)return json(req,{error:"Login required"},401);if(i.scope==="admin"&&!hasPermission(ctx,"api.manage"))return json(req,{error:"Forbidden"},403)}
+ const secret=i.secret_ciphertext?await decryptSecret(i.secret_ciphertext):"",payload=body.payload||{},placeholder=i.key_placeholder||"{{API_KEY}}";
+ const base=new URL(i.base_url),allowed=String(i.allowed_host||"").toLowerCase();if(base.hostname.toLowerCase()!==allowed)throw new Error("allowed_host mismatch");
+ const endpoint=repl(i.endpoint_template||"/",secret,payload,placeholder),url=new URL(endpoint,base);if(url.hostname.toLowerCase()!==allowed)throw new Error("Host blocked");
+ const query=repl(i.query_template||{},secret,payload,placeholder);for(const[k,v]of Object.entries(query))if(v!=null)url.searchParams.set(k,String(v));
+ const h=repl(i.headers_template||{},secret,payload,placeholder),templBody=repl(i.body_template||{},secret,payload,placeholder);
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.min(Number(i.timeout_ms||30000),60000)),method=i.method||"POST";
+ const r=await fetch(url,{method,headers:Object.fromEntries(Object.entries(h).map(([k,v])=>[k,String(v)])),body:["GET","DELETE"].includes(method)?undefined:JSON.stringify({...templBody,...payload}),signal:controller.signal});clearTimeout(timer);
+ const text=await r.text();let data:any;try{data=JSON.parse(text)}catch{data=text}
+ return json(req,{status:r.status,ok:r.ok,data},r.ok?200:502);
+}catch(e){return json(req,{error:e instanceof Error?e.message:String(e)},500)}})
+
+===== FILE: supabase/functions/integration-secret/index.ts =====
+import{adminClient,caller,hasPermission}from"../_shared/auth.ts";import{encryptSecret}from"../_shared/crypto.ts";import{json,corsHeaders}from"../_shared/cors.ts";
+Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});try{const ctx=await caller(req);if(!hasPermission(ctx,"api.manage"))return json(req,{error:"Forbidden"},403);const{integration_id,secret}=await req.json();if(!integration_id||typeof secret!=="string"||!secret)return json(req,{error:"Thiếu integration_id/secret"},400);const cipher=await encryptSecret(secret),admin=adminClient(),{error}=await admin.from("api_integrations").update({secret_ciphertext:cipher,secret_updated_at:new Date().toISOString()}).eq("id",integration_id);if(error)throw error;return json(req,{ok:true,message:"Đã mã hóa và lưu API secret."})}catch(e){return json(req,{error:e instanceof Error?e.message:String(e)},500)}})
+
+===== FILE: supabase/functions/manual-backup/index.ts =====
+import{adminClient,caller,hasPermission}from"../_shared/auth.ts";
+import{corsHeaders,json}from"../_shared/cors.ts";
+import{S3Client,ListBucketsCommand,ListObjectsV2Command,GetObjectCommand}from"npm:@aws-sdk/client-s3@3";
+
+const PAGE=250;
+const enc=new TextEncoder();
+const dec=new TextDecoder();
+
+function b64u(bytes:Uint8Array){
+  let s="";
+  for(let i=0;i<bytes.length;i+=0x8000){
+    s+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+  }
+  return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function unb64u(s:string){
+  const p=s.replace(/-/g,"+").replace(/_/g,"/");
+  const raw=atob(p+"=".repeat((4-p.length%4)%4));
+  const out=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);
+  return out;
+}
+async function ticketKey(){
+  const secret=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+  if(!secret)throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY.");
+  return crypto.subtle.importKey(
+    "raw",enc.encode(secret),
+    {name:"HMAC",hash:"SHA-256"},
+    false,["sign","verify"]
+  );
+}
+async function signTicket(userId:string){
+  const payload={
+    kind:"manual-full-backup-v2",
+    sub:userId,
+    exp:Date.now()+2*60*60*1000,
+    nonce:crypto.randomUUID()
+  };
+  const body=b64u(enc.encode(JSON.stringify(payload)));
+  const sig=new Uint8Array(
+    await crypto.subtle.sign("HMAC",await ticketKey(),enc.encode(body))
+  );
+  return{
+    token:`${body}.${b64u(sig)}`,
+    expires_at:new Date(payload.exp).toISOString()
+  };
+}
+async function verifyTicket(token:string){
+  try{
+    const[body,sigText]=token.split(".");
+    if(!body||!sigText)return null;
+    const ok=await crypto.subtle.verify(
+      "HMAC",await ticketKey(),unb64u(sigText),enc.encode(body)
+    );
+    if(!ok)return null;
+    const payload=JSON.parse(dec.decode(unb64u(body)));
+    if(
+      payload?.kind!=="manual-full-backup-v2"||
+      !payload?.sub||
+      Number(payload?.exp||0)<=Date.now()
+    )return null;
+    return payload;
+  }catch{return null}
+}
+
+function r2Config(){
+  const account=Deno.env.get("R2_ACCOUNT_ID")||"";
+  const access=Deno.env.get("R2_ACCESS_KEY_ID")||"";
+  const secret=Deno.env.get("R2_SECRET_ACCESS_KEY")||"";
+  const bucket=Deno.env.get("R2_BUCKET_NAME")||"";
+  if(!account||!access||!secret||!bucket){
+    throw new Error("Missing R2 credentials/bucket.");
+  }
+  return{
+    account,bucket,
+    s3:new S3Client({
+      region:"auto",
+      endpoint:`https://${account}.r2.cloudflarestorage.com`,
+      credentials:{accessKeyId:access,secretAccessKey:secret}
+    })
+  };
+}
+async function accessibleR2Buckets(){
+  const{s3,bucket}=r2Config();
+  try{
+    const out=await s3.send(new ListBucketsCommand({}));
+    const names=(out.Buckets||[])
+      .map((x:any)=>String(x?.Name||"").trim())
+      .filter(Boolean);
+    if(names.length){
+      return{
+        names:Array.from(new Set(names)).sort(),
+        mode:"account-list"
+      };
+    }
+  }catch{}
+  return{names:[bucket],mode:"configured-bucket-fallback"};
+}
+function responseHeaders(req:Request,contentType?:string){
+  const h=new Headers(corsHeaders(req));
+  // Ticket GETs are authenticated by a short-lived HMAC token, not cookies.
+  // Make CORS explicit because Admin is hosted on a different origin.
+  h.set("Access-Control-Allow-Origin","*");
+  h.set("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+  h.set(
+    "Access-Control-Allow-Headers",
+    "authorization, x-client-info, apikey, content-type"
+  );
+  h.set("Cache-Control","no-store");
+  h.set("X-Content-Type-Options","nosniff");
+  h.set(
+    "Access-Control-Expose-Headers",
+    "Content-Type,ETag,Last-Modified,Cache-Control,Content-Disposition,Content-Language,X-NLKH-Object-Meta,X-NLKH-Chunk-Start,X-NLKH-Chunk-Bytes,X-NLKH-Content-Range"
+  );
+  if(contentType)h.set("Content-Type",contentType);
+  return h;
+}
+function objectMetaHeader(value:any){
+  try{
+    const text=JSON.stringify(value||{});
+    if(text.length>7000)return"";
+    return b64u(enc.encode(text));
+  }catch{return""}
+}
+async function technologyNewsKvBackup(){
+  const secret=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+  if(!secret)throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY.");
+  const path="/backup-config-internal";
+  const ts=String(Math.floor(Date.now()/1000));
+  const key=await crypto.subtle.importKey(
+    "raw",enc.encode(secret),
+    {name:"HMAC",hash:"SHA-256"},
+    false,["sign"]
+  );
+  const sig=new Uint8Array(
+    await crypto.subtle.sign("HMAC",key,enc.encode(`${ts}\n${path}`))
+  );
+  const base=(Deno.env.get("TECHNOLOGY_NEWS_URL")||
+    "https://automation.nguyenlekhanhhoa.com").replace(/\/$/,"");
+  const res=await fetch(`${base}${path}`,{
+    headers:{
+      "x-nlkh-backup-ts":ts,
+      "x-nlkh-backup-signature":b64u(sig)
+    }
+  });
+  const text=await res.text();
+  if(!res.ok)throw new Error(
+    `Technology News KV backup HTTP ${res.status}: ${text.slice(0,1000)}`
+  );
+  const data=text?JSON.parse(text):{};
+  if(!data?.ok||!Array.isArray(data?.keys)){
+    throw new Error("Technology News KV backup returned invalid payload.");
+  }
+  return data;
+}
+
+async function tableInventory(admin:any){
+  const{data,error}=await admin.rpc("manual_backup_table_inventory");
+  if(error)throw error;
+  return(data||[]).map((x:any)=>({
+    table_name:String(x.table_name),
+    row_count:Number(x.row_count||0)
+  }));
+}
+async function authCount(admin:any){
+  let page=1,count=0;
+  while(page<=10000){
+    const{data,error}=await admin.auth.admin.listUsers({page,perPage:1000});
+    if(error)throw error;
+    const users=data?.users||[];
+    count+=users.length;
+    if(users.length<1000)break;
+    page++;
+  }
+  return count;
+}
+async function storageBuckets(admin:any){
+  const{data,error}=await admin.rpc("manual_backup_storage_buckets");
+  if(error)throw error;
+  return Array.isArray(data)?data:[];
+}
+async function storageInventory(admin:any){
+  let count=0,bytes=0;
+  for(let offset=0;;offset+=PAGE){
+    const{data,error}=await admin.rpc(
+      "manual_backup_storage_objects_page",
+      {p_offset:offset,p_limit:PAGE}
+    );
+    if(error)throw error;
+    const rows=Array.isArray(data)?data:[];
+    count+=rows.length;
+    for(const x of rows){
+      bytes+=Number(x?.metadata?.size||0);
+    }
+    if(rows.length<PAGE)break;
+  }
+  return{count,bytes};
+}
+async function r2Inventory(){
+  const{s3}=r2Config();
+  const access=await accessibleR2Buckets();
+  const buckets:any[]=[];
+  let count=0,bytes=0;
+  for(const bucket of access.names){
+    let bucketCount=0,bucketBytes=0,token:string|undefined=undefined;
+    do{
+      const out=await s3.send(new ListObjectsV2Command({
+        Bucket:bucket,ContinuationToken:token,MaxKeys:1000
+      }));
+      for(const o of out.Contents||[]){
+        if(!o.Key)continue;
+        bucketCount++;
+        bucketBytes+=Number(o.Size||0);
+      }
+      token=out.IsTruncated&&out.NextContinuationToken
+        ?String(out.NextContinuationToken):undefined;
+    }while(token);
+    buckets.push({name:bucket,objects:bucketCount,bytes:bucketBytes});
+    count+=bucketCount;
+    bytes+=bucketBytes;
+  }
+  return{
+    mode:access.mode,
+    buckets,
+    total_buckets:buckets.length,
+    count,
+    bytes
+  };
+}
+async function inventory(admin:any){
+  const[tables,auth,buckets,storage,r2]=await Promise.all([
+    tableInventory(admin),
+    authCount(admin),
+    storageBuckets(admin),
+    storageInventory(admin),
+    r2Inventory()
+  ]);
+  return{
+    ok:true,
+    ready:true,
+    format:"NLKH_MANUAL_FULL_BACKUP_V4_3",
+    checked_at:new Date().toISOString(),
+    database:{
+      tables,
+      total_tables:tables.length,
+      total_rows:tables.reduce((n:number,x:any)=>n+x.row_count,0)
+    },
+    auth:{users:auth},
+    supabase_storage:{
+      buckets:buckets.length,
+      objects:storage.count,
+      bytes:storage.bytes
+    },
+    r2:{
+      mode:r2.mode,
+      buckets:r2.buckets,
+      total_buckets:r2.total_buckets,
+      objects:r2.count,
+      bytes:r2.bytes
+    },
+    estimated_binary_bytes:storage.bytes+r2.bytes,
+    consistency:"non-transactional-cross-service",
+    known_external_state:[
+      "Git/source repository is separate from runtime data.",
+      "Secret VALUES are intentionally not exportable from runtime."
+    ]
+  };
+}
+
+async function getTablePage(admin:any,u:URL,req:Request){
+  const table=String(u.searchParams.get("table")||"");
+  const offset=Math.max(0,Number(u.searchParams.get("offset")||0));
+  const limit=Math.min(500,Math.max(1,Number(u.searchParams.get("limit")||PAGE)));
+  const{data,error}=await admin.rpc("manual_backup_table_page",{
+    p_table:table,p_offset:offset,p_limit:limit
+  });
+  if(error)throw error;
+  return json(req,{rows:Array.isArray(data)?data:[]});
+}
+async function getAuthPage(admin:any,u:URL,req:Request){
+  const page=Math.max(1,Number(u.searchParams.get("page")||1));
+  const perPage=Math.min(1000,Math.max(1,Number(u.searchParams.get("limit")||1000)));
+  const{data,error}=await admin.auth.admin.listUsers({page,perPage});
+  if(error)throw error;
+  return json(req,{users:data?.users||[]});
+}
+async function getStorageListPage(admin:any,u:URL,req:Request){
+  const offset=Math.max(0,Number(u.searchParams.get("offset")||0));
+  const limit=Math.min(500,Math.max(1,Number(u.searchParams.get("limit")||PAGE)));
+  const{data,error}=await admin.rpc("manual_backup_storage_objects_page",{
+    p_offset:offset,p_limit:limit
+  });
+  if(error)throw error;
+  return json(req,{objects:Array.isArray(data)?data:[]});
+}
+async function getR2ListPage(u:URL,req:Request){
+  const{s3}=r2Config();
+  const bucket=String(u.searchParams.get("bucket")||"");
+  if(!bucket)throw new Error("Missing R2 bucket.");
+  const allowed=await accessibleR2Buckets();
+  if(!allowed.names.includes(bucket))throw new Error("R2 bucket is not accessible.");
+  const cursor=u.searchParams.get("cursor")||undefined;
+  const limit=Math.min(1000,Math.max(1,Number(u.searchParams.get("limit")||250)));
+  const out=await s3.send(new ListObjectsV2Command({
+    Bucket:bucket,
+    ContinuationToken:cursor,
+    MaxKeys:limit
+  }));
+  const objects=(out.Contents||[])
+    .filter((o:any)=>!!o.Key)
+    .map((o:any)=>({
+      key:String(o.Key),
+      size:Number(o.Size||0),
+      etag:String(o.ETag||""),
+      last_modified:o.LastModified?o.LastModified.toISOString():null,
+      storage_class:String(o.StorageClass||"")
+    }));
+  return json(req,{
+    bucket,objects,
+    next_cursor:out.IsTruncated&&out.NextContinuationToken
+      ?String(out.NextContinuationToken):null
+  });
+}
+async function getStorageFile(admin:any,u:URL,req:Request){
+  const bucket=String(u.searchParams.get("bucket")||"");
+  const name=String(u.searchParams.get("name")||"");
+  if(!bucket||!name)throw new Error("Missing storage bucket/name.");
+  const{data:signed,error}=await admin.storage.from(bucket).createSignedUrl(name,300);
+  if(error||!signed?.signedUrl){
+    throw new Error(error?.message||"Cannot create Storage signed URL.");
+  }
+  const upstream=await fetch(signed.signedUrl,{redirect:"follow",headers:{"Accept-Encoding":"identity"}});
+  if(!upstream.ok||!upstream.body){
+    throw new Error(`Storage HTTP ${upstream.status}: ${bucket}/${name}`);
+  }
+  const h=responseHeaders(req,upstream.headers.get("Content-Type")||"application/octet-stream");
+  for(const key of [
+    "ETag","Last-Modified","Cache-Control",
+    "Content-Disposition","Content-Language"
+  ]){
+    const v=upstream.headers.get(key);
+    if(v)h.set(key,v);
+  }
+  h.set("X-NLKH-Object-Meta",objectMetaHeader({
+    provider:"supabase-storage",bucket,name
+  }));
+  return new Response(upstream.body,{status:200,headers:h});
+}
+async function bodyToBytes(raw:any){
+  if(typeof raw?.transformToByteArray==="function"){
+    return new Uint8Array(await raw.transformToByteArray());
+  }
+  if(typeof raw?.transformToWebStream==="function"){
+    return new Uint8Array(
+      await new Response(raw.transformToWebStream()).arrayBuffer()
+    );
+  }
+  return new Uint8Array(await new Response(raw).arrayBuffer());
+}
+async function getR2File(u:URL,req:Request){
+  const bucket=String(u.searchParams.get("bucket")||"");
+  const key=String(u.searchParams.get("key")||"");
+  if(!bucket||!key)throw new Error("Missing R2 bucket/object key.");
+
+  const start=Math.max(0,Math.floor(Number(u.searchParams.get("start")||0)));
+  const requested=Math.max(1,Math.floor(Number(u.searchParams.get("length")||2097152)));
+  const length=Math.min(4*1024*1024,requested);
+  const end=start+length-1;
+
+  const{s3}=r2Config();
+  const allowed=await accessibleR2Buckets();
+  if(!allowed.names.includes(bucket))throw new Error("R2 bucket is not accessible.");
+
+  // NLKH_BACKUP_V42_R2_CHUNKS:
+  // Do NOT relay the AWS SDK body stream through Supabase Edge. The relay can
+  // remain open and make ZipWriter appear stuck at 0/N. Read only a small byte
+  // range into memory, return a finite response, and let the browser request
+  // the next chunk. This also works for large objects without one long Edge run.
+  const obj=await s3.send(new GetObjectCommand({
+    Bucket:bucket,
+    Key:key,
+    Range:`bytes=${start}-${end}`
+  }));
+  if(!obj.Body)throw new Error(`R2 object has no body: ${key}`);
+
+  const bytes=await bodyToBytes(obj.Body);
+  const h=responseHeaders(req,String(obj.ContentType||"application/octet-stream"));
+  h.set("X-NLKH-Chunk-Start",String(start));
+  h.set("X-NLKH-Chunk-Bytes",String(bytes.byteLength));
+  if(obj.ContentRange)h.set("X-NLKH-Content-Range",String(obj.ContentRange));
+  if(obj.ETag)h.set("ETag",String(obj.ETag));
+  if(obj.LastModified)h.set("Last-Modified",obj.LastModified.toUTCString());
+  if(obj.CacheControl)h.set("Cache-Control",String(obj.CacheControl));
+  if(obj.ContentDisposition)h.set("Content-Disposition",String(obj.ContentDisposition));
+  if(obj.ContentLanguage)h.set("Content-Language",String(obj.ContentLanguage));
+  h.set("X-NLKH-Object-Meta",objectMetaHeader({
+    provider:"cloudflare-r2",
+    bucket,key,
+    content_type:obj.ContentType||null,
+    cache_control:obj.CacheControl||null,
+    content_disposition:obj.ContentDisposition||null,
+    content_encoding:obj.ContentEncoding||null,
+    content_language:obj.ContentLanguage||null,
+    expires:obj.Expires?obj.Expires.toISOString():null,
+    metadata:obj.Metadata||{},
+    etag:obj.ETag||null,
+    last_modified:obj.LastModified?obj.LastModified.toISOString():null,
+    content_range:obj.ContentRange||null
+  }));
+  return new Response(bytes,{status:200,headers:h});
+}
+
+async function getR2ChunkJson(body:any){
+  const bucket=String(body?.bucket||"");
+  const key=String(body?.key||"");
+  if(!bucket||!key)throw new Error("Missing R2 bucket/object key.");
+
+  const start=Math.max(0,Math.floor(Number(body?.start||0)));
+  const requested=Math.max(1,Math.floor(Number(body?.length||524288)));
+  const length=Math.min(1024*1024,requested);
+  const end=start+length-1;
+
+  const{s3}=r2Config();
+  const allowed=await accessibleR2Buckets();
+  if(!allowed.names.includes(bucket))throw new Error("R2 bucket is not accessible.");
+
+  // NLKH_BACKUP_V43_R2_POST_CHUNKS:
+  // Browser -> Supabase uses the same authenticated POST invoke path that already
+  // works for schema/database/auth. No cross-origin binary GET is required.
+  const obj=await s3.send(new GetObjectCommand({
+    Bucket:bucket,
+    Key:key,
+    Range:`bytes=${start}-${end}`
+  }));
+  if(!obj.Body)throw new Error(`R2 object has no body: ${key}`);
+
+  const bytes=await bodyToBytes(obj.Body);
+  return{
+    ok:true,
+    bytes_b64:b64u(bytes),
+    byte_length:bytes.byteLength,
+    meta:{
+      provider:"cloudflare-r2",
+      bucket,key,
+      content_type:obj.ContentType||null,
+      cache_control:obj.CacheControl||null,
+      content_disposition:obj.ContentDisposition||null,
+      content_encoding:obj.ContentEncoding||null,
+      content_language:obj.ContentLanguage||null,
+      expires:obj.Expires?obj.Expires.toISOString():null,
+      metadata:obj.Metadata||{},
+      etag:obj.ETag||null,
+      last_modified:obj.LastModified?obj.LastModified.toISOString():null,
+      content_range:obj.ContentRange||null
+    }
+  };
+}
+
+Deno.serve(async req=>{
+  const u=new URL(req.url);
+
+  if(req.method==="OPTIONS"){
+    return new Response("ok",{headers:responseHeaders(req,"text/plain; charset=utf-8")});
+  }
+
+  if(req.method==="GET"){
+    const ticket=String(u.searchParams.get("ticket")||"");
+    if(!(await verifyTicket(ticket))){
+      return new Response(
+        "Invalid or expired backup ticket.",
+        {status:403,headers:responseHeaders(req,"text/plain; charset=utf-8")}
+      );
+    }
+    try{
+      const admin=adminClient();
+      const op=String(u.searchParams.get("op")||"");
+      if(op==="table-page")return await getTablePage(admin,u,req);
+      if(op==="auth-page")return await getAuthPage(admin,u,req);
+      if(op==="storage-list-page")return await getStorageListPage(admin,u,req);
+      if(op==="r2-list-page")return await getR2ListPage(u,req);
+      if(op==="storage-file")return await getStorageFile(admin,u,req);
+      if(op==="r2-file")return await getR2File(u,req);
+      if(op==="technology-news-kv"){
+        return json(req,await technologyNewsKvBackup());
+      }
+      if(op==="schema"){
+        const{data,error}=await admin.rpc("manual_backup_schema_metadata");
+        if(error)throw error;
+        return json(req,{schema:data||{}});
+      }
+      if(op==="meta"){
+        const buckets=await storageBuckets(admin);
+        const r2=r2Config();
+        const secretNames=[
+          "SUPABASE_SERVICE_ROLE_KEY","INTEGRATION_SECRETS_KEY","SCHEDULER_SECRET",
+          "R2_ACCESS_KEY_ID","R2_SECRET_ACCESS_KEY","CLOUDFLARE_API_TOKEN"
+        ];
+        return json(req,{
+          generated_at:new Date().toISOString(),
+          safe_runtime:{
+            supabase_url:Deno.env.get("SUPABASE_URL")||"",
+            r2_account_id:r2.account,
+            r2_bucket_name:r2.bucket,
+            technology_news_url:Deno.env.get("TECHNOLOGY_NEWS_URL")||
+              "https://automation.nguyenlekhanhhoa.com",
+            edge_region:Deno.env.get("SB_REGION")||""
+          },
+          secret_presence_only:Object.fromEntries(
+            secretNames.map(k=>[k,{present:!!Deno.env.get(k)}])
+          ),
+          supabase_storage_buckets:buckets
+        });
+      }
+      return json(req,{error:"Unknown GET operation"},400);
+    }catch(e){
+      return json(req,{error:e instanceof Error?e.message:String(e)},500);
+    }
+  }
+
+  if(req.method!=="POST")return json(req,{error:"Method not allowed"},405);
+
+  try{
+    const ctx=await caller(req);
+    if(!hasPermission(ctx,"api.manage"))return json(req,{error:"Forbidden"},403);
+
+    const body=await req.json().catch(()=>({}));
+    const action=String(body?.action||"inventory");
+    const admin=adminClient();
+
+    if(action==="r2-chunk"){
+      return json(req,await getR2ChunkJson(body));
+    }
+
+    if(action==="json-op"){
+      const op=String(body?.op||"");
+      const v=new URL(req.url);
+      for(const[k,val]of Object.entries(body||{})){
+        if(k==="action"||k==="op"||val===undefined||val===null||val==="")continue;
+        v.searchParams.set(k,String(val));
+      }
+
+      if(op==="table-page")return await getTablePage(admin,v,req);
+      if(op==="auth-page")return await getAuthPage(admin,v,req);
+      if(op==="storage-list-page")return await getStorageListPage(admin,v,req);
+      if(op==="r2-list-page")return await getR2ListPage(v,req);
+      if(op==="technology-news-kv"){
+        return json(req,await technologyNewsKvBackup());
+      }
+      if(op==="schema"){
+        const{data,error}=await admin.rpc("manual_backup_schema_metadata");
+        if(error)throw error;
+        return json(req,{schema:data||{}});
+      }
+      if(op==="meta"){
+        const buckets=await storageBuckets(admin);
+        const r2=r2Config();
+        const secretNames=[
+          "SUPABASE_SERVICE_ROLE_KEY","INTEGRATION_SECRETS_KEY","SCHEDULER_SECRET",
+          "R2_ACCESS_KEY_ID","R2_SECRET_ACCESS_KEY","CLOUDFLARE_API_TOKEN"
+        ];
+        return json(req,{
+          generated_at:new Date().toISOString(),
+          safe_runtime:{
+            supabase_url:Deno.env.get("SUPABASE_URL")||"",
+            r2_account_id:r2.account,
+            r2_bucket_name:r2.bucket,
+            technology_news_url:Deno.env.get("TECHNOLOGY_NEWS_URL")||
+              "https://automation.nguyenlekhanhhoa.com",
+            edge_region:Deno.env.get("SB_REGION")||""
+          },
+          secret_presence_only:Object.fromEntries(
+            secretNames.map(k=>[k,{present:!!Deno.env.get(k)}])
+          ),
+          supabase_storage_buckets:buckets
+        });
+      }
+      return json(req,{error:"Unknown JSON backup operation"},400);
+    }
+
+    if(action==="inventory"){
+      return json(req,await inventory(admin));
+    }
+
+    if(action==="ticket"){
+      const signed=await signTicket(String(ctx.user?.id||""));
+      const endpoint=new URL(req.url);
+      endpoint.search="";
+      return json(req,{
+        ok:true,
+        ticket:signed.token,
+        expires_at:signed.expires_at,
+        endpoint:endpoint.toString()
+      });
+    }
+
+    return json(req,{error:"Unknown action"},400);
+  }catch(e){
+    return json(req,{error:e instanceof Error?e.message:String(e)},500);
+  }
+});
+
+===== FILE: supabase/functions/news-article-delete/index.ts =====
+import { S3Client,DeleteObjectCommand } from "npm:@aws-sdk/client-s3@3";
+import { adminClient,caller,hasPermission } from "../_shared/auth.ts";
+import { corsHeaders,json } from "../_shared/cors.ts";
+
+function r2(){
+  const account=Deno.env.get("R2_ACCOUNT_ID"),access=Deno.env.get("R2_ACCESS_KEY_ID"),secret=Deno.env.get("R2_SECRET_ACCESS_KEY");
+  if(!account||!access||!secret)throw new Error("Thiếu R2 credentials.");
+  return new S3Client({region:"auto",endpoint:`https://${account}.r2.cloudflarestorage.com`,credentials:{accessKeyId:access,secretAccessKey:secret}});
+}
+async function stillUsed(admin:any,id:string){
+  const refs=[
+    ["site_settings","og_media_id"],["site_settings","favicon_media_id"],
+    ["navigation_items","icon_media_id"],["social_links","icon_media_id"],
+    ["seo_entries","og_media_id"],["tools","icon_media_id"],["profiles","avatar_media_id"],
+    ["news_articles","cover_media_id"],["news_article_media","media_id"],
+    ["software_items","icon_media_id"],["software_items","cover_media_id"],
+    ["software_items","download_media_id"],["cv_profiles","photo_media_id"],
+    ["cv_profiles","pdf_media_id"],["data_items","media_id"]
+  ];
+  for(const [table,column] of refs){
+    const {count,error}=await admin.from(table).select("*",{head:true,count:"exact"}).eq(column,id);
+    if(error)throw error;
+    if(count&&count>0)return true;
+  }
+  return false;
+}
+
+Deno.serve(async req=>{
+  if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});
+  if(req.method!=="POST")return json(req,{error:"POST only"},405);
+  try{
+    const ctx=await caller(req);
+    if(!hasPermission(ctx,"news.manage"))return json(req,{error:"Bạn không có quyền xóa bài News."},403);
+
+    const body=await req.json();
+    const articleId=String(body.article_id||"").trim();
+    if(!articleId)return json(req,{error:"Thiếu article_id."},400);
+
+    const admin=adminClient();
+    const {data:article,error:articleError}=await admin.from("news_articles")
+      .select("id,cover_media_id").eq("id",articleId).maybeSingle();
+    if(articleError)throw articleError;
+    if(!article)return json(req,{error:"Không tìm thấy bài."},404);
+
+    const {data:mapped,error:mapError}=await admin.from("news_article_media")
+      .select("media_id").eq("article_id",articleId);
+    if(mapError)throw mapError;
+
+    const mediaIds=[...new Set([
+      article.cover_media_id,
+      ...(mapped||[]).map((x:any)=>x.media_id)
+    ].filter(Boolean))];
+
+    const {error:deleteError}=await admin.from("news_articles").delete().eq("id",articleId);
+    if(deleteError)throw deleteError;
+
+    const s3=r2();
+    const bucket=Deno.env.get("R2_BUCKET_NAME")||"";
+    const deleted:string[]=[];
+    const kept:string[]=[];
+    const failed:string[]=[];
+
+    for(const mediaId of mediaIds){
+      try{
+        if(await stillUsed(admin,String(mediaId))){
+          kept.push(String(mediaId));
+          continue;
+        }
+        const {data:asset,error:assetError}=await admin.from("media_assets")
+          .select("id,object_key").eq("id",mediaId).maybeSingle();
+        if(assetError)throw assetError;
+        if(!asset)continue;
+
+        if(bucket&&asset.object_key){
+          await s3.send(new DeleteObjectCommand({Bucket:bucket,Key:asset.object_key}));
+        }
+        const {error:assetDeleteError}=await admin.from("media_assets").delete().eq("id",mediaId);
+        if(assetDeleteError)throw assetDeleteError;
+        deleted.push(String(mediaId));
+      }catch(e){
+        failed.push(`${mediaId}: ${e instanceof Error?e.message:String(e)}`);
+      }
+    }
+
+    return json(req,{ok:true,deleted_media:deleted,kept_shared:kept,cleanup_failed:failed});
+  }catch(e){
+    return json(req,{error:e instanceof Error?e.message:String(e)},500);
+  }
+});
+
+===== FILE: supabase/functions/news-comment/index.ts =====
+import{S3Client,PutObjectCommand,DeleteObjectCommand}from"npm:@aws-sdk/client-s3@3";
+import{adminClient,caller,hasPermission}from"../_shared/auth.ts";
+import{json,corsHeaders}from"../_shared/cors.ts";
+function r2(){const account=Deno.env.get("R2_ACCOUNT_ID"),access=Deno.env.get("R2_ACCESS_KEY_ID"),secret=Deno.env.get("R2_SECRET_ACCESS_KEY");if(!account||!access||!secret)throw new Error("Thiếu R2 secrets.");return new S3Client({region:"auto",endpoint:`https://${account}.r2.cloudflarestorage.com`,credentials:{accessKeyId:access,secretAccessKey:secret}})}
+async function hash(v:string){const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));return[...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+async function writeJson(key:string,payload:any){await r2().send(new PutObjectCommand({Bucket:Deno.env.get("R2_BUCKET_NAME")!,Key:key,Body:JSON.stringify(payload,null,2),ContentType:"application/json"}))}
+Deno.serve(async req=>{
+ if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});if(req.method!=="POST")return json(req,{error:"Chỉ hỗ trợ POST."},405);
+ try{
+  const body=await req.json(),action=String(body.action||"submit"),admin=adminClient(),ctx=await caller(req);
+  if(action==="list"){
+    if(!hasPermission(ctx,"news.manage"))return json(req,{error:"Bạn không có quyền xem hàng chờ bình luận."},403);
+    const filter=String(body.status||"pending");let q=admin.from("news_comments").select("*,news_articles(title_vi,slug)").order("created_at",{ascending:false});if(filter!=="all")q=q.eq("status",filter);const{data,error}=await q;if(error)throw error;return json(req,{rows:data||[]});
+  }
+  if(action==="moderate"){
+    if(!hasPermission(ctx,"news.manage"))return json(req,{error:"Bạn không có quyền duyệt bình luận."},403);
+    const id=String(body.comment_id||""),next=String(body.status||"");if(!["approved","rejected"].includes(next))return json(req,{error:"Trạng thái duyệt không hợp lệ."},400);
+    const{data:c}=await admin.from("news_comments").select("*,news_articles(slug)").eq("id",id).maybeSingle();if(!c)return json(req,{error:"Không tìm thấy bình luận."},404);
+    const reviewedAt=new Date().toISOString();
+    if(next==="approved"){
+      const key=c.r2_object_key||`comments/${(c as any).news_articles?.slug||"article"}/${c.id}.json`;
+      // Chỉ đổi DB sang approved SAU KHI R2 ghi thành công. Nếu R2 lỗi, comment vẫn pending/rejected và không thể lộ ra view public.
+      await writeJson(key,{id:c.id,article_id:c.article_id,display_name:c.display_name,body:c.body,status:"approved",created_at:c.created_at,reviewed_at:reviewedAt,reviewed_by:ctx.user?.id||null});
+      const{error}=await admin.from("news_comments").update({status:"approved",r2_object_key:key,reviewed_at:reviewedAt,reviewed_by:ctx.user?.id||null}).eq("id",id);if(error)throw error;
+      return json(req,{ok:true,message:"Đã duyệt: R2 đã lưu JSON thành công, sau đó hệ thống mới bật hiển thị bình luận."});
+    }
+    if(c.r2_object_key){
+      try{await r2().send(new DeleteObjectCommand({Bucket:Deno.env.get("R2_BUCKET_NAME")!,Key:c.r2_object_key}))}catch(e){throw new Error(`Không thể xóa bản R2 cũ nên chưa đổi trạng thái bình luận: ${e instanceof Error?e.message:String(e)}`)}
+    }
+    const{error}=await admin.from("news_comments").update({status:"rejected",r2_object_key:null,reviewed_at:reviewedAt,reviewed_by:ctx.user?.id||null}).eq("id",id);if(error)throw error;
+    return json(req,{ok:true,message:"Đã từ chối; bình luận không hiển thị và không còn bản JSON R2 đã duyệt."});
+  }
+  if(action==="delete"){
+    if(!hasPermission(ctx,"news.manage"))return json(req,{error:"Bạn không có quyền xóa bình luận."},403);const id=String(body.comment_id||""),{data:c}=await admin.from("news_comments").select("r2_object_key").eq("id",id).maybeSingle();if(!c)return json(req,{error:"Không tìm thấy bình luận."},404);if(c.r2_object_key)try{await r2().send(new DeleteObjectCommand({Bucket:Deno.env.get("R2_BUCKET_NAME")!,Key:c.r2_object_key}))}catch(e){console.error(e)}const{error}=await admin.from("news_comments").delete().eq("id",id);if(error)throw error;return json(req,{ok:true,message:"Đã xóa bình luận khỏi DB và R2."});
+  }
+  if(action!=="submit")return json(req,{error:"Action không hợp lệ."},400);
+  const articleId=String(body.article_id||""),displayName=String(body.display_name||ctx.profile?.display_name||"").trim(),email=String(body.email||ctx.profile?.email||"").trim(),text=String(body.body||"").trim();if(!articleId)return json(req,{error:"Thiếu bài viết cần bình luận."},400);if(displayName.length<2)return json(req,{error:"Tên hiển thị cần ít nhất 2 ký tự."},400);if(text.length<2||text.length>3000)return json(req,{error:"Bình luận cần từ 2 đến 3000 ký tự."},400);
+  const{data:article}=await admin.from("news_articles").select("id,slug,status,allow_comments").eq("id",articleId).maybeSingle();if(!article||article.status!=="published")return json(req,{error:"Bài viết không tồn tại hoặc chưa xuất bản."},404);if(!article.allow_comments)return json(req,{error:"Bài viết này đang tắt bình luận."},403);
+  const ip=(req.headers.get("cf-connecting-ip")||req.headers.get("x-forwarded-for")||"").split(",")[0].trim(),salt=Deno.env.get("COMMENT_HASH_SALT")||Deno.env.get("SCHEDULER_SECRET")||"nlkh";
+  const{data:comment,error}=await admin.from("news_comments").insert({article_id:articleId,user_id:ctx.user?.id||null,display_name:displayName,email:email||null,body:text,status:"pending",ip_hash:ip?await hash(`${salt}:${ip}`):null,user_agent:(req.headers.get("user-agent")||"").slice(0,500)}).select("*").single();if(error)throw error;
+  return json(req,{ok:true,message:"Bình luận đã gửi về Admin và đang chờ duyệt. Chỉ khi Admin duyệt hệ thống mới lưu bản JSON vào R2 và hiển thị công khai.",comment_id:comment.id});
+ }catch(e){return json(req,{error:e instanceof Error?e.message:String(e)},500)}
+});
+
+===== FILE: supabase/functions/news-media-ingest/index.ts =====
+import { S3Client,PutObjectCommand } from "npm:@aws-sdk/client-s3@3";
+import { adminClient } from "../_shared/auth.ts";
+import { corsHeaders,json } from "../_shared/cors.ts";
+
+function safe(name:string){return name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"")||"image"}
+function code(n:number){return `R2-${String(n).padStart(6,"0")}`}
+function publicUrl(key:string){
+  const base=(Deno.env.get("R2_PUBLIC_BASE_URL")||"").trim().replace(/\/$/,"");
+  if(!/^https?:\/\/[^()[\]\s]+$/i.test(base))throw new Error("R2_PUBLIC_BASE_URL chưa hợp lệ.");
+  return `${base}/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+function r2(){
+  const account=Deno.env.get("R2_ACCOUNT_ID"),access=Deno.env.get("R2_ACCESS_KEY_ID"),secret=Deno.env.get("R2_SECRET_ACCESS_KEY");
+  if(!account||!access||!secret)throw new Error("Thiếu R2 credentials.");
+  return new S3Client({region:"auto",endpoint:`https://${account}.r2.cloudflarestorage.com`,credentials:{accessKeyId:access,secretAccessKey:secret}});
+}
+
+Deno.serve(async req=>{
+  if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});
+  if(req.method!=="POST")return json(req,{error:"POST only"},405);
+  try{
+    const expected=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+    if(!expected||req.headers.get("authorization")!==`Bearer ${expected}`)return json(req,{error:"Unauthorized"},401);
+
+    const body=await req.json();
+    const articleId=String(body.article_id||"").trim();
+    const sourceUrl=String(body.source_image_url||"").trim();
+    const role=String(body.role||"inline")==="cover"?"cover":"inline";
+    const sortOrder=Math.max(0,Number(body.sort_order||0));
+
+    if(!articleId||!/^https?:\/\//i.test(sourceUrl))return json(req,{error:"Thiếu article_id/source_image_url."},400);
+
+    const admin=adminClient();
+    const {data:article,error:articleError}=await admin.from("news_articles")
+      .select("id,title_vi,title_en,cover_media_id")
+      .eq("id",articleId).maybeSingle();
+    if(articleError)throw articleError;
+    if(!article)return json(req,{error:"Article not found"},404);
+
+    if(role==="cover"&&article.cover_media_id){
+      const {data:existing}=await admin.from("media_assets").select("id,public_url,object_key").eq("id",article.cover_media_id).maybeSingle();
+      if(existing){
+        await admin.from("news_article_media").upsert({
+          article_id:articleId,media_id:existing.id,role:"cover",sort_order:0,source_url:sourceUrl
+        },{onConflict:"article_id,media_id"});
+        return json(req,{ok:true,media_id:existing.id,url:existing.public_url||publicUrl(existing.object_key),skipped:"cover_exists"});
+      }
+    }
+
+    const response=await fetch(sourceUrl,{
+      headers:{
+        "User-Agent":"NLKH-Technology-NewsBot/1.0 (+https://nguyenlekhanhhoa.com/news)",
+        Accept:"image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+      },
+      redirect:"follow"
+    });
+    if(!response.ok)throw new Error(`Source image HTTP ${response.status}`);
+
+    const type=(response.headers.get("content-type")||"").split(";")[0].trim().toLowerCase();
+    if(!type.startsWith("image/"))throw new Error(`Không phải ảnh (${type||"unknown"}).`);
+
+    const bytes=new Uint8Array(await response.arrayBuffer());
+    if(bytes.byteLength<4096)throw new Error("Ảnh quá nhỏ.");
+    if(bytes.byteLength>12*1024*1024)throw new Error("Ảnh vượt 12 MB.");
+
+    const hash=await crypto.subtle.digest("SHA-256",bytes);
+    const sha=[...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,"0")).join("");
+
+    const {data:dupe,error:dupeError}=await admin.from("media_assets")
+      .select("*").eq("sha256",sha).eq("visibility","public").eq("status","ready").maybeSingle();
+    if(dupeError)throw dupeError;
+
+    let asset=dupe;
+    if(!asset){
+      let ext="jpg";
+      if(type==="image/png")ext="png";
+      else if(type==="image/webp")ext="webp";
+      else if(type==="image/avif")ext="avif";
+      else if(type==="image/gif")ext="gif";
+
+      const original=safe(`${role}-${sortOrder}.${ext}`);
+      const temp=`pending/${crypto.randomUUID()}`;
+      const {data:created,error:createError}=await admin.from("media_assets").insert({
+        object_key:temp,
+        original_name:original,
+        mime_type:type,
+        size_bytes:bytes.byteLength,
+        title:article.title_vi||article.title_en||original,
+        alt_vi:article.title_vi||"",
+        alt_en:article.title_en||article.title_vi||"",
+        folder:`news/${articleId}`,
+        visibility:"public",
+        owner_id:null,
+        sha256:sha,
+        status:"pending",
+        usage_note:`News ${role} ${articleId}`,
+        uploaded_from:"automation"
+      }).select("*").single();
+      if(createError)throw createError;
+
+      const objectKey=`news/${articleId}/${code(created.asset_no)}/${original}`;
+      const pub=publicUrl(objectKey);
+      const bucket=Deno.env.get("R2_BUCKET_NAME")||"";
+      if(!bucket)throw new Error("Thiếu R2_BUCKET_NAME.");
+
+      await r2().send(new PutObjectCommand({
+        Bucket:bucket,Key:objectKey,Body:bytes,ContentType:type,
+        CacheControl:"public, max-age=31536000, immutable"
+      }));
+
+      const {data:ready,error:readyError}=await admin.from("media_assets")
+        .update({object_key:objectKey,public_url:pub,status:"ready"})
+        .eq("id",created.id).select("*").single();
+      if(readyError)throw readyError;
+      asset=ready;
+    }
+
+    const url=asset.public_url||publicUrl(String(asset.object_key));
+
+    const {error:mapError}=await admin.from("news_article_media").upsert({
+      article_id:articleId,
+      media_id:asset.id,
+      role,
+      sort_order:sortOrder,
+      source_url:sourceUrl
+    },{onConflict:"article_id,media_id"});
+    if(mapError)throw mapError;
+
+    if(role==="cover"){
+      const {error:updateError}=await admin.from("news_articles").update({
+        cover_media_id:asset.id,
+        cover_image:url,
+        cover_alt_vi:article.title_vi||"",
+        cover_alt_en:article.title_en||article.title_vi||""
+      }).eq("id",articleId);
+      if(updateError)throw updateError;
+    }
+
+    return json(req,{ok:true,media_id:asset.id,url,duplicate:!!dupe,role,sort_order:sortOrder});
+  }catch(e){
+    return json(req,{error:e instanceof Error?e.message:String(e)},500);
+  }
+});
+
+===== FILE: supabase/functions/r2-file/index.ts =====
+import{S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadObjectCommand}from"npm:@aws-sdk/client-s3@3";import{getSignedUrl}from"npm:@aws-sdk/s3-request-presigner@3";import{adminClient,caller,hasPermission}from"../_shared/auth.ts";import{json,corsHeaders}from"../_shared/cors.ts";
+function r2(){const account=Deno.env.get("R2_ACCOUNT_ID"),access=Deno.env.get("R2_ACCESS_KEY_ID"),secret=Deno.env.get("R2_SECRET_ACCESS_KEY");if(!account||!access||!secret)throw new Error("Thiếu R2 credentials.");return new S3Client({region:"auto",endpoint:`https://${account}.r2.cloudflarestorage.com`,credentials:{accessKeyId:access,secretAccessKey:secret}})}const bucket=()=>Deno.env.get("R2_BUCKET_NAME")||"";const code=(n:number)=>`R2-${String(n).padStart(6,"0")}`;const safe=(name:string)=>name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"")||"file";const safePath=(p:string)=>String(p||"uploads").split("/").map(safe).filter(Boolean).join("/")||"uploads";function publicUrl(key:string){
+  const raw=(Deno.env.get("R2_PUBLIC_BASE_URL")||"").trim();
+  const base=raw.replace(/\/$/,"");
+  if(!/^https?:\/\/[^()[\]\s]+$/i.test(base))return null;
+  return `${base}/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+async function collectionPermission(admin:any,userId:string,collectionId:string){const{data}=await admin.from("user_collection_access").select("permission_level,expires_at").eq("user_id",userId).eq("collection_id",collectionId).maybeSingle();if(!data||data.expires_at&&new Date(data.expires_at)<=new Date())return null;return data.permission_level as string}
+async function usageOf(admin:any,id:string){const defs=[["site_settings","og_media_id","OG website"],["site_settings","favicon_media_id","Favicon"],["navigation_items","icon_media_id","Menu"],["social_links","icon_media_id","Social"],["seo_entries","og_media_id","SEO"],["tools","icon_media_id","Tool"],["profiles","avatar_media_id","Avatar"],["news_articles","cover_media_id","Tin tức"],["software_items","icon_media_id","Icon phần mềm"],["software_items","cover_media_id","Cover phần mềm"],["software_items","download_media_id","File tải phần mềm"],["cv_profiles","photo_media_id","Ảnh CV"],["cv_profiles","pdf_media_id","PDF CV"],["data_items","media_id","Dữ liệu"]];const usage=[];for(const[t,c,label]of defs){const{count}=await admin.from(t).select("*",{head:true,count:"exact"}).eq(c,id);if(count)usage.push({table:t,column:c,label,count})}return usage}
+async function detachEverywhere(admin:any,id:string,asset:any){await admin.from("software_items").update({visible:false}).eq("download_media_id",id);const refs=[["site_settings","og_media_id"],["site_settings","favicon_media_id"],["navigation_items","icon_media_id"],["social_links","icon_media_id"],["seo_entries","og_media_id"],["tools","icon_media_id"],["profiles","avatar_media_id"],["news_articles","cover_media_id"],["software_items","icon_media_id"],["software_items","cover_media_id"],["software_items","download_media_id"],["cv_profiles","photo_media_id"],["cv_profiles","pdf_media_id"]];for(const[t,c]of refs)await admin.from(t).update({[c]:null}).eq(c,id);await admin.from("data_items").update({media_id:null,object_key:null,visible:false}).eq("media_id",id);if(asset?.public_url){await admin.from("site_settings").update({default_og_image:null}).eq("default_og_image",asset.public_url);await admin.from("site_settings").update({favicon_url:null}).eq("favicon_url",asset.public_url)}}
+Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});if(req.method!=="POST")return json(req,{error:"Chỉ hỗ trợ POST."},405);try{const body=await req.json(),ctx=await caller(req),admin=adminClient(),s3=r2(),b=bucket();if(!b)throw new Error("Thiếu R2_BUCKET_NAME.");const action=String(body.action||"");
+if(action==="software-download"){
+  const softwareId=String(body.software_id||"");
+  if(!softwareId)return json(req,{error:"Thiếu software_id."},400);
+
+  const{data:item,error:itemErr}=await admin.from("software_items")
+    .select("id,name,visible,download_access,download_source,download_url,download_media_id,download_allowed_roles")
+    .eq("id",softwareId).maybeSingle();
+  if(itemErr)throw itemErr;
+  if(!item||!item.visible)return json(req,{error:"Phần mềm không tồn tại hoặc đang ẩn."},404);
+
+  let allowed=item.download_access==="public";
+  if(!allowed&&ctx.user){
+    const{data:profile}=await admin.from("profiles")
+      .select("status,role_id").eq("id",ctx.user.id).maybeSingle();
+    const roles=Array.isArray(item.download_allowed_roles)?item.download_allowed_roles.map(String):[];
+    allowed=profile?.status==="active"&&(!roles.length||roles.includes(String(profile.role_id||"")));
+  }
+  if(!allowed)return json(req,{error:ctx.user?"Tài khoản chưa được cấp quyền tải. Vui lòng liên hệ ADMIN.":"Bạn cần đăng nhập để tải."},403);
+
+  if(item.download_source==="link"){
+    const url=String(item.download_url||"").trim();
+    if(!/^https?:\/\//i.test(url))return json(req,{error:"Phần mềm chưa có link tải hợp lệ."},404);
+    return json(req,{url,source:"link"});
+  }
+
+  if(!item.download_media_id)return json(req,{error:"Phần mềm chưa có file R2."},404);
+  const{data:asset,error:assetErr}=await admin.from("media_assets").select("*").eq("id",item.download_media_id).maybeSingle();
+  if(assetErr)throw assetErr;
+  if(!asset?.object_key)return json(req,{error:"Không tìm thấy file R2."},404);
+  const url=await getSignedUrl(s3,new GetObjectCommand({Bucket:b,Key:asset.object_key}),{expiresIn:900});
+  return json(req,{url,source:"r2"});
+}
+if(action==="prepare-upload"){
+  const usageType=String(body.usage_type||"admin");
+  const isOwnAvatar=usageType==="avatar"&&!!ctx.user;
+  const isData=usageType==="data"&&!!ctx.user;
+  let dataUploadAllowed=false;
+  let dataCollectionId="";
+  let dataFolder="";
+
+  if(isData){
+    if(body.item_id){
+      const{data:item}=await admin.from("data_items").select("collection_id").eq("id",body.item_id).maybeSingle();
+      dataCollectionId=String(item?.collection_id||"");
+    }else if(body.collection_id){
+      dataCollectionId=String(body.collection_id||"");
+    }
+
+    if(hasPermission(ctx,"data.manage")||hasPermission(ctx,"media.manage")){
+      dataUploadAllowed=true;
+    }else if(dataCollectionId){
+      const level=String(await collectionPermission(admin,ctx.user!.id,dataCollectionId)||"");
+      dataUploadAllowed=body.item_id?level==="full":["add","full"].includes(level);
+    }
+
+    if(dataCollectionId){
+      const{data:collection}=await admin.from("data_collections").select("slug,r2_prefix").eq("id",dataCollectionId).maybeSingle();
+      if(collection)dataFolder=safePath(String(collection.r2_prefix||`data/${collection.slug||dataCollectionId}`));
+    }
+  }
+
+  if(!isOwnAvatar&&!dataUploadAllowed&&!hasPermission(ctx,"media.manage")){
+    return json(req,{error:isData?"Bạn chưa có quyền Add/Full trong thư mục dữ liệu này.":"Bạn không có quyền tải tệp lên R2."},403);
+  }
+
+  const sha=String(body.sha256||"").toLowerCase();
+  const original=String(body.original_name||"file");
+  const mime=String(body.mime_type||"application/octet-stream").toLowerCase();
+  const size=Number(body.size_bytes||0);
+  let visibility=String(body.visibility||"public");
+  let folder=safePath(String(body.folder||"uploads"));
+
+  if(!/^[a-f0-9]{64}$/.test(sha))return json(req,{error:"SHA-256 không hợp lệ."},400);
+  if(!original.trim())return json(req,{error:"Thiếu tên tệp."},400);
+  if(!Number.isFinite(size)||size<=0)return json(req,{error:"Dung lượng tệp không hợp lệ."},400);
+
+  if(isOwnAvatar){
+    const allowedAvatarMime=new Set(["image/jpeg","image/png","image/webp"]);
+    if(!allowedAvatarMime.has(mime))return json(req,{error:"Avatar chỉ hỗ trợ JPEG, PNG hoặc WebP."},415);
+    if(size>5*1024*1024)return json(req,{error:"Avatar tối đa 5 MB."},413);
+    visibility="public";
+    folder=safePath(`avatars/${ctx.user!.id}`);
+  }else if(isData&&dataFolder){
+    // Người dùng thư mục dữ liệu không được tự đổi prefix/visibility từ client.
+    folder=dataFolder;
+    visibility="private";
+  }
+
+  let dupeQuery=admin.from("media_assets").select("*").eq("sha256",sha).eq("visibility",visibility).eq("status","ready");
+  if(ctx.user&&!hasPermission(ctx,"media.manage"))dupeQuery=dupeQuery.eq("owner_id",ctx.user.id);
+  const{data:dupe}=await dupeQuery.maybeSingle();
+  if(dupe&&!isOwnAvatar){
+    let reusable=dupe;
+    if(visibility==="public"&&!dupe.public_url&&dupe.object_key){
+      const repairedUrl=publicUrl(String(dupe.object_key));
+      if(repairedUrl){
+        const{data:repaired,error:repairErr}=await admin.from("media_assets").update({public_url:repairedUrl}).eq("id",dupe.id).select("*").single();
+        if(repairErr)throw repairErr;
+        reusable=repaired||{...dupe,public_url:repairedUrl};
+      }
+    }
+    return json(req,{duplicate:true,asset:reusable});
+  }
+
+  const temp=`pending/${crypto.randomUUID()}`;
+  const{data:asset,error}=await admin.from("media_assets").insert({
+    object_key:temp,original_name:original,mime_type:mime,size_bytes:size,title:original,folder,visibility,
+    owner_id:ctx.user?.id||null,sha256:sha,status:"pending",usage_note:String(body.usage_note||usageType),
+    uploaded_from:isOwnAvatar?"profile":isData?"data":"admin"
+  }).select("*").single();
+  if(error)throw error;
+
+  const objectKey=`${folder}/${code(asset.asset_no)}/${safe(original)}`;
+  const pub=visibility==="public"?publicUrl(objectKey):null;
+  const{error:upErr}=await admin.from("media_assets").update({object_key:objectKey,public_url:pub}).eq("id",asset.id);
+  if(upErr)throw upErr;
+
+  const url=await getSignedUrl(s3,new PutObjectCommand({Bucket:b,Key:objectKey,ContentType:mime}),{expiresIn:900});
+  return json(req,{duplicate:false,url,asset:{...asset,object_key:objectKey,public_url:pub,asset_code:code(asset.asset_no)}});
+}
+if(action==="complete-upload"){
+  const{data:asset}=await admin.from("media_assets").select("*").eq("id",body.media_id).maybeSingle();
+  if(!asset)return json(req,{error:"Không tìm thấy ID R2 đang upload."},404);
+  const own=(asset.uploaded_from==="profile"||asset.uploaded_from==="data")&&ctx.user&&asset.owner_id===ctx.user.id;
+  if(!own&&!hasPermission(ctx,"media.manage"))return json(req,{error:"Bạn không có quyền hoàn tất upload này."},403);
+
+  let head:any;
+  try{
+    head=await s3.send(new HeadObjectCommand({Bucket:b,Key:asset.object_key}));
+  }catch{
+    return json(req,{error:"Không tìm thấy object đã upload trên R2."},409);
+  }
+  const actualSize=Number(head?.ContentLength||0);
+  const actualMime=String(head?.ContentType||asset.mime_type||"application/octet-stream").toLowerCase();
+
+  if(asset.uploaded_from==="profile"){
+    const allowedAvatarMime=new Set(["image/jpeg","image/png","image/webp"]);
+    if(!allowedAvatarMime.has(actualMime)||actualSize<=0||actualSize>5*1024*1024){
+      try{await s3.send(new DeleteObjectCommand({Bucket:b,Key:asset.object_key}))}catch{}
+      await admin.from("media_assets").delete().eq("id",asset.id);
+      return json(req,{error:"Avatar không hợp lệ hoặc vượt quá 5 MB."},413);
+    }
+  }
+
+  let completedPublicUrl=asset.public_url;
+  if(asset.visibility==="public"&&!completedPublicUrl&&asset.object_key){
+    completedPublicUrl=publicUrl(String(asset.object_key));
+  }
+  const{data:ready,error}=await admin.from("media_assets")
+    .update({status:"ready",size_bytes:actualSize,mime_type:actualMime,...(completedPublicUrl?{public_url:completedPublicUrl}:{})})
+    .eq("id",asset.id).select("*").single();
+  if(error)throw error;
+  if(asset.uploaded_from==="profile"){
+    await admin.from("profiles").update({avatar_media_id:ready.id,avatar_url:ready.public_url||completedPublicUrl||null}).eq("id",ctx.user!.id);
+  }
+  return json(req,{ok:true,asset:{...ready,public_url:ready.public_url||completedPublicUrl||null,asset_code:code(ready.asset_no)}});
+}
+if(action==="prepare-replace"){if(!hasPermission(ctx,"media.manage"))return json(req,{error:"Bạn không có quyền thay nội dung file R2."},403);const id=String(body.media_id||""),sha=String(body.sha256||"").toLowerCase(),original=String(body.original_name||"file"),mime=String(body.mime_type||"application/octet-stream"),size=Number(body.size_bytes||0);const{data:asset}=await admin.from("media_assets").select("*").eq("id",id).eq("status","ready").maybeSingle();if(!asset)return json(req,{error:"Không tìm thấy ID R2."},404);const{data:dupe}=await admin.from("media_assets").select("*").eq("sha256",sha).eq("visibility",asset.visibility).eq("status","ready").neq("id",id).maybeSingle();if(dupe)return json(req,{duplicate:true,asset:{...dupe,asset_code:code(dupe.asset_no)}});const url=await getSignedUrl(s3,new PutObjectCommand({Bucket:b,Key:asset.object_key,ContentType:mime}),{expiresIn:900});return json(req,{duplicate:false,url,asset:{...asset,original_name:original,mime_type:mime,size_bytes:size,sha256,asset_code:code(asset.asset_no)}})}
+if(action==="complete-replace"){if(!hasPermission(ctx,"media.manage"))return json(req,{error:"Bạn không có quyền hoàn tất thay file R2."},403);const{data:ready,error}=await admin.from("media_assets").update({sha256:String(body.sha256||"").toLowerCase(),original_name:String(body.original_name||"file"),title:String(body.original_name||"file"),mime_type:String(body.mime_type||"application/octet-stream"),size_bytes:Number(body.size_bytes||0),status:"ready"}).eq("id",body.media_id).select("*").single();if(error)throw error;return json(req,{ok:true,asset:{...ready,asset_code:code(ready.asset_no)}})}
+if(action==="delete"){if(!hasPermission(ctx,"media.manage"))return json(req,{error:"Bạn không có quyền xóa thư viện R2."},403);const id=String(body.media_id||""),{data:asset}=await admin.from("media_assets").select("*").eq("id",id).maybeSingle();if(!asset)return json(req,{error:"ID R2 không tồn tại."},404);const usage=await usageOf(admin,id);if(usage.length&&!body.force)return json(req,{error:`${code(asset.asset_no)} đang được dùng.`,usage},409);if(body.force)await detachEverywhere(admin,id,asset);try{await s3.send(new DeleteObjectCommand({Bucket:b,Key:asset.object_key}))}catch{}const{error}=await admin.from("media_assets").delete().eq("id",id);if(error)throw error;return json(req,{ok:true,deleted:code(asset.asset_no)})}
+if(action==="presign-download"){
+  const key=String(body.object_key||"").replace(/^\/+/,"");
+  let allowed=false;
+  let asset:any=null;
+
+  if(body.item_id){
+    const{data:item}=await admin.from("data_items").select("*,media_assets(*)").eq("id",body.item_id).maybeSingle();
+    if(!item)return json(req,{error:"Dữ liệu không tồn tại."},404);
+    asset=item.media_assets;
+
+    if(item.visible&&item.visibility==="public")allowed=true;
+    else if(item.visible&&item.visibility==="authenticated"&&ctx.user)allowed=true;
+    else if(item.visible&&ctx.user){
+      if(item.collection_id)allowed=!!(await collectionPermission(admin,ctx.user.id,item.collection_id));
+      if(!allowed){
+        const{data:a}=await admin.from("user_data_access").select("permission_level,expires_at").eq("item_id",item.id).eq("user_id",ctx.user.id).maybeSingle();
+        allowed=!!a&&(!a.expires_at||new Date(a.expires_at)>new Date());
+      }
+    }
+
+    if(!allowed)return json(req,{error:"Bạn không có quyền đọc tệp này."},403);
+    if(!asset?.object_key)return json(req,{error:"Mục dữ liệu này không có file R2 được liên kết."},404);
+    if(body.media_id&&String(body.media_id)!==String(asset.id))return json(req,{error:"Item và media_id không khớp."},400);
+    if(key&&key!==String(asset.object_key))return json(req,{error:"Item và object key không khớp."},400);
+  }else if(body.media_id){
+    const r=await admin.from("media_assets").select("*").eq("id",body.media_id).maybeSingle();
+    asset=r.data;
+    if(!asset)return json(req,{error:"ID R2 không tồn tại."},404);
+    if(asset.object_key!==key&&key)return json(req,{error:"ID R2 và object key không khớp."},400);
+    if(asset.visibility==="public")allowed=true;
+    else if(asset.visibility==="authenticated"&&ctx.user)allowed=true;
+    else if(ctx.user&&(asset.owner_id===ctx.user.id||hasPermission(ctx,"media.manage")||hasPermission(ctx,"data.manage")))allowed=true;
+  }
+
+  if(!allowed)return json(req,{error:"Bạn không có quyền đọc tệp này."},403);
+  const objectKey=String(asset?.object_key||"");
+  if(!objectKey)return json(req,{error:"Không tìm thấy tệp R2."},404);
+  const url=await getSignedUrl(s3,new GetObjectCommand({Bucket:b,Key:objectKey}),{expiresIn:900});
+  return json(req,{url});
+}
+return json(req,{error:"Action R2 không hợp lệ."},400)}catch(e){return json(req,{error:e instanceof Error?e.message:String(e)},500)}});
+
+===== FILE: supabase/functions/render-deploy/index.ts =====
+const publishPermissions=["site.manage","content.manage","news.manage","tools.manage","seo.manage"];
+
+function serviceSecret(){
+ const legacy=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+ if(legacy)return legacy;
+ try{return JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}").default||""}catch{return""}
+}
+
+function publicKey(){
+ const legacy=Deno.env.get("SUPABASE_ANON_KEY");
+ if(legacy)return legacy;
+ try{return JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS")||"{}").default||""}catch{return""}
+}
+
+async function caller(req:Request){
+ const url=String(Deno.env.get("SUPABASE_URL")||"").replace(/\/$/,"");
+ const anon=publicKey();
+ const service=serviceSecret();
+ const authorization=req.headers.get("Authorization")||"";
+
+ if(!url||!anon||!service||!authorization.startsWith("Bearer ")){
+  return{user:null,profile:null,permissions:[] as string[]};
+ }
+
+ const userResponse=await fetch(url+"/auth/v1/user",{
+  headers:{
+   apikey:anon,
+   Authorization:authorization
+  }
+ });
+
+ if(!userResponse.ok){
+  return{user:null,profile:null,permissions:[] as string[]};
+ }
+
+ const user:any=await userResponse.json();
+ if(!user?.id){
+  return{user:null,profile:null,permissions:[] as string[]};
+ }
+
+ const profileUrl=
+  url+
+  "/rest/v1/profiles?select=id,email,role_id,status,roles(permissions)&id=eq."+
+  encodeURIComponent(String(user.id))+
+  "&limit=1";
+
+ const profileResponse=await fetch(profileUrl,{
+  headers:{
+   apikey:service,
+   Authorization:"Bearer "+service,
+   Accept:"application/json"
+  }
+ });
+
+ if(!profileResponse.ok){
+  throw new Error(
+   "Profile lookup failed HTTP "+
+   profileResponse.status+
+   ": "+
+   (await profileResponse.text()).slice(0,500)
+  );
+ }
+
+ const rows:any=await profileResponse.json();
+ const profile=Array.isArray(rows)?rows[0]||null:null;
+ const relation=(profile as any)?.roles;
+ const role=Array.isArray(relation)?relation[0]:relation;
+ const permissions=Array.isArray(role?.permissions)?role.permissions:[];
+
+ return{user,profile,permissions};
+}
+
+function hasPermission(ctx:any,p:string){
+ return ctx?.profile?.status==="active"&&(
+  ctx.permissions?.includes("*")||
+  ctx.permissions?.includes(p)
+ );
+}
+
+function corsHeaders(req:Request){
+ const allowed=(Deno.env.get("ALLOWED_ORIGINS")||"")
+  .split(",")
+  .map(x=>x.trim())
+  .filter(Boolean);
+ const origin=req.headers.get("origin")||"";
+ const allowOrigin=
+  allowed.includes("*")||
+  allowed.includes(origin)
+   ?(origin||"*")
+   :(allowed[0]||"*");
+
+ return{
+  "Access-Control-Allow-Origin":allowOrigin,
+  "Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-scheduler-secret",
+  "Access-Control-Allow-Methods":"POST, OPTIONS",
+  "Vary":"Origin"
+ };
+}
+
+function json(req:Request,body:unknown,status=200){
+ return new Response(
+  JSON.stringify(body),
+  {
+   status,
+   headers:{
+    ...corsHeaders(req),
+    "Content-Type":"application/json"
+   }
+  }
+ );
+}
+
+function b64uDecode(value:string){
+ const p=String(value||"").replace(/-/g,"+").replace(/_/g,"/");
+ const raw=atob(p+"=".repeat((4-p.length%4)%4));
+ const out=new Uint8Array(raw.length);
+ for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);
+ return out;
+}
+
+async function verifyInternalPublishRequest(req:Request){
+ try{
+  const ts=req.headers.get("x-nlkh-publish-ts")||"";
+  const target=req.headers.get("x-nlkh-publish-target")||"";
+  const signature=req.headers.get("x-nlkh-publish-signature")||"";
+  const epoch=Number(ts);
+
+  if(
+   !Number.isFinite(epoch)||
+   Math.abs(Math.floor(Date.now()/1000)-epoch)>90||
+   !["frontend","probe"].includes(target)||
+   !signature
+  ){
+   return false;
+  }
+
+  const secret=serviceSecret();
+  if(!secret)return false;
+
+  const enc=new TextEncoder();
+  const key=await crypto.subtle.importKey(
+   "raw",
+   enc.encode(secret),
+   {name:"HMAC",hash:"SHA-256"},
+   false,
+   ["verify"]
+  );
+
+  return await crypto.subtle.verify(
+   "HMAC",
+   key,
+   b64uDecode(signature),
+   enc.encode(`${ts}\n${target}`)
+  );
+ }catch{
+  return false;
+ }
+}
+
+Deno.serve(async req=>{
+ if(req.method==="OPTIONS"){
+  return new Response("ok",{headers:corsHeaders(req)});
+ }
+
+ try{
+  const internal=await verifyInternalPublishRequest(req);
+  let allowed=internal;
+  let role="internal";
+
+  if(!internal){
+   const ctx=await caller(req);
+   role=String(ctx?.profile?.role_id||"");
+
+   allowed=ctx?.profile?.status==="active"&&(
+    role==="owner"||
+    role==="admin"||
+    publishPermissions.some(p=>hasPermission(ctx,p))
+   );
+  }
+
+  if(!allowed){
+   return json(
+    req,
+    {
+     error:`Không có quyền Xuất bản frontend. Role hiện tại: ${role||"unknown"}. Cần owner/admin hoặc một quyền quản lý nội dung build-time.`
+    },
+    403
+   );
+  }
+
+  const{target}=await req.json();
+  const hook=Deno.env.get("RENDER_FRONTEND_DEPLOY_HOOK");
+
+  if(
+   internal&&
+   req.headers.get("x-nlkh-publish-target")!==target
+  ){
+   return json(req,{error:"Signed publish target mismatch"},403);
+  }
+
+  if(internal&&target==="probe"){
+   return json(req,{
+    ok:true,
+    internal:true,
+    ready:Boolean(hook)
+   });
+  }
+
+  if(target!=="frontend"){
+   return json(req,{error:"Unsupported target"},400);
+  }
+
+  if(!hook){
+   return json(req,{error:"Chưa cấu hình RENDER_FRONTEND_DEPLOY_HOOK"},500);
+  }
+
+  const r=await fetch(hook,{method:"POST"});
+  if(!r.ok){
+   throw new Error(`Render hook HTTP ${r.status}`);
+  }
+
+  return json(req,{
+   ok:true,
+   internal,
+   message:"Đã yêu cầu Render build lại frontend."
+  });
+ }catch(e){
+  return json(
+   req,
+   {error:e instanceof Error?e.message:String(e)},
+   500
+  );
+ }
+});
+
+===== FILE: supabase/functions/schedule-runner/index.ts =====
+import{adminClient}from"../_shared/auth.ts";import{json,corsHeaders}from"../_shared/cors.ts";
+Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});const secret=req.headers.get("x-scheduler-secret");if(!secret||secret!==Deno.env.get("SCHEDULER_SECRET"))return json(req,{error:"Forbidden"},403);try{
+ const admin=adminClient(),now=new Date().toISOString(),{data:jobs,error}=await admin.from("scheduled_api_jobs").select("*,api_integrations(slug)").eq("enabled",true).lte("next_run_at",now).limit(20);if(error)throw error;const results=[];
+ for(const job of jobs||[]){let ok=true,message="ok";try{if(job.handler==="supabase_keepalive"){const r=await admin.from("site_settings").select("id",{head:true,count:"exact"});if(r.error)throw r.error}else if(job.handler==="integration"){const slug=(job as any).api_integrations?.slug;if(!slug)throw new Error("Integration slug missing");const r=await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/integration-proxy`,{method:"POST",headers:{"Content-Type":"application/json","x-scheduler-secret":secret},body:JSON.stringify({slug,payload:job.request_payload||{}})});if(!r.ok)throw new Error(await r.text())}}catch(e){ok=false;message=e instanceof Error?e.message:String(e)}
+   const next=new Date(Date.now()+Number(job.interval_minutes||1440)*60000).toISOString();await admin.from("scheduled_api_jobs").update({last_run_at:now,last_status:ok?"success":"error",last_message:message,next_run_at:next}).eq("id",job.id);results.push({id:job.id,ok,message})
+ }
+ return json(req,{ok:true,count:results.length,results});
+}catch(e){return json(req,{error:e instanceof Error?e.message:String(e)},500)}})
+
+===== FILE: supabase/functions/site-traffic/index.ts =====
+import {
+  adminClient,
+  caller,
+  hasPermission,
+} from "../_shared/auth.ts";
+
+import {
+  corsHeaders,
+  json,
+} from "../_shared/cors.ts";
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function bearer(req: Request): string {
+  const raw =
+    req.headers.get("Authorization") || "";
+
+  return raw.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
+}
+
+async function optionalProfileId(
+  req: Request,
+): Promise<string | null> {
+  const token = bearer(req);
+
+  if (!token) return null;
+
+  try {
+    const admin = adminClient();
+
+    const {
+      data: { user },
+      error,
+    } = await admin.auth.getUser(token);
+
+    if (error || !user?.id) return null;
+
+    const { data } =
+      await admin
+        .from("profiles")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+    return data?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+async function touch(
+  visitorId: string,
+  pagePath: string,
+  userId: string | null,
+) {
+  if (!UUID.test(visitorId)) {
+    throw new Error("visitor_id không hợp lệ");
+  }
+
+  const path =
+    String(pagePath || "/")
+      .trim()
+      .slice(0, 300) || "/";
+
+  const admin = adminClient();
+
+  const { data: existing, error: readError } =
+    await admin
+      .from("site_presence")
+      .select(
+        "visitor_id,user_id,first_seen_at,last_seen_at,current_path,page_views",
+      )
+      .eq("visitor_id", visitorId)
+      .maybeSingle();
+
+  if (readError) throw readError;
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  let bump = 1;
+
+  if (existing?.last_seen_at) {
+    const age =
+      now.getTime() -
+      new Date(existing.last_seen_at).getTime();
+
+    bump =
+      age > 10000 ||
+      String(existing.current_path || "/") !== path
+        ? 1
+        : 0;
+  }
+
+  const payload = {
+    visitor_id: visitorId,
+    user_id:
+      userId ||
+      existing?.user_id ||
+      null,
+    first_seen_at:
+      existing?.first_seen_at ||
+      nowIso,
+    last_seen_at: nowIso,
+    current_path: path,
+    page_views:
+      Number(existing?.page_views || 0) +
+      bump,
+    updated_at: nowIso,
+  };
+
+  const { error: writeError } =
+    await admin
+      .from("site_presence")
+      .upsert(payload, {
+        onConflict: "visitor_id",
+      });
+
+  if (writeError) throw writeError;
+
+  return {
+    visitor_id: visitorId,
+    user_id: payload.user_id,
+    path,
+    server_time: nowIso,
+  };
+}
+
+async function adminSummary(req: Request) {
+  const ctx = await caller(req);
+
+  if (!hasPermission(ctx, "users.manage")) {
+    return json(req, { error: "Forbidden" }, 403);
+  }
+
+  const admin = adminClient();
+
+  const { data, error } =
+    await admin
+      .from("site_presence")
+      .select(
+        "visitor_id,user_id,first_seen_at,last_seen_at,current_path,page_views,profiles(email,display_name,status,role_id)",
+      )
+      .order("last_seen_at", { ascending: false })
+      .limit(300);
+
+  if (error) throw error;
+
+  const rows = data || [];
+  const now = Date.now();
+
+  return json(req, {
+    ok: true,
+    version: "presence-v5-pixel",
+    checked_at: new Date().toISOString(),
+    online:
+      rows.filter(
+        (row: any) =>
+          now -
+            new Date(row.last_seen_at).getTime()
+          <= 90000,
+      ).length,
+    rows,
+  });
+}
+
+async function cleanup(req: Request, body: any) {
+  const ctx = await caller(req);
+
+  if (!hasPermission(ctx, "users.manage")) {
+    return json(req, { error: "Forbidden" }, 403);
+  }
+
+  const days =
+    Math.min(
+      365,
+      Math.max(1, Number(body?.days || 30)),
+    );
+
+  const cut =
+    new Date(
+      Date.now() -
+      days * 86400000,
+    ).toISOString();
+
+  const admin = adminClient();
+
+  const { error } =
+    await admin
+      .from("site_presence")
+      .delete()
+      .lt("last_seen_at", cut);
+
+  if (error) throw error;
+
+  return json(req, {
+    ok: true,
+    deleted_before: cut,
+  });
+}
+
+// NLKH_SITE_TRAFFIC_V5_PIXEL
+Deno.serve(async (req: Request) => {
+  try {
+    if (req.method === "OPTIONS") {
+      return new Response("ok", {
+        headers: corsHeaders(req),
+      });
+    }
+
+    // Public no-CORS heartbeat. This is intentionally a GET endpoint:
+    // <img>/fetch no-cors can hit it even when JS CORS/auth fails.
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+
+      if (url.searchParams.get("action") !== "ping") {
+        return new Response(null, { status: 404 });
+      }
+
+      const visitorId =
+        String(url.searchParams.get("visitor_id") || "");
+
+      const pagePath =
+        String(url.searchParams.get("path") || "/");
+
+      await touch(
+        visitorId,
+        pagePath,
+        null,
+      );
+
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Cache-Control":
+            "no-store, max-age=0",
+          "Access-Control-Allow-Origin":
+            "*",
+        },
+      });
+    }
+
+    if (req.method !== "POST") {
+      return json(
+        req,
+        { error: "Method not allowed" },
+        405,
+      );
+    }
+
+    const body = await req.json();
+    const action = String(body?.action || "");
+
+    if (action === "ping") {
+      const userId =
+        await optionalProfileId(req);
+
+      const result =
+        await touch(
+          String(body?.visitor_id || ""),
+          String(body?.path || "/"),
+          userId,
+        );
+
+      return json(req, {
+        ok: true,
+        version: "presence-v5-pixel",
+        source: "edge-service-role",
+        ...result,
+      });
+    }
+
+    if (action === "summary") {
+      return await adminSummary(req);
+    }
+
+    if (action === "cleanup") {
+      return await cleanup(req, body);
+    }
+
+    return json(
+      req,
+      { error: "Unsupported action" },
+      400,
+    );
+  } catch (error) {
+    return json(
+      req,
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+      500,
+    );
+  }
+});
+
+===== FILE: supabase/functions/system-usage/index.ts =====
+import {createClient} from "https://esm.sh/@supabase/supabase-js@2";
+import {S3Client,ListObjectsV2Command} from "npm:@aws-sdk/client-s3@3";
+
+const cors={
+ "Access-Control-Allow-Origin":"*",
+ "Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type",
+ "Access-Control-Allow-Methods":"POST, OPTIONS"
+};
+const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
+const env=(...names:string[])=>{for(const n of names){const v=(Deno.env.get(n)||"").trim();if(v)return v}return""};
+
+Deno.serve(async req=>{
+ if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
+ if(req.method!=="POST")return json({error:"Method not allowed"},405);
+
+ try{
+  const url=env("SUPABASE_URL");
+  const anon=env("SUPABASE_ANON_KEY","SUPABASE_PUBLISHABLE_KEY");
+  const service=env("SUPABASE_SERVICE_ROLE_KEY");
+  const auth=req.headers.get("Authorization")||"";
+  if(!url||!anon||!service)return json({error:"Thiếu Supabase env."},500);
+  if(!auth)return json({error:"Chưa đăng nhập."},401);
+
+  const userClient=createClient(url,anon,{global:{headers:{Authorization:auth}},auth:{persistSession:false}});
+  const{data:{user},error:userErr}=await userClient.auth.getUser();
+  if(userErr||!user)return json({error:"Phiên đăng nhập không hợp lệ."},401);
+
+  const{data:access,error:accessErr}=await userClient.rpc("get_my_access");
+  if(accessErr)return json({error:`Không đọc được quyền Admin: ${accessErr.message}`},403);
+  const role=String(access?.role_id||"");
+  const perms=Array.isArray(access?.permissions)?access.permissions:[];
+  const allowed=access?.status==="active"&&(role==="owner"||role==="admin"||perms.includes("*")||perms.includes("api.manage"));
+  if(!allowed)return json({error:"Không có quyền xem usage."},403);
+
+  const admin=createClient(url,service,{auth:{persistSession:false}});
+  const{data:db,error:dbErr}=await admin.rpc("admin_system_usage");
+  if(dbErr)return json({error:`admin_system_usage: ${dbErr.message}`},500);
+
+  let bytes=0,objects=0,r2Error="";
+  const account=env("R2_ACCOUNT_ID","CLOUDFLARE_ACCOUNT_ID");
+  const accessKey=env("R2_ACCESS_KEY_ID");
+  const secretKey=env("R2_SECRET_ACCESS_KEY");
+  const bucket=env("R2_BUCKET_NAME");
+  const endpoint=env("R2_ENDPOINT")||(account?`https://${account}.r2.cloudflarestorage.com`:"");
+
+  if(endpoint&&accessKey&&secretKey&&bucket){
+   try{
+    const s3=new S3Client({region:"auto",endpoint,credentials:{accessKeyId:accessKey,secretAccessKey:secretKey}});
+    let token:string|undefined;
+    do{
+     const page=await s3.send(new ListObjectsV2Command({Bucket:bucket,ContinuationToken:token}));
+     for(const o of page.Contents||[]){bytes+=Number(o.Size||0);objects++}
+     token=page.IsTruncated?page.NextContinuationToken:undefined;
+    }while(token);
+   }catch(e){r2Error=e instanceof Error?e.message:String(e)}
+  }else r2Error="Thiếu cấu hình R2 trong Supabase secrets.";
+
+  let projectRef="";
+  try{projectRef=new URL(url).hostname.split(".")[0]}catch{}
+
+  return json({
+   ok:true,
+   checked_at:new Date().toISOString(),
+   project_ref:projectRef,
+   supabase:{
+    database_bytes:Number(db?.database_bytes||0),
+    storage_bytes:Number(db?.storage_bytes||0),
+    storage_objects:Number(db?.storage_objects||0)
+   },
+   r2:{bytes,objects,error:r2Error||null}
+  });
+ }catch(e){
+  return json({error:e instanceof Error?e.message:String(e)},500);
+ }
+});
+
+===== FILE: supabase/functions/user-admin/index.ts =====
+import{adminClient,caller,hasPermission}from"../_shared/auth.ts";import{json,corsHeaders}from"../_shared/cors.ts";
+Deno.serve(async req=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders(req)});if(req.method!=="POST")return json(req,{error:"POST only"},405);try{const ctx=await caller(req);if(!hasPermission(ctx,"users.manage"))return json(req,{error:"Bạn không có quyền quản lý người dùng."},403);const body=await req.json(),action=String(body.action||"");if(action!=="delete-user")return json(req,{error:"Action không hợp lệ."},400);const id=String(body.user_id||"");if(!id)return json(req,{error:"Thiếu user_id."},400);if(ctx.user?.id===id)return json(req,{error:"Không thể xóa chính tài khoản đang đăng nhập."},409);const admin=adminClient(),{data:p}=await admin.from("profiles").select("id,email,role_id").eq("id",id).maybeSingle();if(!p)return json(req,{error:"Không tìm thấy tài khoản."},404);if(p.role_id==="owner")return json(req,{error:"Không thể xóa tài khoản Owner."},409);const{error}=await admin.auth.admin.deleteUser(id);if(error)throw error;return json(req,{ok:true,message:`Đã xóa tài khoản ${p.email}.`})}catch(e){return json(req,{error:e instanceof Error?e.message:String(e)},500)}});

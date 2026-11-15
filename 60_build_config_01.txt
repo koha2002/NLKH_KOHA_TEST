@@ -1,0 +1,1449 @@
+
+===== FILE: .env.example =====
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_ADMIN_URL=http://localhost:5174
+
+===== FILE: .github/workflows/claude-context.yml =====
+name: Build Claude context
+on:
+  push:
+    branches: [admin-v4]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: claude-context
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/export-claude-context.mjs
+      - name: Publish to branch claude-context
+        working-directory: claude-context
+        run: |
+          git init -q -b claude-context
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "context from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" claude-context
+
+===== FILE: .github/workflows/supabase-scheduler.yml =====
+name: NLKH Supabase Scheduler
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run due jobs
+        env:
+          FUNCTION_URL: ${{ secrets.SUPABASE_SCHEDULE_RUNNER_URL }}
+          SCHEDULER_SECRET: ${{ secrets.SCHEDULER_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -X POST "$FUNCTION_URL" \
+            -H "Content-Type: application/json" \
+            -H "x-scheduler-secret: $SCHEDULER_SECRET" \
+            -d '{}'
+
+===== FILE: .gitignore =====
+node_modules/
+.next/
+out/
+.vinext/
+.sites-runtime/
+.env
+.env.*
+!.env.example
+*.log
+tsconfig.tsbuildinfo
+.DS_Store
+supabase/.temp/
+claude-context/
+
+===== FILE: .npmrc =====
+audit=false
+fund=false
+update-notifier=false
+cache=.sites-runtime/npm-cache
+
+===== FILE: .nvmrc =====
+22.13.0
+
+===== FILE: R2_CORS.example.json =====
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "http://localhost:5174",
+      "https://nguyenlekhanhhoa.com",
+      "https://admin.nguyenlekhanhhoa.com"
+    ],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedHeaders": ["Content-Type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+
+===== FILE: admin/.env.example =====
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+VITE_SITE_URL=http://localhost:3000
+VITE_ADMIN_URL=http://localhost:5174
+
+===== FILE: admin/index.html =====
+<!doctype html><html lang="vi"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex,nofollow"/><link rel="icon" type="image/png" sizes="64x64" href="/favicon.png?v=471"/><title>NLKH Admin</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+
+===== FILE: admin/package.json =====
+{
+  "name": "nlkh-admin-static",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "vite build && node scripts/postbuild-routes.mjs",
+    "preview": "vite preview --port 4174"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "@zip.js/zip.js": "^2.8.36",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.8.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.2",
+    "vite": "^7.1.4"
+  }
+}
+
+===== FILE: admin/vite.config.js =====
+import {defineConfig} from "vite";
+import react from "@vitejs/plugin-react";
+export default defineConfig({
+  plugins:[react()],
+  server:{port:5174,strictPort:true},
+  preview:{port:5174,strictPort:true}
+});
+
+===== FILE: eslint.config.mjs =====
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "public/tool-modules/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+
+===== FILE: next-env.d.ts =====
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+import "./.next/types/routes.d.ts";
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+
+===== FILE: next.config.ts =====
+﻿import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  output: "export",
+
+  images: {
+    unoptimized: true,
+  },
+};
+
+export default nextConfig;
+
+===== FILE: package.json =====
+{
+  "name": "nguyen-le-khanh-hoa",
+  "version": "0.3.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "predev": "node scripts/optimize-home-assets.mjs && node scripts/prepare-pdf-vendor.mjs && node scripts/patch-pdf-mode.mjs && node scripts/harden-tool-modules.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/sync-admin-cms.mjs && node scripts/optimize-home-assets.mjs && node scripts/prepare-pdf-vendor.mjs && node scripts/patch-pdf-mode.mjs && node scripts/harden-tool-modules.mjs",
+    "build": "next build",
+    "start": "node serve-static.mjs",
+    "lint": "eslint .",
+    "test:comtrade": "node scripts/test-comtrade.mjs",
+    "postbuild": "node scripts/build-static-redirects.mjs",
+    "test:pdf": "node scripts/test-pdf-crop-v55.mjs && node scripts/test-pdf-v63-state-i18n.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.57.4",
+    "next": "16.2.6",
+    "pdf-lib": "^1.17.1",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "sharp": "0.35.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "typescript": "5.9.3"
+  },
+  "type": "module",
+  "displayName": "Nguyễn Lê Khánh Hòa"
+}
+
+===== FILE: render.yaml =====
+services:
+  # Frontend gốc NLKH_KOHA - GIỮ NGUYÊN Next.js static export, không có Web Service ngủ đông.
+  - type: web
+    name: nguyen-le-khanh-hoa
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./out
+    autoDeployTrigger: commit
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains"
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-src 'self' https: blob:; worker-src 'self' blob:; media-src 'self' data: blob: https:; object-src 'none'; base-uri 'self'; form-action 'self' https:; frame-ancestors 'self'; manifest-src 'self'; upgrade-insecure-requests"
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), accelerometer=(), gyroscope=(), magnetometer=()"
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: "same-origin-allow-popups"
+      - path: /*
+        name: Cross-Origin-Resource-Policy
+        value: "same-site"
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false
+      - key: NEXT_PUBLIC_ADMIN_URL
+        sync: false
+
+  # Admin tách riêng - cũng là Static Site.
+  - type: web
+    name: nlkh-admin
+    runtime: static
+    rootDir: admin
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    autoDeployTrigger: commit
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains"
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-src 'self' https: blob:; worker-src 'self' blob:; media-src 'self' data: blob: https:; object-src 'none'; base-uri 'self'; form-action 'self' https:; frame-ancestors 'self'; manifest-src 'self'; upgrade-insecure-requests"
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), accelerometer=(), gyroscope=(), magnetometer=()"
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: "same-origin-allow-popups"
+      - path: /*
+        name: Cross-Origin-Resource-Policy
+        value: "same-site"
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_SITE_URL
+        sync: false
+      - key: VITE_ADMIN_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+===== FILE: scripts/build-static-redirects.mjs =====
+/**
+ * Redirects are handled at Cloudflare Edge.
+ *
+ * IMPORTANT:
+ * Do NOT generate meta-refresh / JavaScript redirect HTML into `out/`.
+ * Those files can shadow real Next.js static routes (for example /tools)
+ * and cause redirect loops / blank "Đang chuyển hướng..." pages.
+ *
+ * Same-domain canonical redirects are Cloudflare Single Redirects.
+ * Cross-domain redirects are Cloudflare Bulk Redirects.
+ */
+console.log("[redirects] Static redirect fallback disabled; Cloudflare Edge is the source of truth.");
+
+===== FILE: scripts/export-claude-context.mjs =====
+// Gom source thành vài file .txt theo chức năng để đưa vào Claude Project.
+// Chạy: node scripts/export-claude-context.mjs   (kết quả nằm trong claude-context/)
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+
+const ROOT = process.cwd();
+const OUT = path.join(ROOT, "claude-context");
+const MAX_PART = 160 * 1024;
+
+const git = (...args) =>
+  execFileSync("git", args, { cwd: ROOT, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 });
+
+const tracked = git("ls-files", "-z").split("\0").filter(Boolean).sort();
+let commit = "unknown";
+let branch = process.env.GITHUB_REF_NAME || "unknown";
+try {
+  commit = git("rev-parse", "--short", "HEAD").trim();
+  if (branch === "unknown") branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
+} catch {}
+
+const TEXT_EXT = /\.(tsx?|jsx?|mjs|cjs|css|scss|html|json|md|sql|ya?ml|toml|ps1)$/i;
+const TEXT_NAMES = /(^|\/)(\.env\.example|\.gitignore|\.npmrc|\.nvmrc)$/;
+
+// Không đưa nội dung vào bundle (chỉ liệt kê ở 99_ASSETS.md)
+const EXCLUDE = [
+  [/(^|\/)package-lock\.json$/, "file lock"],
+  [/(^|\/)vendor\//, "thư viện bên thứ ba"],
+  [/\.min\.(js|css)$/, "file đã nén"],
+  [/^data\/admin-generated\.ts$/, "file sinh tự động từ CMS"],
+  [/^public\/content\//, "snapshot nội dung CMS"],
+  [/^supabase\/\.temp\//, "file tạm của Supabase CLI"],
+];
+
+// Nhóm theo chức năng. Khớp luật đầu tiên.
+const GROUPS = [
+  ["00_docs", "Tài liệu", /^(README|CHANGELOG)\.md$|^docs\//],
+  ["10_frontend", "Website công khai (Next.js: app, components, lib, styles, data)", /^(app|components|lib|styles|data)\//],
+  ["20_admin", "Admin (Vite + React)", /^admin\/(src|scripts)\//],
+  ["31_tool_pdf", "Tool PDF Studio", /^public\/tool-modules\/pdf\//],
+  ["32_tool_quiz", "Tool Quiz", /^public\/tool-modules\/quiz\//],
+  ["33_tool_comtrade", "Tool COMTRADE", /^public\/tool-modules\/comtrade\//],
+  ["34_tool_removebg", "Tool Remove Background", /^public\/tool-modules\/remove-background\//],
+  ["35_tool_shared", "CSS dùng chung của các tool", /^public\/tool-modules\//],
+  ["40_supabase_functions", "Supabase Edge Functions (backend)", /^supabase\/functions\//],
+  ["41_supabase_migrations", "Supabase migrations (cấu trúc database)", /^supabase\/migrations\//],
+  ["50_worker", "Worker thu thập tin công nghệ", /^workers\//],
+  [
+    "60_build_config",
+    "Cấu hình, build, deploy, script",
+    /^(package\.json|next\.config\.ts|tsconfig\.json|eslint\.config\.mjs|render\.yaml|serve-static\.mjs|\.env\.example|\.gitignore|\.npmrc|\.nvmrc|R2_CORS\.example\.json|next-env\.d\.ts)$|^admin\/(package\.json|vite\.config\.js|index\.html|\.env\.example)$|^scripts\/|^\.github\/|^supabase\/config\.toml$/,
+  ],
+  ["90_other", "Khác", /.*/],
+];
+
+const FEATURE_MAP = [
+  ["Đăng nhập, tài khoản, quên mật khẩu", "app/login, app/account, lib/supabase-browser.ts"],
+  ["Đồng bộ nội dung CMS về website", "scripts/sync-admin-cms.mjs -> data/admin-generated.ts"],
+  ["Công cụ (iframe) và quyền truy cập tool", "components/AdminToolRoute.tsx, ToolFrame.tsx, lib/auth/tool-access.ts, public/tool-modules"],
+  ["Tin tức", "app/news, components/News*, supabase/functions/news-*, workers/technology-news"],
+  ["Kho phần mềm", "app/software, admin/src/pages/Software.jsx"],
+  ["Hồ sơ CV", "app/cv, admin/src/pages/Cv.jsx"],
+  ["Dữ liệu cấp quyền", "app/data, admin/src/pages/Data.jsx, admin/src/components/DataAccessMatrix.jsx"],
+  ["Ảnh/tệp (Cloudflare R2)", "supabase/functions/r2-file, admin/src/pages/Media.jsx"],
+  ["Sao lưu", "supabase/functions/manual-backup, admin/src/pages/Backup.jsx"],
+  ["Redirect (Cloudflare)", "supabase/functions/cloudflare-redirect-sync, admin/src/pages/Redirects.jsx"],
+  ["Xuất bản / deploy Render", "supabase/functions/render-deploy, render.yaml"],
+  ["Lịch chạy định kỳ", ".github/workflows/supabase-scheduler.yml, supabase/functions/schedule-runner"],
+];
+
+function redact(s) {
+  return s
+    .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, "[JWT_REDACTED]")
+    .replace(/sb_secret_[A-Za-z0-9_-]{10,}/g, "[SB_SECRET_REDACTED]")
+    .replace(
+      /((?:secret|token|password|passwd|api[_-]?key|service[_-]?role|access[_-]?key)\w*["']?\s*[:=]\s*)(["'`])[A-Za-z0-9_\-+/=.]{24,}\2/gi,
+      "$1$2[REDACTED]$2"
+    );
+}
+
+const kb = (n) => `${(n / 1024).toFixed(n < 10240 ? 1 : 0)}KB`;
+
+fs.rmSync(OUT, { recursive: true, force: true });
+fs.mkdirSync(OUT, { recursive: true });
+
+const byGroup = new Map(GROUPS.map(([k]) => [k, []]));
+const excluded = [];
+
+for (const f of tracked) {
+  let st;
+  try {
+    st = fs.statSync(path.join(ROOT, f));
+  } catch {
+    continue; // file đã bị xóa khỏi working tree
+  }
+  if (!st.isFile()) continue;
+
+  const ex = EXCLUDE.find(([re]) => re.test(f));
+  if (ex) { excluded.push({ f, size: st.size, why: ex[1] }); continue; }
+  if (!TEXT_EXT.test(f) && !TEXT_NAMES.test(f)) { excluded.push({ f, size: st.size, why: "ảnh/tệp nhị phân" }); continue; }
+
+  const buf = fs.readFileSync(path.join(ROOT, f));
+  if (buf.includes(0)) { excluded.push({ f, size: st.size, why: "ảnh/tệp nhị phân" }); continue; }
+
+  const group = GROUPS.find(([, , re]) => re.test(f))[0];
+  byGroup.get(group).push({ f, text: redact(buf.toString("utf8")), size: st.size });
+}
+
+const summary = [];
+for (const [key, title] of GROUPS) {
+  const items = byGroup.get(key);
+  if (!items.length) continue;
+  const parts = [];
+  let cur = "";
+  const flush = () => {
+    if (!cur) return;
+    const name = `${key}_${String(parts.length + 1).padStart(2, "0")}.txt`;
+    fs.writeFileSync(path.join(OUT, name), cur, "utf8");
+    parts.push({ name, bytes: Buffer.byteLength(cur) });
+    cur = "";
+  };
+  for (const it of items) {
+    const block = `\n===== FILE: ${it.f} =====\n${it.text.replace(/\s+$/, "")}\n`;
+    if (cur && Buffer.byteLength(cur) + Buffer.byteLength(block) > MAX_PART) flush();
+    cur += block;
+  }
+  flush();
+  summary.push({ key, title, items, parts });
+}
+
+// 00_MANIFEST.md
+const total = summary.reduce((s, g) => s + g.parts.reduce((a, p) => a + p.bytes, 0), 0);
+let m = `# Claude context — NLKH_KOHA_TEST\n\n`;
+m += `- Nhánh: \`${branch}\`, commit: \`${commit}\`, tạo lúc: ${new Date().toISOString()}\n`;
+m += `- Tổng nội dung code: ${kb(total)} trong ${summary.reduce((s, g) => s + g.parts.length, 0)} file\n`;
+m += `- Chuỗi giống key/secret đã bị che. Ảnh, thư viện bên thứ ba, file sinh tự động chỉ được liệt kê ở \`99_ASSETS.md\`.\n\n`;
+m += `## Các nhóm chức năng (mỗi nhóm là một hoặc vài file .txt)\n\n| Nhóm | Mô tả | Số file nguồn | Dung lượng | File |\n|---|---|---|---|---|\n`;
+for (const g of summary) {
+  const bytes = g.parts.reduce((a, p) => a + p.bytes, 0);
+  m += `| ${g.key} | ${g.title} | ${g.items.length} | ${kb(bytes)} | ${g.parts.map((p) => p.name).join(", ")} |\n`;
+}
+m += `\n## Bản đồ chức năng -> nơi chứa code\n\n`;
+for (const [a, b] of FEATURE_MAP) m += `- **${a}**: ${b}\n`;
+m += `\n## Danh sách file nguồn (kèm dung lượng)\n\n`;
+for (const g of summary) {
+  m += `### ${g.key}\n\n`;
+  for (const it of g.items) m += `- ${it.f} (${kb(it.size)})\n`;
+  m += `\n`;
+}
+fs.writeFileSync(path.join(OUT, "00_MANIFEST.md"), m, "utf8");
+
+// 99_ASSETS.md
+const folderAgg = new Map();
+for (const e of excluded) {
+  const top = e.f.split("/").slice(0, e.f.startsWith("public/") ? 2 : 1).join("/");
+  const k = `${top} | ${e.why}`;
+  const v = folderAgg.get(k) || { n: 0, size: 0 };
+  v.n += 1; v.size += e.size; folderAgg.set(k, v);
+}
+let a = `# Tài nguyên và file không đưa nội dung vào context\n\n`;
+a += `Gồm ảnh, logo, thư viện bên thứ ba, file khóa, file sinh tự động. Chỉ liệt kê tên và dung lượng.\n\n`;
+a += `## Tổng hợp theo thư mục\n\n| Thư mục | Lý do | Số file | Dung lượng |\n|---|---|---|---|\n`;
+for (const [k, v] of [...folderAgg].sort((x, y) => y[1].size - x[1].size)) {
+  const [folder, why] = k.split(" | ");
+  a += `| ${folder} | ${why} | ${v.n} | ${kb(v.size)} |\n`;
+}
+a += `\n## Toàn bộ danh sách\n\n`;
+for (const e of excluded) a += `- ${e.f} (${kb(e.size)}) - ${e.why}\n`;
+fs.writeFileSync(path.join(OUT, "99_ASSETS.md"), a, "utf8");
+
+console.log(`Đã tạo ${OUT}`);
+for (const g of summary) {
+  console.log(`${g.key.padEnd(26)} ${String(g.items.length).padStart(4)} file  ${kb(g.parts.reduce((x, p) => x + p.bytes, 0)).padStart(8)}  -> ${g.parts.length} phần`);
+}
+console.log(`Tổng: ${kb(total)} | Không đưa nội dung: ${excluded.length} file`);
+
+===== FILE: scripts/harden-tool-modules.mjs =====
+import fs from "node:fs";
+import path from "node:path";
+
+const root = path.join(process.cwd(), "public", "tool-modules");
+const robotsMeta = '<meta name="robots" content="noindex,nofollow,noarchive">';
+const referrerMeta = '<meta name="referrer" content="no-referrer">';
+
+function walk(dir) {
+  if (!fs.existsSync(dir)) return [];
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walk(full));
+    else if (entry.isFile() && entry.name.toLowerCase() === "index.html") out.push(full);
+  }
+  return out;
+}
+
+let changed = 0;
+for (const file of walk(root)) {
+  let html = fs.readFileSync(file, "utf8");
+  const before = html;
+
+  if (/<meta\b[^>]*\bname=["']robots["'][^>]*>/i.test(html)) {
+    html = html.replace(/<meta\b[^>]*\bname=["']robots["'][^>]*>/i, robotsMeta);
+  } else if (/<head\b[^>]*>/i.test(html)) {
+    html = html.replace(/<head\b[^>]*>/i, (m) => `${m}\n  ${robotsMeta}`);
+  }
+
+  if (!/<meta\b[^>]*\bname=["']referrer["'][^>]*>/i.test(html) && /<head\b[^>]*>/i.test(html)) {
+    html = html.replace(/<head\b[^>]*>/i, (m) => `${m}\n  ${referrerMeta}`);
+  }
+
+  if (html !== before) {
+    fs.writeFileSync(file, html, "utf8");
+    changed += 1;
+    console.log(`[hardening] noindex -> ${path.relative(process.cwd(), file)}`);
+  }
+}
+
+console.log(`[hardening] tool module HTML checked: ${walk(root).length}; changed: ${changed}`);
+
+===== FILE: scripts/optimize-home-assets.mjs =====
+import fs from "node:fs";
+import path from "node:path";
+import sharp from "sharp";
+
+const root = process.cwd();
+const logoInputPath = path.join(root, "public", "koha-logo.png");
+const logoOutputPath = path.join(root, "public", "koha-logo-320.webp");
+const faviconPath = path.join(root, "public", "favicon.png");
+
+function kb(bytes) {
+  return (bytes / 1024).toFixed(1);
+}
+
+if (!fs.existsSync(logoInputPath)) {
+  throw new Error("Missing public/koha-logo.png");
+}
+
+const logoInput = fs.readFileSync(logoInputPath);
+const logoSourceMeta = await sharp(logoInput).metadata();
+const logoOutput = await sharp(logoInput)
+  .rotate()
+  .resize(320, 320, {
+    fit: "cover",
+    position: "centre",
+    withoutEnlargement: true,
+  })
+  .webp({
+    lossless: true,
+    effort: 6,
+    alphaQuality: 100,
+  })
+  .toBuffer();
+
+if (logoOutput.length < 512) {
+  throw new Error("Generated logo derivative is unexpectedly small.");
+}
+
+fs.writeFileSync(logoOutputPath, logoOutput);
+const logoOutputMeta = await sharp(logoOutput).metadata();
+const logoReduction = 100 - (logoOutput.length / logoInput.length) * 100;
+
+console.log(
+  `[HOME-ASSET] Logo ${logoSourceMeta.width}x${logoSourceMeta.height} ${logoInput.length}B -> ` +
+  `${logoOutputMeta.width}x${logoOutputMeta.height} ${logoOutput.length}B (-${logoReduction.toFixed(1)}%)`
+);
+
+if ((logoOutputMeta.width || 0) > 320 || (logoOutputMeta.height || 0) > 320) {
+  throw new Error("Logo derivative exceeds 320px.");
+}
+
+if (logoInput.length > 200000 && logoReduction < 65) {
+  throw new Error(`Logo reduction only ${logoReduction.toFixed(1)}%; expected >=65%.`);
+}
+
+if (!fs.existsSync(faviconPath)) {
+  console.warn("[HOME-ASSET] Favicon skipped: public/favicon.png missing.");
+} else {
+  const faviconInput = fs.readFileSync(faviconPath);
+  const faviconSourceMeta = await sharp(faviconInput).metadata();
+
+  const candidate = await sharp(faviconInput, {
+    animated: false,
+    density: 192,
+  })
+    .rotate()
+    .resize(128, 128, {
+      fit: "contain",
+      position: "centre",
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      withoutEnlargement: true,
+    })
+    .png({
+      compressionLevel: 9,
+      adaptiveFiltering: true,
+    })
+    .toBuffer();
+
+  const faviconOutput =
+    candidate.length >= 256 && candidate.length < faviconInput.length
+      ? candidate
+      : faviconInput;
+
+  fs.writeFileSync(faviconPath, faviconOutput);
+
+  const faviconOutputMeta = await sharp(faviconOutput).metadata();
+  const faviconReduction = faviconInput.length
+    ? 100 - (faviconOutput.length / faviconInput.length) * 100
+    : 0;
+
+  console.log(
+    `[HOME-ASSET] Favicon ${faviconSourceMeta.width}x${faviconSourceMeta.height} ${faviconInput.length}B -> ` +
+    `${faviconOutputMeta.width}x${faviconOutputMeta.height} ${faviconOutput.length}B (-${faviconReduction.toFixed(1)}%)`
+  );
+
+  if ((faviconOutputMeta.width || 0) > 128 || (faviconOutputMeta.height || 0) > 128) {
+    throw new Error("Favicon output exceeds 128px.");
+  }
+
+  if (faviconInput.length > 80000 && faviconReduction < 60) {
+    throw new Error(
+      `Favicon reduction only ${faviconReduction.toFixed(1)}%; expected >=60%.`
+    );
+  }
+}
+
+console.log(
+  `[HOME-ASSET] PASS logo=${kb(logoOutput.length)}KB favicon=` +
+  `${fs.existsSync(faviconPath) ? kb(fs.statSync(faviconPath).size) + "KB" : "missing"}`
+);
+
+===== FILE: scripts/patch-pdf-mode.mjs =====
+import fs from "node:fs";
+import path from "node:path";
+
+const file=path.resolve("public/tool-modules/pdf/index.html");
+if(!fs.existsSync(file)){
+  console.warn("[PDF] Không tìm thấy public/tool-modules/pdf/index.html; bỏ qua patch Offline/Online.");
+  process.exit(0);
+}
+let html=fs.readFileSync(file,"utf8");
+if(!html.includes("offline-v2.css")){
+  html=html.replace("</head>",'  <link rel="stylesheet" href="./offline-v2.css" />\n</head>');
+}
+// pdf-lib is intentionally lazy. Never re-inject the heavy vendor bundle
+// into initial HTML during predev/prebuild.
+html=html.replace(
+  /\s*<script\b[^>]*src=["']\.\/vendor\/pdf-lib\.min\.js["'][^>]*><\/script>\s*/gi,
+  "\n"
+);
+
+const lazyTag='  <script src="./pdf-lib-lazy-v33.js"></script>';
+const offlineTag='  <script src="./offline-v2.js"></script>';
+
+if(!html.includes("pdf-lib-lazy-v33.js")){
+  if(html.includes(offlineTag)){
+    html=html.replace(offlineTag,lazyTag+"\n"+offlineTag);
+  }else{
+    html=html.replace("</body>",lazyTag+"\n</body>");
+  }
+}
+
+if(!html.includes("offline-v2.js")){
+  html=html.replace("</body>",offlineTag+"\n</body>");
+}
+
+fs.writeFileSync(file,html,"utf8");
+console.log("[PDF] Offline/Online ready; pdf-lib remains lazy and loads only when needed.");
+
+===== FILE: scripts/prepare-pdf-vendor.mjs =====
+import fs from "node:fs";
+import path from "node:path";
+
+const candidates = [
+  path.resolve("node_modules/pdf-lib/dist/pdf-lib.min.js"),
+  path.resolve("node_modules/pdf-lib/dist/pdf-lib.js"),
+];
+const src = candidates.find(fs.existsSync);
+if (!src) {
+  console.warn("[PDF Offline] Chưa tìm thấy pdf-lib. Hãy chạy npm install trước.");
+  process.exit(0);
+}
+const dir = path.resolve("public/tool-modules/pdf/vendor");
+fs.mkdirSync(dir, { recursive: true });
+fs.copyFileSync(src, path.join(dir, "pdf-lib.min.js"));
+console.log("[PDF Offline] Đã chuẩn bị public/tool-modules/pdf/vendor/pdf-lib.min.js");
+
+===== FILE: scripts/sync-admin-cms.mjs =====
+import fs from "node:fs";
+import path from "node:path";
+import { createHash } from "node:crypto";
+import sharp from "sharp";
+
+// Node chạy predev/prebuild trước Next.js, nên tự nạp .env.local để CMS sync dùng cùng cấu hình với frontend.
+for (const envFile of [".env.local", ".env"]) {
+  try { process.loadEnvFile(envFile); break; } catch {}
+}
+
+const URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+const KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
+const strict = process.env.NLKH_CMS_SYNC_REQUIRED === "true";
+const out = (p) => path.resolve(p);
+
+function write(rel, data) {
+  const p = out(rel);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, typeof data === "string" ? data : JSON.stringify(data, null, 2) + "\n", "utf8");
+}
+function ts(value){ return JSON.stringify(value, null, 2); }
+async function rest(table, query="") {
+  const r = await fetch(`${URL}/rest/v1/${table}?${query}`, {
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}` },
+  });
+  if (!r.ok) throw new Error(`${table}: HTTP ${r.status} ${await r.text()}`);
+  return r.json();
+}
+async function rpc(name, body={}) {
+  const r = await fetch(`${URL}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`rpc/${name}: HTTP ${r.status} ${await r.text()}`);
+  return r.json();
+}
+async function edge(name, body={}) {
+  const r = await fetch(`${URL}/functions/v1/${name}`, {
+    method: "POST",
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await r.text();
+  let data={}; try{data=text?JSON.parse(text):{}}catch{data={message:text}}
+  if (!r.ok) throw new Error(`functions/${name}: HTTP ${r.status} ${data.error||data.message||text}`);
+  return data;
+}
+function safeSlug(s="") { return String(s).toLowerCase().trim().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,""); }
+function cleanInlineHtml(raw="") {
+  let html = String(raw || "").trim();
+  if (!html) return "";
+  // Trình duyệt/AdGuard có thể chèn script local.adguard.org khi copy HTML từ tab ChatGPT.
+  // Những script này chỉ hợp lệ trên máy người copy và làm tool deploy/preview lỗi hoặc trắng.
+  html = html.replace(/<script\b[^>]*\bsrc=["\'](?:https?:)?\/\/local\.adguard\.org[^>]*>[\s\S]*?<\/script>/gi, "");
+  html = html.replace(/<script\b[^>]*\bsrc=["\']https?:\/\/local\.adguard\.org[^>]*>[\s\S]*?<\/script>/gi, "");
+  return html.trim();
+}
+function phoneHref(s=""){ return String(s||"").replace(/(?!^\+)\D/g, ""); }
+
+if (!URL || !KEY) {
+  console.warn("[CMS] Thiếu NEXT_PUBLIC_SUPABASE_URL/PUBLISHABLE_KEY; giữ dữ liệu source hiện tại.");
+  process.exit(0);
+}
+
+try {
+  const [settingsRows, nav, social, tools, toolCategories, rings, cvProfiles, cvSections, software, softwareCategories, news, newsCategories, pages, contentRoutes, seo, redirects] = await Promise.all([
+    rest("site_settings", "select=*&limit=1"),
+    rest("navigation_items", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("social_links", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("tools", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("tool_categories", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("orbit_rings", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("cv_profiles", "select=*&published=eq.true&order=updated_at.desc&limit=1"),
+    rest("cv_sections", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("software_items", "select=*&visible=eq.true&order=featured.desc,sort_order.asc"),
+    rest("software_categories", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("news_articles", "select=*&status=eq.published&order=published_at.desc,created_at.desc"),
+    rest("news_categories", "select=*&visible=eq.true&order=sort_order.asc"),
+    rest("content_pages", "select=*&status=eq.published&order=published_at.desc"),
+    rpc("list_content_page_routes"),
+    rest("seo_entries", "select=*&order=route.asc"),
+    rest("redirects", "select=*&active=eq.true&order=source_path.asc"),
+  ]);
+  const site = settingsRows[0] || {};
+  // Favicon R2 được lấy thành file static khi Publish/build. Không cần public cả bucket.
+  if (site.favicon_media_id) {
+    try {
+      const assets = await rest("media_assets", `select=id,object_key,original_name,mime_type,visibility&id=eq.${encodeURIComponent(site.favicon_media_id)}&limit=1`);
+      const asset = assets[0];
+      if (asset) {
+        const signed = await edge("r2-file", { action:"presign-download", media_id:asset.id, object_key:asset.object_key });
+        if (signed?.url) {
+          const fr = await fetch(signed.url);
+          if (!fr.ok) throw new Error(`R2 favicon HTTP ${fr.status}`);
+          const target = out("public/favicon.png");
+          fs.mkdirSync(path.dirname(target), { recursive:true });
+          fs.writeFileSync(target, Buffer.from(await fr.arrayBuffer()));
+          site.favicon_url = "/favicon.png";
+          console.log(`[CMS] Favicon R2 -> public/favicon.png (${asset.original_name||asset.id})`);
+        }
+      }
+    } catch (err) {
+      console.warn("[CMS] Không lấy được favicon R2; giữ /favicon.png hiện tại:", err?.message||err);
+      site.favicon_url = site.favicon_url || "/favicon.png";
+    }
+  } else {
+    site.favicon_url = site.favicon_url || "/favicon.png";
+  }
+  const cv = cvProfiles[0] || null;
+  const sections = cv ? cvSections.filter(x=>x.profile_id===cv.id) : [];
+
+  // NLKH_CV_STATIC_PHOTO_V1
+  // Materialize the public CV photo once at build time so /cv can render it
+  // from the first HTML paint without a post-hydration Edge presign request.
+  let cvPhotoResolved = String(cv?.photo_url || "").trim();
+  if (cv?.photo_media_id) {
+    try {
+      const assets = await rest(
+        "media_assets",
+        `select=id,object_key,original_name,mime_type,visibility,public_url,sha256&id=eq.${encodeURIComponent(cv.photo_media_id)}&limit=1`
+      );
+      const asset = assets[0];
+      if (!asset) throw new Error(`missing media asset ${cv.photo_media_id}`);
+
+      if (String(asset.visibility || "") !== "public") {
+        console.warn("[CMS] CV photo media is not public; keeping runtime signed fallback.");
+        cvPhotoResolved = "";
+      } else {
+        let sourceUrl = String(asset.public_url || "").trim();
+        if (!/^https?:\/\//i.test(sourceUrl)) {
+          const signed = await edge("r2-file", {
+            action: "presign-download",
+            media_id: asset.id,
+            object_key: asset.object_key,
+          });
+          sourceUrl = String(signed?.url || "").trim();
+        }
+        if (!/^https?:\/\//i.test(sourceUrl)) throw new Error("CV photo has no usable source URL.");
+
+        const response = await fetch(sourceUrl);
+        if (!response.ok) throw new Error(`CV photo HTTP ${response.status}`);
+
+        const mime = String(asset.mime_type || response.headers.get("content-type") || "").toLowerCase();
+        const originalExt = path.extname(String(asset.original_name || "")).toLowerCase();
+        const mimeExt =
+          mime.includes("webp") ? ".webp" :
+          mime.includes("png") ? ".png" :
+          mime.includes("avif") ? ".avif" :
+          ".jpg";
+        const allowedExt = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif"]);
+        const ext = allowedExt.has(originalExt) ? originalExt : mimeExt;
+        const versionSeed = String(asset.sha256 || asset.id || "current")
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .slice(0, 12) || "current";
+        const dir = out("public/cv-media");
+        const fileName = `profile-${versionSeed}${ext}`;
+
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, fileName), Buffer.from(await response.arrayBuffer()));
+        cvPhotoResolved = `/cv-media/${fileName}`;
+        console.log(`[CMS] CV photo -> ${cvPhotoResolved}`);
+      }
+    } catch (err) {
+      console.warn("[CMS] Không materialize được ảnh CV; dùng signed fallback:", err?.message || err);
+      cvPhotoResolved = "";
+    }
+  }
+
+  // Giữ đúng cấu trúc CV source gốc, đồng thời thêm visible/extraSections để Admin có thể ẩn hồ sơ và thêm mục mới.
+  if (cv) {
+    const educations = sections.filter(x=>x.section_type==="education");
+    const education = educations[0] || {};
+    const certs = sections.filter(x=>x.section_type==="certificate");
+    const skills = sections.filter(x=>x.section_type==="skill");
+    const jobs = sections.filter(x=>x.section_type==="experience");
+    const extras = sections.filter(x=>!["education","certificate","skill","experience"].includes(x.section_type));
+    const profile = {
+      visible: true,
+      name: cv.name,
+      role: { vi: cv.role_vi || "", en: cv.role_en || cv.role_vi || "" },
+      headline: { vi: cv.headline_vi || "", en: cv.headline_en || cv.headline_vi || "" },
+      summary: { vi: cv.summary_vi || "", en: cv.summary_en || cv.summary_vi || "" },
+      born: cv.birth_date || "",
+      address: { vi: cv.address_vi || "", en: cv.address_en || cv.address_vi || "" },
+      phone: cv.phone || "", phoneHref: phoneHref(cv.phone), email: cv.email || "",
+      photo: cvPhotoResolved || (cv.photo_media_id ? "" : "/profile.jpg"), photoMediaId: cv.photo_media_id || "",
+      pdf: (cv.pdf_access || "public") === "public" ? (cv.pdf_url || (cv.pdf_media_id ? "" : "/content/cv/current.pdf")) : "",
+      pdfAccess: cv.pdf_access || "public", pdfMediaId: cv.pdf_media_id || "",
+      theme: cv.theme || {layout:"source-default",accent:"blue",show_photo:true,show_contact:true,show_download_pdf:true},
+      education: {
+        period: education.period || "",
+        school: { vi: education.organization || "", en: education.organization_en || education.organization || "" },
+        major: { vi: education.title_vi || "", en: education.title_en || education.title_vi || "" },
+        subtitle: { vi: education.subtitle_vi || "", en: education.subtitle_en || education.subtitle_vi || "" },
+      },
+      educations: educations.map(x=>({
+        id:x.id,
+        period:x.period||"",
+        school:{vi:x.organization||"",en:x.organization_en||x.organization||""},
+        major:{vi:x.title_vi||"",en:x.title_en||x.title_vi||""},
+        subtitle:{vi:x.subtitle_vi||"",en:x.subtitle_en||x.subtitle_vi||""},
+        description:{vi:x.description_vi||"",en:x.description_en||x.description_vi||""},
+        url:x.url||""
+      })),
+      certificates: { vi: certs.map(x=>x.title_vi), en: certs.map(x=>x.title_en || x.title_vi) },
+      certificateItems: certs.map(x=>({
+        id:x.id,
+        period:x.period||"",
+        title:{vi:x.title_vi||"",en:x.title_en||x.title_vi||""},
+        subtitle:{vi:x.subtitle_vi||"",en:x.subtitle_en||x.subtitle_vi||""},
+        organization:{vi:x.organization||"",en:x.organization_en||x.organization||""},
+        description:{vi:x.description_vi||"",en:x.description_en||x.description_vi||""},
+        url:x.url||""
+      })),
+      skills: { vi: skills.map(x=>x.title_vi), en: skills.map(x=>x.title_en || x.title_vi) },
+      skillItems: skills.map(x=>({
+        id:x.id,
+        period:x.period||"",
+        title:{vi:x.title_vi||"",en:x.title_en||x.title_vi||""},
+        subtitle:{vi:x.subtitle_vi||"",en:x.subtitle_en||x.subtitle_vi||""},
+        organization:{vi:x.organization||"",en:x.organization_en||x.organization||""},
+        description:{vi:x.description_vi||"",en:x.description_en||x.description_vi||""},
+        url:x.url||""
+      })),
+      jobs: {
+        vi: jobs.map(x=>({id:x.id,time:x.period||"",company:x.organization||"",role:x.title_vi||"",subtitle:x.subtitle_vi||"",description:x.description_vi||"",url:x.url||""})),
+        en: jobs.map(x=>({id:x.id,time:x.period||"",company:x.organization_en||x.organization||"",role:x.title_en||x.title_vi||"",subtitle:x.subtitle_en||x.subtitle_vi||"",description:x.description_en||x.description_vi||"",url:x.url||""})),
+      },
+      extraSections: extras.map(x=>({
+        id:x.id,type:x.section_type,period:x.period||"",url:x.url||"",
+        title:{vi:x.title_vi||"",en:x.title_en||x.title_vi||""},
+        subtitle:{vi:x.subtitle_vi||"",en:x.subtitle_en||x.subtitle_vi||""},
+        organization:{vi:x.organization||"",en:x.organization_en||x.organization||""},
+        description:{vi:x.description_vi||"",en:x.description_en||x.description_vi||""},
+        data:x.data||{}
+      }))
+    };
+    write("public/content/cv/profile.json", profile);
+  } else {
+    // Không giữ lại CV cũ khi Admin tắt “Hiển thị hồ sơ”.
+    write("public/content/cv/profile.json", { visible:false });
+  }
+
+  // Kho phần mềm KHÔNG được sinh từ file source. Frontend đọc metadata trực tiếp từ Supabase và lấy file/icon qua R2 signed URL.
+
+  const normalizedTools = tools.map(t=>({
+    id:t.slug, slug:t.slug, href:t.route||`/tools/${t.slug}`, code:t.code,
+    title:{vi:t.title_vi,en:t.title_en||t.title_vi},
+    description:{vi:t.description_vi||"",en:t.description_en||t.description_vi||""},
+    status:t.status||"ready", icon:t.icon_url||t.icon||"", accent:t.accent||"blue",
+    showHome:!!t.show_home, showOrbit:!!t.show_orbit, orbitRing:Number(t.orbit_ring||1), orbitAngle:Number(t.orbit_angle||0),
+    requiresAuth:!!t.requires_auth, allowedRoles:t.allowed_roles||[], categoryId:t.category_id||null,
+    toolType:t.tool_type || (String(t.inline_html||"").trim() ? "html" : "source"),
+    hasInlineHtml:(t.tool_type || (String(t.inline_html||"").trim() ? "html" : "source")) === "html" && !!String(t.inline_html||"").trim(),
+  }));
+  const normalizedRings = rings.map(r=>({id:r.id,size:Number(r.size),duration:Number(r.duration),reverse:!!r.reverse,dashed:!!r.dashed,dotAngle:r.dot_angle,dotTone:r.dot_tone||"blue"}));
+
+  // NLKH_SOFTWARE_ICON_STATIC_V1
+  // Software icons are public catalog assets. Materialize them into the static
+  // frontend at build time so /software stays instant without per-card Edge calls.
+  const softwareIconDir = out("public/software-icons");
+  fs.rmSync(softwareIconDir, { recursive:true, force:true });
+  fs.mkdirSync(softwareIconDir, { recursive:true });
+
+  for (const x of software) {
+    if (!x.icon_media_id) continue;
+    try {
+      const assets = await rest(
+        "media_assets",
+        `select=id,object_key,original_name,mime_type,visibility&id=eq.${encodeURIComponent(x.icon_media_id)}&limit=1`
+      );
+      const asset = assets[0];
+      if (!asset) throw new Error(`missing media asset ${x.icon_media_id}`);
+
+      const mime = String(asset.mime_type || "").toLowerCase();
+      const originalExt = path.extname(String(asset.original_name || "")).toLowerCase();
+      const mimeExt =
+        mime.includes("svg") ? ".svg" :
+        mime.includes("webp") ? ".webp" :
+        mime.includes("jpeg") || mime.includes("jpg") ? ".jpg" :
+        mime.includes("gif") ? ".gif" :
+        mime.includes("avif") ? ".avif" :
+        mime.includes("ico") ? ".ico" :
+        ".png";
+      const allowedExt = new Set([".png",".jpg",".jpeg",".webp",".svg",".gif",".avif",".ico"]);
+      const ext = allowedExt.has(originalExt) ? originalExt : mimeExt;
+      const baseName = safeSlug(x.slug || x.name || String(x.id)) || "software";
+
+      const signed = await edge("r2-file", {
+        action:"presign-download",
+        media_id:asset.id,
+        object_key:asset.object_key
+      });
+      if (!signed?.url) throw new Error("missing signed icon URL");
+
+      const ir = await fetch(signed.url);
+      if (!ir.ok) throw new Error(`icon HTTP ${ir.status}`);
+
+      const input = Buffer.from(await ir.arrayBuffer());
+      if (input.length < 128) throw new Error("icon response too small");
+
+      let output = input;
+      let outputExt = ext;
+      let optimized = false;
+
+      try {
+        const candidate = await sharp(input, {
+          animated:false,
+          density:192
+        })
+          .rotate()
+          .resize(128, 128, {
+            fit:"contain",
+            position:"centre",
+            background:{ r:0, g:0, b:0, alpha:0 },
+            withoutEnlargement:true
+          })
+          .webp({
+            quality:82,
+            alphaQuality:100,
+            effort:4,
+            smartSubsample:true
+          })
+          .toBuffer();
+
+        if (candidate.length < 256) {
+          throw new Error("optimized icon too small");
+        }
+
+        // Keep original only when it is already smaller. This avoids making
+        // tiny source icons heavier just to force WebP.
+        if (candidate.length < input.length) {
+          output = candidate;
+          outputExt = ".webp";
+          optimized = true;
+        }
+      } catch (iconOptimizeError) {
+        console.warn(
+          `[CMS] Software icon optimize fallback for ${x.slug || x.id}:`,
+          iconOptimizeError?.message || iconOptimizeError
+        );
+      }
+
+      const fileName = `${baseName}-${String(x.id).slice(0,8)}${outputExt}`;
+      const rel = `/software-icons/${fileName}`;
+      const target = out(`public/software-icons/${fileName}`);
+      fs.writeFileSync(target, output);
+      x.icon_url = rel;
+
+      const reduction = input.length
+        ? (100 - output.length / input.length * 100).toFixed(1)
+        : "0.0";
+
+      console.log(
+        `[CMS] Software icon -> ${rel} (${input.length}B -> ${output.length}B, -${reduction}%, ${optimized ? "webp-128" : "original"})`
+      );
+    } catch (err) {
+      console.warn(`[CMS] Software icon failed for ${x.slug || x.id}:`, err?.message || err);
+    }
+  }
+
+  // Public catalog snapshot: never serialize actual protected download targets.
+  // Download URL/R2 target is resolved only by the authenticated Edge action.
+  const normalizedSoftware = software.map(x=>({
+    id:x.id,
+    name:x.name,
+    slug:x.slug,
+    category_id:x.category_id||null,
+    description_vi:x.description_vi||"",
+    description_en:x.description_en||x.description_vi||"",
+    icon_url:x.icon_url||"",
+    cover_url:x.cover_url||"",
+    price_label_vi:x.price_label_vi||"Miễn phí",
+    price_label_en:x.price_label_en||x.price_label_vi||"Free",
+    download_access:x.download_access||"public",
+    download_source:x.download_source||"link",
+    download_allowed_roles:Array.isArray(x.download_allowed_roles)?x.download_allowed_roles:[],
+    featured:!!x.featured,
+    sort_order:Number(x.sort_order||0),
+    version:x.version||null,
+    compatibility:x.compatibility||null
+  }));
+
+  // NLKH_NEWS_STATIC_THUMBS_V1
+  // Generate list-card derivatives only. Full adminNewsArticles retains the
+  // original CMS/R2 cover_image for article detail and source fidelity.
+  const newsThumbDir = out("public/news-thumbs");
+  fs.rmSync(newsThumbDir, { recursive:true, force:true });
+  fs.mkdirSync(newsThumbDir, { recursive:true });
+  const newsListCoverById = new Map();
+
+  for (const x of news) {
+    const source = String(x.cover_image || "").trim();
+    if (!/^https?:\/\//i.test(source)) continue;
+
+    try {
+      const response = await fetch(source);
+      if (!response.ok) throw new Error(`cover HTTP ${response.status}`);
+
+      const input = Buffer.from(await response.arrayBuffer());
+      if (input.length < 1000) throw new Error("cover response too small");
+
+      const output = await sharp(input, { animated:false })
+        .rotate()
+        .resize(768, 432, {
+          fit:"cover",
+          position:"centre",
+          withoutEnlargement:false
+        })
+        .webp({
+          quality:76,
+          effort:4,
+          smartSubsample:true
+        })
+        .toBuffer();
+
+      if (output.length < 1000){
+        throw new Error("generated thumbnail too small");
+      }
+
+      const baseName = safeSlug(x.slug || String(x.id)) || "news";
+      const versionSeed = createHash("sha1")
+        .update(`${source}|${x.updated_at || ""}|${x.id || ""}`)
+        .digest("hex")
+        .slice(0, 10);
+
+      const fileName = `${baseName}-${versionSeed}.webp`;
+      const target = path.join(newsThumbDir, fileName);
+      fs.writeFileSync(target, output);
+
+      const listUrl = `/news-thumbs/${fileName}`;
+      newsListCoverById.set(String(x.id), listUrl);
+
+      const reduction = input.length
+        ? (100 - output.length / input.length * 100).toFixed(1)
+        : "0.0";
+
+      console.log(
+        `[CMS] News thumb -> ${listUrl} (${Math.round(input.length/1024)}KB -> ${Math.round(output.length/1024)}KB, -${reduction}%)`
+      );
+    } catch (err) {
+      console.warn(
+        `[CMS] News thumb failed for ${x.slug || x.id}; giữ cover gốc:`,
+        err?.message || err
+      );
+    }
+  }
+
+  const normalizedNewsList = news.map(x=>({
+    id:x.id,
+    slug:x.slug,
+    category_id:x.category_id||null,
+    title_vi:x.title_vi||"",
+    title_en:x.title_en||x.title_vi||"",
+    excerpt_vi:x.excerpt_vi||"",
+    excerpt_en:x.excerpt_en||x.excerpt_vi||"",
+    tags:Array.isArray(x.tags)?x.tags:[],
+    cover_image:newsListCoverById.get(String(x.id))||x.cover_image||"",
+    cover_alt_vi:x.cover_alt_vi||"",
+    cover_alt_en:x.cover_alt_en||x.cover_alt_vi||"",
+    published_at:x.published_at||null,
+    created_at:x.created_at||null,
+    updated_at:x.updated_at||null
+  }));
+
+  const generated = `// AUTO-GENERATED by scripts/sync-admin-cms.mjs. Không sửa tay file này.\n`+
+`export const adminSite = ${ts(site)};\n`+
+`export const adminNavigation = ${ts(nav)};\n`+
+`export const adminSocial = ${ts(social)};\n`+
+`export const adminTools = ${ts(normalizedTools)};\n`+
+`export const adminToolCategories = ${ts(toolCategories)};\n`+
+`export const adminOrbitRings = ${ts(normalizedRings)};\n`+
+`export const adminSoftwareItems = ${ts(normalizedSoftware)};\n`+
+`export const adminSoftwareCategories = ${ts(softwareCategories)};\n`+
+`export const adminNewsList = ${ts(normalizedNewsList)};\n`+
+`export const adminNewsArticles = ${ts(news)};\n`+
+`export const adminNewsCategories = ${ts(newsCategories)};\n`+
+`export const adminContentPages = ${ts(pages)};\n`+
+`export const adminContentRoutes = ${ts(contentRoutes)};\n`+
+`export const adminSeoEntries = ${ts(seo)};\n`+
+`export const adminRedirects = ${ts(redirects)};\n`+
+`export const adminCvVisible = ${cv ? "true" : "false"};\n`;
+  write("data/admin-generated.ts", generated);
+
+  // _admin là thư mục generate: xóa sạch trước mỗi lần sync để Tool đã xóa trong Admin
+  // không để lại file HTML "mồ côi" trên lần deploy kế tiếp.
+  const adminToolDir = out("public/tool-modules/_admin");
+  fs.rmSync(adminToolDir, { recursive:true, force:true });
+  fs.mkdirSync(adminToolDir, { recursive:true });
+
+  // Inline HTML: không ghi đè tool source Git. Nếu có code Admin, tạo module riêng _admin/<slug>.
+  for (const t of tools) {
+    const type = t.tool_type || (String(t.inline_html||"").trim() ? "html" : "source");
+    if (type !== "html") continue;
+    const html = cleanInlineHtml(t.inline_html);
+    if (!html) continue;
+    const slug = safeSlug(t.slug);
+    if (!slug) continue;
+    write(`public/tool-modules/_admin/${slug}/index.html`, html);
+  }
+
+  write("public/content/admin/site.json", site);
+  write("public/content/admin/navigation.json", nav);
+  write("public/content/admin/social.json", social);
+  write("public/content/admin/tools.json", normalizedTools);
+  write("public/content/admin/news.json", news);
+  write("public/content/admin/seo.json", seo);
+  write("public/content/admin/redirects.json", redirects);
+  console.log(`[CMS] Đồng bộ ${normalizedTools.length} tools, ${news.length} news. Kho phần mềm đọc trực tiếp Supabase/R2 ở runtime.`);
+} catch (e) {
+  console.error("[CMS] Đồng bộ thất bại:", e.message);
+  if (strict) process.exit(1);
+  console.warn("[CMS] Build tiếp tục với dữ liệu source/generate gần nhất.");
+}
+
+===== FILE: scripts/test-comtrade.mjs =====
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import vm from "node:vm";
+
+const source = fs.readFileSync("public/tool-modules/comtrade/comtrade-core.js", "utf8");
+vm.runInThisContext(source, { filename: "comtrade-core.js" });
+
+const core = globalThis.ComtradeCore;
+assert.ok(core, "COMTRADE core must be exposed on globalThis");
+
+function cfgText(format) {
+  return [
+    "STATION,DEVICE,2013",
+    "2,1A,1D",
+    "1,IA,A,CB1,A,0.5,1,0,-32768,32767,1,1,P",
+    "1,TRIP,,,0",
+    "50",
+    "1",
+    "1000,2",
+    "01/01/2025,00:00:00.000000",
+    "01/01/2025,00:00:00.000000",
+    format,
+    "1",
+  ].join("\n");
+}
+
+function binaryRecord(format) {
+  const analogBytes = format === "BINARY" ? 2 : 4;
+  const rowBytes = 8 + analogBytes + 2;
+  const buffer = new ArrayBuffer(rowBytes * 2);
+  const view = new DataView(buffer);
+
+  [10, 20].forEach((analog, row) => {
+    let offset = row * rowBytes;
+    view.setUint32(offset, row + 1, true);
+    offset += 4;
+    view.setUint32(offset, row * 1000, true);
+    offset += 4;
+
+    if (format === "BINARY") view.setInt16(offset, analog, true);
+    else if (format === "BINARY32") view.setInt32(offset, analog, true);
+    else view.setFloat32(offset, analog, true);
+    offset += analogBytes;
+
+    view.setUint16(offset, row === 0 ? 1 : 0, true);
+  });
+  return buffer;
+}
+
+const asciiCfg = core.parseCfg(cfgText("ASCII"));
+const asciiBytes = new TextEncoder().encode("1,0,10,1\n2,1000,20,0");
+const ascii = core.parseDat(asciiBytes.buffer, asciiCfg);
+assert.deepEqual(ascii.analogData[0], [6, 11]);
+assert.deepEqual(ascii.digitalData[0], [1, 0]);
+assert.equal(core.duration(ascii.timestamps), 0.001);
+
+for (const format of ["BINARY", "BINARY32", "FLOAT32"]) {
+  const cfg = core.parseCfg(cfgText(format));
+  const parsed = core.parseDat(binaryRecord(format), cfg);
+  assert.deepEqual(parsed.analogData[0], [6, 11]);
+  assert.deepEqual(parsed.digitalData[0], [1, 0]);
+  assert.equal(parsed.sampleNumbers.length, 2);
+}
+
+console.log("COMTRADE parser tests passed: ASCII, BINARY, BINARY32, FLOAT32");
+
+===== FILE: scripts/test-pdf-crop-v55.mjs =====
+import fs from "node:fs";
+const idx=fs.readFileSync("public/tool-modules/pdf/index.html","utf8");
+const ui=fs.readFileSync("public/tool-modules/pdf/pdf-ui-v50.js","utf8");
+const crop=fs.readFileSync("public/tool-modules/pdf/crop-image-v55.js","utf8");
+const ok=(v,m)=>{if(!v){console.error("FAIL:",m);process.exitCode=1}else console.log("PASS:",m)};
+ok(idx.includes("crop-image-v55.css?v=55"),"Crop V55 CSS loaded");
+ok(idx.includes("crop-image-v55.js?v=55"),"Crop V55 JS loaded");
+ok(/PROTECTED_UI=new Set\(\[[^\]]*'cropimage'/.test(ui),"Central renderer delegates Crop UI to V55");
+ok(crop.includes("NLKH_CROP_IMAGE_V55"),"Crop V55 marker");
+ok(crop.includes("'1:1':1")&&crop.includes("'4:3':4/3")&&crop.includes("'3:4':3/4")&&crop.includes("'16:9':16/9"),"Aspect-ratio presets");
+ok(crop.includes("getBoundingClientRect"),"Displayed-image geometry conversion");
+ok(crop.includes("naturalWidth")&&crop.includes("naturalHeight"),"Natural image pixels used");
+ok(crop.includes("pointerdown")&&crop.includes("pointermove"),"Interactive pointer dragging");
+ok(crop.includes("cropX")&&crop.includes("cropY")&&crop.includes("cropWidth")&&crop.includes("cropHeight"),"Existing processing contract preserved");
+ok(crop.includes("ResizeObserver"),"Overlay responds to preview resizing");
+ok(crop.includes("crop-v55-guides"),"Rule-of-thirds guides");
+if(process.exitCode)process.exit(process.exitCode);
+console.log("Crop Image V55 scoped checks passed.");
+
+===== FILE: scripts/test-pdf-v63-state-i18n.mjs =====
+import fs from "node:fs";
+const idx=fs.readFileSync("public/tool-modules/pdf/index.html","utf8");
+const ui=fs.readFileSync("public/tool-modules/pdf/pdf-ui-v50.js","utf8");
+const prev=fs.readFileSync("public/tool-modules/pdf/pdf-preview-v52.mjs","utf8");
+const tile=fs.readFileSync("public/tool-modules/pdf/tile-pages-v62.js","utf8");
+const i18n=fs.readFileSync("public/tool-modules/pdf/i18n-v48.js","utf8");
+const route=fs.readFileSync("components/AdminToolRoute.tsx","utf8");
+const frame=fs.readFileSync("components/ToolFrame.tsx","utf8");
+const ok=(v,m)=>{if(!v){console.error("FAIL:",m);process.exitCode=1}else console.log("PASS:",m)};
+const options=[...idx.matchAll(/<option value="([^"]+)"/g)].map(x=>x[1]);
+const caps=[...ui.matchAll(/^\s{2}([a-z0-9]+):\{offline:(?:true|false),online:(?:true|false)\}/gm)].map(x=>x[1]);
+const metas=[...ui.matchAll(/^\s{2}([a-z0-9]+):\{g:'(?:organize|improve|edit|topdf|frompdf|security|images)'/gm)].map(x=>x[1]);
+ok(options.length===32&&new Set(options).size===32,"32 unique tool options");
+ok(options.every(x=>caps.includes(x)),"Every visible tool has a capability contract");
+ok(options.every(x=>metas.includes(x)),"Every visible tool has bilingual finder metadata");
+ok(route.includes('tool.slug === "pdf" ? rawSrc'),"PDF iframe src remains stable across language changes");
+ok(frame.includes('useEffect(syncPreferences, [theme, language])')&&frame.includes('root.lang = language'),"ToolFrame changes iframe language in place");
+ok(i18n.includes("DYNAMIC_ROOTS")&&i18n.includes("#toolOptions")&&i18n.includes("#toolFinderV57"),"Legacy i18n does not overwrite dynamic bilingual UI");
+ok(i18n.includes('"Gõ: gộp, OCR, Word, mật khẩu..."'),"Finder placeholder has explicit EN mapping");
+ok(ui.includes("captureOptionStateV63")&&ui.includes("restoreOptionStateV63"),"Generic option state preserved on language switch");
+ok(ui.includes("reason==='lang'?captureOptionStateV63():null"),"State preservation runs specifically for language change");
+ok(ui.includes("const ocrOwnsLang=reason==='lang'&&k==='pdfocr'"),"OCR multilingual UI is not destroyed by generic language rerender");
+ok(ui.includes("tilepages:['Chia nhỏ trang','Tile PDF pages']"),"Tile process label is bilingual in central runtime");
+ok(ui.includes("#ocrLangMoreGridV53 input[name=\\\"ocrLang\\\"]")||ui.includes('#ocrLangMoreGridV53 input[name="ocrLang"]'),"OCR preset selection covers More languages");
+ok(ui.includes("#ocrLangMoreGridV53 .ocr-v53-lang"),"OCR search covers More languages");
+ok(tile.includes("tilePageScopeV63"),"Tile Pages has All / Custom page scope");
+ok(tile.includes("st.pageScope==='all'?Array.from"),"Tile processing uses All without a text sentinel");
+ok(tile.includes("st.pageScope==='custom'"),"Custom page input is conditional");
+ok(prev.includes("'tilepages'"),"Tile Pages is connected to PDF thumbnail preview");
+ok(prev.includes("syncTileSelectionFromControls"),"Tile page controls sync to thumbnails");
+ok(prev.includes("tilepages:controls"),"Tile specialized UI notifies thumbnail workspace");
+ok(prev.includes("parseTileRanges"),"Tile preview understands 4-end");
+ok(prev.includes("parseTileRanges(e.target.value,currentDoc.numPages)"),"Typed Tile range highlights thumbnails");
+ok(idx.includes("i18n-v48.js?v=63")&&idx.includes("pdf-ui-v50.js?v=63")&&idx.includes("tile-pages-v62.js?v=63")&&idx.includes("pdf-preview-v52.mjs?v=63"),"V63 cache bumps present");
+if(process.exitCode)process.exit(process.exitCode);
+console.log("PDF V63 state/i18n/tile-preview audit passed.");
+
+===== FILE: serve-static.mjs =====
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { createServer } from "node:http";
+import { extname, join, normalize } from "node:path";
+
+const root = join(process.cwd(), "out");
+const port = Number.parseInt(process.env.PORT || process.argv[2] || "3000", 10);
+const host = process.env.HOST || "127.0.0.1";
+const mime = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".jpg": "image/jpeg",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".pdf": "application/pdf",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".woff2": "font/woff2",
+};
+
+function resolveFile(pathname) {
+  const safePath = normalize(decodeURIComponent(pathname)).replace(/^(\.\.(\/|\\|$))+/, "");
+  let candidate = join(root, safePath);
+  if (existsSync(candidate) && statSync(candidate).isDirectory()) candidate = join(candidate, "index.html");
+  if (!existsSync(candidate) && !extname(candidate)) candidate = join(candidate, "index.html");
+  return candidate.startsWith(root) && existsSync(candidate) ? candidate : null;
+}
+
+createServer((request, response) => {
+  const pathname = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`).pathname;
+  const file = resolveFile(pathname);
+  if (!file) {
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("404 - Not found");
+    return;
+  }
+  response.writeHead(200, { "Content-Type": mime[extname(file)] || "application/octet-stream" });
+  createReadStream(file).pipe(response);
+}).listen(port, host, () => {
+  console.log(`Website đang chạy tại http://${host}:${port}`);
+});
+
+===== FILE: supabase/config.toml =====
+project_id = "nlkh-koha-admin-v4"
+
+[functions.r2-file]
+verify_jwt = false
+
+[functions.integration-secret]
+verify_jwt = false
+
+[functions.integration-proxy]
+verify_jwt = false
+
+[functions.schedule-runner]
+verify_jwt = false
+
+[functions.render-deploy]
+verify_jwt = false
+
+[functions.news-comment]
+verify_jwt = false
+
+
+[functions.cloudflare-redirect-sync]
+verify_jwt = false
+
+[functions.user-admin]
+verify_jwt = false
+
+===== FILE: tsconfig.json =====
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": [
+  "node_modules",
+  "supabase/functions/**/*"
+]
+}

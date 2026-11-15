@@ -1,0 +1,2980 @@
+
+===== FILE: components/FeatureIcon.tsx =====
+import Image from "next/image";
+
+export type FeatureIconName =
+  | "profile"
+  | "quiz"
+  | "pdf"
+  | "comtrade"
+  | "software"
+  | "data";
+
+type FeatureIconProps = {
+  name: FeatureIconName;
+  size?: number;
+  className?: string;
+};
+
+type FeatureGraphicProps = {
+  icon?: FeatureIconName;
+  image?: string;
+  size?: number;
+  className?: string;
+};
+
+export function FeatureGraphic({ icon, image, size = 24, className }: FeatureGraphicProps) {
+  if (image) {
+    return <Image src={image} alt="" width={size} height={size} className={className} aria-hidden="true" />;
+  }
+
+  return <FeatureIcon name={icon ?? "software"} size={size} className={className} />;
+}
+
+export function FeatureIcon({ name, size = 24, className }: FeatureIconProps) {
+  const commonProps = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    className,
+    "aria-hidden": true,
+    focusable: false,
+  };
+
+  switch (name) {
+    case "profile":
+      return (
+        <svg {...commonProps}>
+          <circle cx="8" cy="8" r="3" />
+          <path d="M3.5 18.5c.6-3.1 2.1-4.7 4.5-4.7s3.9 1.6 4.5 4.7" />
+          <path d="M15 6.5h5.5M15 10.5h5.5M15 14.5h4" />
+        </svg>
+      );
+    case "quiz":
+      return (
+        <svg {...commonProps}>
+          <path d="M6 3.5h12a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2Z" />
+          <path d="m7.5 8 1.3 1.3 2.3-2.6M13.5 8.2h3M7.5 14l1.3 1.3 2.3-2.6M13.5 14.2h3" />
+        </svg>
+      );
+    case "pdf":
+      return (
+        <svg {...commonProps}>
+          <path d="M6 2.8h8l4 4v14.4H6Z" />
+          <path d="M14 2.8v4h4M8.5 16.8v-5h1.6a1.6 1.6 0 0 1 0 3.2H8.5M13 16.8v-5h1.2c1.4 0 2.3 1 2.3 2.5s-.9 2.5-2.3 2.5Z" />
+        </svg>
+      );
+    case "comtrade":
+      return (
+        <svg {...commonProps}>
+          <path d="M3 18.5h18M4 15.5l3.1-3.2 2.7 2.2 4.1-6.2 2.7 3.1L20 6.8" />
+          <circle cx="7.1" cy="12.3" r=".8" fill="currentColor" stroke="none" />
+          <circle cx="13.9" cy="8.3" r=".8" fill="currentColor" stroke="none" />
+          <circle cx="20" cy="6.8" r=".8" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "software":
+      return (
+        <svg {...commonProps}>
+          <rect x="3.2" y="3.2" width="7" height="7" rx="1.4" />
+          <rect x="13.8" y="3.2" width="7" height="7" rx="1.4" />
+          <rect x="3.2" y="13.8" width="7" height="7" rx="1.4" />
+          <path d="M17.3 13.8v7M13.8 17.3h7" />
+        </svg>
+      );
+    case "data":
+      return (
+        <svg {...commonProps}>
+          <ellipse cx="12" cy="5.2" rx="7.8" ry="3" />
+          <path d="M4.2 5.2v6c0 1.7 3.5 3 7.8 3s7.8-1.3 7.8-3v-6M4.2 11.2v6c0 1.7 3.5 3 7.8 3s7.8-1.3 7.8-3v-6" />
+        </svg>
+      );
+  }
+}
+
+===== FILE: components/Footer.module.css =====
+.footer { background: var(--footer-bg); color: var(--footer-ink); padding-top: 68px; border-top: 1px solid var(--footer-line); }
+.grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 60px; padding-bottom: 56px; }
+.wordmark { font-size: 28px; font-weight: 800; letter-spacing: -.05em; }
+.wordmark span { color: var(--orange-500); }
+.about p { color: var(--footer-muted); max-width: 390px; line-height: 1.7; margin: 18px 0 0; font-size: 15px; }
+.grid h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .15em; color: var(--footer-muted); margin: 5px 0 18px; }
+.grid > div:not(.about) { display: flex; flex-direction: column; align-items: flex-start; }
+.grid > div:not(.about) a { color: var(--footer-muted); font-size: 15px; padding: 6px 0; transition: color 160ms ease; }
+.grid > div:not(.about) a:hover { color: var(--cyan-400); }
+.linkWithIcon { display: inline-flex !important; align-items: center; gap: 8px; }
+.linkWithIcon img { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex: 0 0 auto; }
+.bottom { min-height: 68px; border-top: 1px solid var(--footer-line); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.bottom p { margin: 0; color: var(--footer-muted); font-size: 12px; }
+@media (max-width: 680px) {
+  .grid { grid-template-columns: 1fr 1fr; gap: 38px 26px; }
+  .about { grid-column: 1 / -1; }
+  .bottom { padding: 22px 0; align-items: flex-start; flex-direction: column; }
+}
+
+===== FILE: components/Footer.tsx =====
+"use client";
+
+import Link from "next/link";
+import { useLanguage } from "./LanguageProvider";
+import { adminNavigation, adminSite, adminSocial } from "../data/admin-generated";
+import styles from "./Footer.module.css";
+
+type NavigationItem = (typeof adminNavigation)[number];
+type SocialItem = (typeof adminSocial)[number];
+
+export function Footer() {
+  const { language, t } = useLanguage();
+  const site = adminSite;
+  const links = adminNavigation.filter(
+    (item) =>
+      item.visible &&
+      ["footer", "both"].includes(String(item.location || "both")) &&
+      !item.requires_auth,
+  );
+  const label = (item: NavigationItem) =>
+    language === "en" ? item.label_en || item.label_vi : item.label_vi;
+  const intro =
+    language === "en"
+      ? site.footer_intro_en || site.footer_intro_vi
+      : site.footer_intro_vi;
+  const year = new Date().getFullYear();
+  const hasSocialEmail = adminSocial.some(
+    (item: SocialItem) =>
+      String(item.platform || "").toLowerCase() === "email" ||
+      String(item.url || "").toLowerCase().startsWith("mailto:"),
+  );
+  const copyright = String(
+    site.copyright_text || `© ${year} Nguyễn Lê Khánh Hòa`,
+  ).replace(/©\s*\d{4}/, `© ${year}`);
+
+  return (
+    <footer className={styles.footer}>
+      <div className={`container ${styles.grid}`}>
+        <div className={styles.about}>
+          <Link className={styles.wordmark} href="/">
+            KOHA<span>.</span>
+          </Link>
+          <p>{intro || t.footer.intro}</p>
+        </div>
+
+        <div>
+          <h2>{t.footer.explore}</h2>
+          {links.map((item: NavigationItem) => (
+            <Link className={styles.linkWithIcon} key={String(item.id)} href={item.href}>
+              {item.icon_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.icon_url} alt="" />
+              ) : null}
+              {label(item)}
+            </Link>
+          ))}
+        </div>
+
+        <div>
+          <h2>{t.footer.connect}</h2>
+          {site.contact_email && !hasSocialEmail ? (
+            <a href={`mailto:${site.contact_email}`}>Email</a>
+          ) : null}
+          {adminSocial.map((item: SocialItem) => (
+            <a
+              className={styles.linkWithIcon}
+              key={String(item.id)}
+              href={item.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {item.icon ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.icon} alt="" />
+              ) : null}
+              {item.label} ↗
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <div className={`container ${styles.bottom}`}>
+        <p suppressHydrationWarning>{copyright}</p>
+        <p>{t.footer.rights}</p>
+      </div>
+    </footer>
+  );
+}
+
+===== FILE: components/Header.module.css =====
+.header { position: sticky; top: 0; z-index: 50; background: var(--header); border-bottom: 1px solid var(--line); backdrop-filter: blur(18px); }
+.inner { height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.nav { display: flex; align-items: center; gap: 30px; }
+.navGroup { position: relative; }
+.navGroup > a { color: var(--muted); font-size: 15px; font-weight: 620; transition: color 160ms ease; display: inline-flex; align-items: center; gap: 7px; }
+.navGroup > a:hover { color: var(--blue-600); }
+.navGroup img, .submenu img { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; }
+.chevron { font-size: 11px; opacity: .6; }
+.submenu { display: none; position: absolute; left: -14px; top: calc(100% + 16px); min-width: 230px; padding: 8px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm); border-radius: 12px; }
+.navGroup:hover .submenu, .navGroup:focus-within .submenu { display: grid; }
+.submenu a { display: flex; align-items: center; gap: 9px; padding: 10px 11px; border-radius: 8px; color: var(--muted); font-size: 14px; }
+.submenu a:hover { background: var(--surface-soft); color: var(--ink); }
+.actions { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+.theme { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: grid; place-items: center; }
+.language { display: flex; align-items: center; gap: 7px; border-left: 1px solid var(--line); padding-left: 20px; }
+.language span { color: #abb2be; font-size: 11px; }
+.language button, .mobileLanguage button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font: 700 12px var(--font-mono), monospace; padding: 5px 2px; }
+.language button.active, .mobileLanguage button.active { color: var(--blue-600); }
+.loginButton { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 15px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 750; white-space: nowrap; transition: border-color 160ms ease, color 160ms ease, background 160ms ease; }
+.loginButton:hover { color: var(--blue-600); border-color: color-mix(in srgb, var(--blue-600) 45%, var(--line)); background: var(--surface-soft); }
+.accountWrap { position: relative; }
+.avatarButton { width: 38px; height: 38px; padding: 0; overflow: hidden; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; font: 800 11px var(--font-mono), monospace; cursor: pointer; }
+.avatarButton img { width: 100%; height: 100%; object-fit: cover; }
+.accountMenu { position: absolute; right: 0; top: calc(100% + 12px); width: 240px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm); border-radius: 12px; padding: 12px; display: grid; gap: 5px; }
+.accountMenu strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.accountMenu small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+.accountMenu a { padding: 9px 10px; border-radius: 8px; font-size: 13px; color: var(--muted); }
+.accountMenu a:hover { background: var(--surface-soft); color: var(--ink); }
+.menu { display: none; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); cursor: pointer; position: relative; }
+.menu span { position: absolute; width: 16px; height: 1.5px; background: var(--ink); left: 12px; top: 17px; }
+.menu span:last-child { top: 23px; }
+.mobileLanguage { display: none; }
+
+@media (max-width: 980px) {
+  .nav { gap: 18px; }
+  .navGroup > a { font-size: 13px; }
+}
+@media (max-width: 780px) {
+  .inner { height: 68px; justify-content: flex-end; }
+  .language, .theme, .accountWrap, .loginButton { display: none; }
+  .menu { display: block; }
+  .nav { position: absolute; top: 68px; left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 0; padding: 12px 20px 22px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-sm); max-height: calc(100vh - 68px); overflow: auto; }
+  .nav.open { display: flex; }
+  .navGroup { border-bottom: 1px solid var(--line); }
+  .navGroup > a { width: 100%; padding: 14px 0; font-size: 16px; }
+  .submenu { position: static; display: grid; box-shadow: none; border: 0; background: transparent; padding: 0 0 8px 12px; }
+  .mobileLanguage { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding-top: 15px; }
+  .mobileLanguage a { color: var(--blue-600); font-size: 13px; font-weight: 700; }
+}
+@media (max-width: 420px) { .inner { gap: 12px; } }
+
+===== FILE: components/Header.tsx =====
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useLanguage } from "./LanguageProvider";
+import { adminNavigation } from "../data/admin-generated";
+import type { MyAccess } from "../lib/supabase-browser";
+import styles from "./Header.module.css";
+
+type NavRow = {
+  id: string;
+  label_vi: string;
+  label_en?: string | null;
+  href: string;
+  location?: string | null;
+  parent_id?: string | null;
+  sort_order?: number;
+  visible: boolean;
+  requires_auth: boolean;
+  allowed_roles?: readonly string[];
+  open_new_tab?: boolean;
+  icon_url?: string | null;
+};
+
+function hasPersistedSupabaseSession() {
+  if (typeof window === "undefined") return false;
+
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key || !/^sb-[a-z0-9-]+-auth-token$/i.test(key)) continue;
+
+      const raw = window.localStorage.getItem(key);
+      if (raw && raw !== "null" && raw !== "{}") return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+function accessInitials(name?: string, email?: string) {
+  const source = (name || email?.split("@")[0] || "U").trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
+}
+
+export function Header() {
+  const { language, setLanguage, theme, toggleTheme, t } = useLanguage();
+  const vi = language === "vi";
+  const [open, setOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [access, setAccess] = useState<MyAccess>({ authenticated: false, permissions: [] });
+
+  useEffect(() => {
+    let alive = true;
+
+    if (!hasPersistedSupabaseSession()) {
+      return () => {
+        alive = false;
+      };
+    }
+
+    void import("../lib/supabase-browser")
+      .then(({ getMyAccess }) => getMyAccess())
+      .then((nextAccess) => {
+        if (alive) setAccess(nextAccess);
+      })
+      .catch(() => {
+        if (alive) setAccess({ authenticated: false, permissions: [] });
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const allowed = useMemo(() => {
+    const navigation = adminNavigation as readonly NavRow[];
+    return navigation.filter((item) => {
+      if (!item.visible || !["header", "both"].includes(String(item.location || "header"))) return false;
+      if (!item.requires_auth) return true;
+      if (!access.authenticated || access.status !== "active") return false;
+      const roles = item.allowed_roles || [];
+      return roles.length === 0 || (!!access.role_id && roles.includes(access.role_id));
+    });
+  }, [access]);
+
+  const parents = allowed.filter((x) => !x.parent_id);
+  const children = (id: string) => allowed.filter((x) => String(x.parent_id || "") === String(id));
+  const label = (item: NavRow) => language === "en" ? (item.label_en || item.label_vi) : item.label_vi;
+
+  return <header className={styles.header}>
+    <div className={`container ${styles.inner}`}>
+      <nav className={`${styles.nav} ${open ? styles.open : ""}`} aria-label={vi ? "Điều hướng chính" : "Main navigation"}>
+        {parents.map((item) => {
+          const subs = children(String(item.id));
+          return <div className={styles.navGroup} key={String(item.id)}>
+            <a href={item.href} target={item.open_new_tab ? "_blank" : undefined} rel={item.open_new_tab ? "noreferrer" : undefined} onClick={() => !subs.length && setOpen(false)}>
+              {item.icon_url ? <img src={item.icon_url} alt="" /> : null}{label(item)}{subs.length ? <span className={styles.chevron}>⌄</span> : null}
+            </a>
+            {subs.length ? <div className={styles.submenu}>{subs.map((sub) => <a key={String(sub.id)} href={sub.href} target={sub.open_new_tab ? "_blank" : undefined} rel={sub.open_new_tab ? "noreferrer" : undefined} onClick={() => setOpen(false)}>{sub.icon_url ? <img src={sub.icon_url} alt="" /> : null}{label(sub)}</a>)}</div> : null}
+          </div>;
+        })}
+        <div className={styles.mobileLanguage}>
+          <button className={language === "vi" ? styles.active : ""} onClick={() => setLanguage("vi")}>VI</button>
+          <button className={language === "en" ? styles.active : ""} onClick={() => setLanguage("en")}>EN</button>
+          <button onClick={toggleTheme}>{theme === "light" ? `◐ ${t.nav.dark}` : `☀ ${t.nav.light}`}</button>
+          <a href={access.authenticated ? "/account" : "/login"}>{access.authenticated ? (vi ? "Tài khoản" : "Account") : (vi ? "Đăng nhập" : "Sign in")}</a>
+        </div>
+      </nav>
+
+      <div className={styles.actions}>
+        <button className={styles.theme} onClick={toggleTheme} aria-label={theme === "light" ? t.nav.dark : t.nav.light} title={theme === "light" ? t.nav.dark : t.nav.light}><span aria-hidden="true">{theme === "light" ? "◐" : "☀"}</span></button>
+        <div className={styles.language} aria-label={vi ? "Chọn ngôn ngữ" : "Choose language"}>
+          <button className={language === "vi" ? styles.active : ""} onClick={() => setLanguage("vi")} aria-pressed={language === "vi"}>VI</button><span>/</span><button className={language === "en" ? styles.active : ""} onClick={() => setLanguage("en")} aria-pressed={language === "en"}>EN</button>
+        </div>
+
+        {access.authenticated ? <div className={styles.accountWrap}>
+          <button className={styles.avatarButton} onClick={() => setAccountOpen((v) => !v)} aria-expanded={accountOpen} aria-label={vi ? "Tài khoản" : "Account"}>{access.avatar_url ? <img src={access.avatar_url} alt="" /> : <span>{accessInitials(access.display_name, access.email)}</span>}</button>
+          {accountOpen ? <div className={styles.accountMenu}><strong>{access.display_name || access.email}</strong><small>{access.email}</small><a href="/account">{vi ? "Tài khoản & ảnh đại diện" : "Account & profile picture"}</a>{access.status === "active" && (access.permissions || []).length ? <><a href={process.env.NEXT_PUBLIC_ADMIN_URL || "https://admin.nguyenlekhanhhoa.com"}>{vi ? "Quản trị" : "Admin"} ↗</a><a href="https://automation.nguyenlekhanhhoa.com">Automation {"\u2197"}</a></> : null}</div> : null}
+        </div> : <a className={styles.loginButton} href="/login">{vi ? "Đăng nhập" : "Sign in"}</a>}
+
+        <button className={styles.menu} onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={open ? t.nav.close : t.nav.menu}><span /><span /></button>
+      </div>
+    </div>
+  </header>;
+}
+
+===== FILE: components/LanguageProvider.tsx =====
+"use client";
+
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { Language, translations } from "../lib/i18n";
+
+type LanguageContextValue = {
+  language: Language;
+  setLanguage: (language: Language) => void;
+  theme: "light" | "dark";
+  toggleTheme: () => void;
+  t: (typeof translations)[Language];
+};
+
+const LanguageContext = createContext<LanguageContextValue | null>(null);
+
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const [language, setLanguageState] = useState<Language>("vi");
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("koha-language") as Language | null;
+    const initialLanguage = saved === "vi" || saved === "en" ? saved : "vi";
+    document.documentElement.lang = initialLanguage;
+    const savedTheme = window.localStorage.getItem("koha-theme");
+    const initialTheme = savedTheme === "dark" || savedTheme === "light"
+      ? savedTheme
+      : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = initialTheme;
+    const timer = window.setTimeout(() => {
+      setLanguageState(initialLanguage);
+      setTheme(initialTheme);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const setLanguage = (next: Language) => {
+    setLanguageState(next);
+    window.localStorage.setItem("koha-language", next);
+    document.documentElement.lang = next;
+  };
+
+  const toggleTheme = () => {
+    setTheme((current) => {
+      const next = current === "light" ? "dark" : "light";
+      window.localStorage.setItem("koha-theme", next);
+      document.documentElement.dataset.theme = next;
+      return next;
+    });
+  };
+
+  const value = useMemo(
+    () => ({ language, setLanguage, theme, toggleTheme, t: translations[language] }),
+    [language, theme],
+  );
+
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
+}
+
+export function useLanguage() {
+  const context = useContext(LanguageContext);
+  if (!context) throw new Error("useLanguage must be used inside LanguageProvider");
+  return context;
+}
+
+===== FILE: components/NewsArticleClient.tsx =====
+"use client";
+
+import { useLanguage } from "./LanguageProvider";
+import { NewsComments } from "./NewsComments";
+import { SafeMarkdown } from "./SafeMarkdown";
+import styles from "../app/news/[slug]/article.module.css";
+
+export function NewsArticleClient({ article }: { article: any }) {
+  const { language } = useLanguage();
+  const vi = language === "vi";
+
+  const title =
+    vi ? article.title_vi : (article.title_en || article.title_vi);
+
+  const subtitle =
+    vi ? article.subtitle_vi : (article.subtitle_en || article.subtitle_vi);
+
+  const content =
+    vi ? article.content_vi : (article.content_en || article.content_vi);
+
+  const coverAlt =
+    vi
+      ? (article.cover_alt_vi || title || "")
+      : (article.cover_alt_en || article.cover_alt_vi || title || "");
+
+  const published = article.published_at
+    ? new Intl.DateTimeFormat(vi ? "vi-VN" : "en-US", {
+        dateStyle: "long",
+      }).format(new Date(article.published_at))
+    : "";
+
+  return (
+    <main className={styles.v5Article}>
+      <header className={styles.v5Header}>
+        <a href="/news" className={styles.v5Back}>
+          ← {vi ? "Tin tức" : "News"}
+        </a>
+
+        <p className={styles.v5Kicker}>NEWS / ARTICLE</p>
+
+        <h1>{title}</h1>
+
+        {subtitle ? (
+          <p className={styles.lead}>{subtitle}</p>
+        ) : null}
+
+        <div className={styles.v5Byline}>
+          <span>
+            {vi ? "Tác giả" : "Author"}:{" "}
+            <strong>{article.author_name || "NLKH Technology"}</strong>
+          </span>
+
+          {article.editor_name ? (
+            <span>
+              {vi ? "Biên tập" : "Editor"}: {article.editor_name}
+            </span>
+          ) : null}
+
+          {published ? <time>{published}</time> : null}
+        </div>
+      </header>
+
+      {article.cover_image ? (
+        <figure className={styles.v5Cover}>
+          <img src={article.cover_image} alt={coverAlt} />
+        </figure>
+      ) : null}
+
+      <div className={styles.v5Grid}>
+        <article className={styles.prose}>
+          <SafeMarkdown content={content || ""} />
+        </article>
+
+        <aside className={styles.v5Aside}>
+          {article.tags?.length ? (
+            <section className={styles.v5MetaCard}>
+              <span className={styles.v5MetaLabel}>TAGS</span>
+              <div className={styles.v5Tags}>
+                {article.tags.map((tag: string) => (
+                  <i key={tag}>{tag}</i>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {article.source_url ? (
+            <section className={styles.v5SourceCard}>
+              <span className={styles.v5MetaLabel}>
+                {vi ? "NGUỒN THAM KHẢO" : "SOURCE"}
+              </span>
+              <a
+                href={article.source_url}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <strong>{article.source_name || (vi ? "Bài nguồn" : "Original source")}</strong>
+                <small>{vi ? "Mở bài gốc ↗" : "Open original ↗"}</small>
+              </a>
+            </section>
+          ) : null}
+        </aside>
+      </div>
+
+      <div className={styles.v5Comments}>
+        <NewsComments
+          articleId={String(article.id)}
+          allow={!!article.allow_comments}
+        />
+      </div>
+    </main>
+  );
+}
+
+===== FILE: components/NewsComments.module.css =====
+.comments{margin-top:54px;border-top:1px solid var(--line);padding-top:28px}.head{display:flex;align-items:center;justify-content:space-between}.head h2{font-size:28px}.head span{color:var(--muted);font-size:12px}.list{display:grid;gap:12px}.list article{border:1px solid var(--line);background:var(--surface);padding:16px}.list article>div{display:flex;justify-content:space-between;gap:12px}.list small{color:var(--muted)}.list p{white-space:pre-wrap;line-height:1.7}.form{margin-top:24px;border:1px solid var(--line);background:var(--surface);padding:20px;display:grid;gap:13px}.form>p,.empty{color:var(--muted);line-height:1.6}.form label{display:grid;gap:6px;color:var(--muted);font-size:13px}.form input,.form textarea{border:1px solid var(--line);background:var(--surface-soft);color:var(--ink);padding:10px 12px;border-radius:7px}.form button{justify-self:start;border:0;background:var(--orange-500);color:#20120c;padding:11px 15px;border-radius:7px;font-weight:800;cursor:pointer}.message{padding:10px;border:1px solid var(--line);background:var(--surface-soft)}
+
+===== FILE: components/NewsComments.tsx =====
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import { useLanguage } from "./LanguageProvider";
+import { invokeEdge, supabase } from "../lib/supabase-browser";
+import styles from "./NewsComments.module.css";
+
+type CommentRow = {
+  id:string;
+  display_name:string;
+  body:string;
+  created_at:string;
+};
+
+export function NewsComments({articleId,allow}:{articleId:string;allow:boolean}) {
+  const {language}=useLanguage();
+  const vi=language==="vi";
+  const [rows,setRows]=useState<CommentRow[]>([]);
+  const [name,setName]=useState("");
+  const [email,setEmail]=useState("");
+  const [body,setBody]=useState("");
+  const [message,setMessage]=useState("");
+  const [busy,setBusy]=useState(false);
+
+  async function load(){
+    const {data}=await supabase
+      .from("approved_news_comments")
+      .select("id,display_name,body,created_at")
+      .eq("article_id",articleId)
+      .order("created_at",{ascending:true});
+    setRows((data||[]) as CommentRow[]);
+  }
+
+  useEffect(()=>{void load()},[articleId]);
+
+  async function submit(e:FormEvent){
+    e.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try{
+      await invokeEdge("news-comment",{
+        action:"submit",
+        article_id:articleId,
+        display_name:name,
+        email,
+        body
+      });
+      setMessage(vi?"Đã gửi bình luận.":"Comment submitted.");
+      setBody("");
+    }catch(e){
+      setMessage(e instanceof Error?e.message:String(e));
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  return <section className={styles.comments}>
+    <div className={styles.head}>
+      <h2>{vi?"Bình luận":"Comments"}</h2>
+    </div>
+
+    {rows.length
+      ? <div className={styles.list}>
+          {rows.map(x=><article key={x.id}>
+            <div>
+              <strong>{x.display_name}</strong>
+              <small>{new Date(x.created_at).toLocaleString(vi?"vi-VN":"en-US")}</small>
+            </div>
+            <p>{x.body}</p>
+          </article>)}
+        </div>
+      : <p className={styles.empty}>{vi?"Chưa có bình luận.":"No comments yet."}</p>}
+
+    {allow
+      ? <form onSubmit={submit} className={styles.form}>
+          <h3>{vi?"Gửi bình luận":"Post a comment"}</h3>
+          <label>
+            {vi?"Tên hiển thị":"Display name"} *
+            <input value={name} onChange={e=>setName(e.target.value)} required minLength={2}/>
+          </label>
+          <label>
+            {vi?"Email (không hiển thị công khai)":"Email (not shown publicly)"}
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)}/>
+          </label>
+          <label>
+            {vi?"Nội dung":"Comment"} *
+            <textarea value={body} onChange={e=>setBody(e.target.value)} required minLength={2} maxLength={3000} rows={5}/>
+          </label>
+          {message?<p className={styles.message}>{message}</p>:null}
+          <button disabled={busy}>
+            {busy?(vi?"Đang gửi…":"Sending…"):(vi?"Gửi bình luận":"Post comment")}
+          </button>
+        </form>
+      : null}
+  </section>
+}
+
+===== FILE: components/NewsPageClient.tsx =====
+"use client";
+
+import { useMemo, useState } from "react";
+import { useLanguage } from "./LanguageProvider";
+import styles from "../app/news/news.module.css";
+
+const PAGE_SIZE = 6;
+
+export type NewsCategory = {
+  id: string | number;
+  slug?: string | null;
+  name_vi?: string | null;
+  name_en?: string | null;
+  visible?: boolean | null;
+  sort_order?: number | string | null;
+};
+
+export type NewsArticle = {
+  id?: string | number | null;
+  slug: string;
+  category_id?: string | number | null;
+  title_vi?: string | null;
+  title_en?: string | null;
+  excerpt_vi?: string | null;
+  excerpt_en?: string | null;
+  tags?: string[] | null;
+  cover_image?: string | null;
+  cover_alt_vi?: string | null;
+  cover_alt_en?: string | null;
+  published_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type NewsPageClientProps = {
+  articles: readonly NewsArticle[];
+  categories: readonly NewsCategory[];
+};
+
+function timeOf(article: NewsArticle) {
+  const value =
+    article.published_at || article.created_at || article.updated_at || "";
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+export function NewsPageClient({
+  articles,
+  categories,
+}: NewsPageClientProps) {
+  const { language } = useLanguage();
+  const vi = language === "vi";
+
+  const [category, setCategory] = useState("all");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+
+  const visibleCategories = useMemo(
+    () =>
+      [...(categories || [])]
+        .filter((item) => item?.visible !== false)
+        .sort(
+          (a, b) =>
+            Number(a.sort_order || 0) - Number(b.sort_order || 0),
+        ),
+    [categories],
+  );
+
+  const categoryById = useMemo(
+    () =>
+      new Map<string, NewsCategory>(
+        visibleCategories.map((item) => [String(item.id), item]),
+      ),
+    [visibleCategories],
+  );
+
+  const rows = useMemo(() => {
+    const q = query
+      .trim()
+      .toLocaleLowerCase(vi ? "vi-VN" : "en-US");
+
+    return [...(articles || [])]
+      .sort((a, b) => timeOf(b) - timeOf(a))
+      .filter((article) => {
+        if (
+          category !== "all" &&
+          String(article.category_id || "") !== category
+        ) {
+          return false;
+        }
+
+        if (!q) return true;
+
+        const haystack = [
+          article.title_vi,
+          article.title_en,
+          article.excerpt_vi,
+          article.excerpt_en,
+          ...(Array.isArray(article.tags) ? article.tags : []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase(vi ? "vi-VN" : "en-US");
+
+        return haystack.includes(q);
+      });
+  }, [articles, category, query, vi]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageRows = rows.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  const chooseCategory = (value: string) => {
+    setCategory(value);
+    setPage(1);
+  };
+
+  const changeQuery = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
+
+  return (
+    <>
+      <section className={styles.v53Hero}>
+        <div className={styles.v53Shell}>
+          <p>NEWS / ARTICLES</p>
+          <h1>{vi ? "Tin tức & ghi chú." : "News & notes."}</h1>
+          <span>
+            {vi
+              ? "Bài mới nhất được xếp trước. Lọc theo danh mục hoặc tìm nhanh theo từ khóa."
+              : "Newest articles appear first. Filter by category or search by keyword."}
+          </span>
+        </div>
+      </section>
+
+      <section className={styles.v53Tools}>
+        <div className={styles.v53Shell}>
+          <div
+            className={styles.v53Categories}
+            role="group"
+            aria-label={vi ? "Danh mục tin" : "News categories"}
+          >
+            <button
+              type="button"
+              className={category === "all" ? styles.v53Active : ""}
+              onClick={() => chooseCategory("all")}
+            >
+              {vi ? "Tất cả" : "All"}
+            </button>
+
+            {visibleCategories.map((cat) => (
+              <button
+                type="button"
+                key={cat.id}
+                className={
+                  category === String(cat.id) ? styles.v53Active : ""
+                }
+                onClick={() => chooseCategory(String(cat.id))}
+              >
+                {vi
+                  ? cat.name_vi || cat.slug
+                  : cat.name_en || cat.name_vi || cat.slug}
+              </button>
+            ))}
+          </div>
+
+          <label className={styles.v53Search}>
+            <span className="sr-only">
+              {vi ? "Tìm bài viết" : "Search articles"}
+            </span>
+            <input
+              value={query}
+              onChange={(event) => changeQuery(event.target.value)}
+              placeholder={
+                vi
+                  ? "Tìm tiêu đề, nội dung, tag…"
+                  : "Search title, summary, tags…"
+              }
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className={styles.v53List}>
+        <div className={styles.v53Shell}>
+          <div className={styles.v53Count}>
+            {vi
+              ? `${rows.length} bài viết · trang ${currentPage}/${totalPages}`
+              : `${rows.length} article${rows.length === 1 ? "" : "s"} · page ${currentPage}/${totalPages}`}
+          </div>
+
+          {rows.length ? (
+            <div className={styles.v53Grid}>
+              {pageRows.map((article) => {
+                const cat = categoryById.get(
+                  String(article.category_id || ""),
+                );
+                const date =
+                  article.published_at || article.created_at || "";
+
+                return (
+                  <article
+                    className={styles.v53Card}
+                    key={article.id || article.slug}
+                  >
+                    <a
+                      href={`/news/${article.slug}`}
+                      className={styles.v53Cover}
+                    >
+                      {article.cover_image ? (
+                        // Dynamic CMS/R2 image URLs intentionally use <img>.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={article.cover_image}
+                          alt={
+                            vi
+                              ? article.cover_alt_vi ||
+                                article.title_vi ||
+                                ""
+                              : article.cover_alt_en ||
+                                article.cover_alt_vi ||
+                                article.title_en ||
+                                article.title_vi ||
+                                ""
+                          }
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span>NLKH / NEWS</span>
+                      )}
+                    </a>
+
+                    <div className={styles.v53CardBody}>
+                      <div className={styles.v53Meta}>
+                        <span>
+                          {cat
+                            ? vi
+                              ? cat.name_vi || cat.slug
+                              : cat.name_en ||
+                                cat.name_vi ||
+                                cat.slug
+                            : "NEWS"}
+                        </span>
+
+                        {date ? (
+                          <time>
+                            {new Intl.DateTimeFormat(
+                              vi ? "vi-VN" : "en-US",
+                              {
+                                dateStyle: "medium",
+                                timeZone: "UTC",
+                              },
+                            ).format(new Date(date))}
+                          </time>
+                        ) : null}
+                      </div>
+
+                      <h2>
+                        <a href={`/news/${article.slug}`}>
+                          {vi
+                            ? article.title_vi
+                            : article.title_en || article.title_vi}
+                        </a>
+                      </h2>
+
+                      <p>
+                        {vi
+                          ? article.excerpt_vi
+                          : article.excerpt_en || article.excerpt_vi}
+                      </p>
+
+                      <a
+                        className={styles.v53Read}
+                        href={`/news/${article.slug}`}
+                      >
+                        {vi ? "Đọc bài" : "Read article"} <span>↗</span>
+                      </a>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className={styles.v53Empty}>
+              {vi ? "Không có bài phù hợp." : "No matching articles."}
+            </p>
+          )}
+
+          {totalPages > 1 ? (
+            <nav
+              className={styles.v53Pagination}
+              aria-label={vi ? "Phân trang tin tức" : "News pagination"}
+            >
+              <button
+                disabled={currentPage === 1}
+                onClick={() =>
+                  setPage(Math.max(1, currentPage - 1))
+                }
+              >
+                {vi ? "← Trước" : "← Previous"}
+              </button>
+
+              <div>
+                {Array.from(
+                  { length: totalPages },
+                  (_, index) => index + 1,
+                ).map((number) => (
+                  <button
+                    key={number}
+                    className={
+                      number === currentPage
+                        ? styles.v53PageActive
+                        : ""
+                    }
+                    onClick={() => setPage(number)}
+                    aria-current={
+                      number === currentPage ? "page" : undefined
+                    }
+                  >
+                    {number}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() =>
+                  setPage(Math.min(totalPages, currentPage + 1))
+                }
+              >
+                {vi ? "Sau →" : "Next →"}
+              </button>
+            </nav>
+          ) : null}
+        </div>
+      </section>
+    </>
+  );
+}
+
+===== FILE: components/PublicShellProvider.tsx =====
+"use client";
+
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useState } from "react";
+
+const LazySitePresence = lazy(() =>
+  import("./SitePresence").then((module) => ({ default: module.SitePresence })),
+);
+
+export type ShellMenuItem = { id: string; label_vi: string; label_en: string; href: string; location: "header" | "footer" | "both"; open_new_tab?: boolean };
+export type ShellSocial = { id: string; platform: string; label: string; url: string; icon?: string | null };
+type ShellState = {
+  site: Record<string, unknown>;
+  menu: ShellMenuItem[];
+  socials: ShellSocial[];
+  blocks: Array<{ page_key: string; block_key: string; content: Record<string, unknown> }>;
+  account: { authenticated: boolean; role: string };
+};
+
+const fallback: ShellState = {
+  site: { site_name: "Nguyễn Lê Khánh Hòa", footer_intro_vi: "Kỹ sư điện, người xây dựng các công cụ số phục vụ công việc và học tập.", footer_intro_en: "Electrical engineer building practical digital tools.", copyright_text: "© 2025 Nguyễn Lê Khánh Hòa", registration_enabled: true },
+  menu: [
+    { id:"/",label_vi:"Trang chủ",label_en:"Home",href:"/",location:"both" },
+    { id:"/cv",label_vi:"Hồ sơ",label_en:"Profile",href:"/cv",location:"both" },
+    { id:"/tools",label_vi:"Công cụ",label_en:"Tools",href:"/tools",location:"both" },
+    { id:"/software",label_vi:"Phần mềm",label_en:"Software",href:"/software",location:"both" },
+    { id:"/data",label_vi:"Dữ liệu",label_en:"Data",href:"/data",location:"both" },
+    { id:"/news",label_vi:"Tin tức",label_en:"News",href:"/news",location:"both" },
+  ], socials: [], blocks: [], account: { authenticated:false, role:"guest" },
+};
+
+const ShellContext = createContext<ShellState>(fallback);
+
+export function PublicShellProvider({ children }: { children: React.ReactNode }) {
+  const [value, setValue] = useState(fallback);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/public/shell", { signal: controller.signal, cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<Partial<ShellState>> : Promise.reject()).then((data) => setValue({ ...fallback, ...data })).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  const stable = useMemo(() => value, [value]);
+  return <><Suspense fallback={null}><LazySitePresence /></Suspense><ShellContext.Provider value={stable}>{children}</ShellContext.Provider></>;
+}
+
+export function usePublicShell() { return useContext(ShellContext); }
+
+===== FILE: components/QuizDataPicker.module.css =====
+.backdrop{position:fixed;inset:0;background:rgba(2,8,23,.7);z-index:10000;display:grid;place-items:center;padding:20px}.modal{width:min(680px,100%);background:var(--surface,#fff);color:var(--ink,#0f172a);border:1px solid var(--line,#cbd5e1);border-radius:16px;padding:22px;box-shadow:0 25px 70px rgba(0,0,0,.28)}.head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.head span{font:700 10px ui-monospace,monospace;letter-spacing:.14em;color:#2563eb}.head h2{margin:8px 0 6px;font-size:26px}.head p{margin:0;color:var(--muted,#64748b);line-height:1.6}.close{border:1px solid var(--line,#cbd5e1);background:transparent;color:inherit;width:38px;height:38px;border-radius:999px;font-size:25px;line-height:1}.controls{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:20px}.controls select{min-width:0;border:1px solid var(--line,#cbd5e1);background:var(--surface-soft,#f8fafc);color:inherit;border-radius:9px;padding:11px 12px}.controls button,.login{border:0;background:#2563eb;color:#fff;border-radius:9px;padding:11px 15px;font-weight:800;text-decoration:none}.controls button:disabled{opacity:.5;cursor:not-allowed}.notice,.status{margin:18px 0 0;padding:11px 12px;border:1px solid var(--line,#cbd5e1);background:var(--surface-soft,#f8fafc);border-radius:9px;color:var(--muted,#64748b)}.login{display:inline-block;margin-top:20px}@media(max-width:620px){.controls{grid-template-columns:1fr}.modal{padding:18px}}
+
+===== FILE: components/QuizDataPicker.tsx =====
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useLanguage } from "./LanguageProvider";
+import { getMyAccess, invokeEdge, supabase } from "../lib/supabase-browser";
+import styles from "./QuizDataPicker.module.css";
+
+type Media={
+  id:string;object_key:string;original_name?:string|null;mime_type?:string|null;
+  public_url?:string|null;visibility?:string|null
+};
+type DataItem={
+  id:string;title_vi:string;title_en?:string;description_vi?:string;description_en?:string;
+  storage_mode:"link"|"r2";external_url?:string|null;item_type?:string|null;
+  media_id?:string|null;media_assets?:Media|null
+};
+
+function looksQuiz(x:DataItem){
+  const n=(x.media_assets?.original_name||x.external_url||"").toLowerCase();
+  return x.item_type==="quiz_json"||n.endsWith(".json")||(x.media_assets?.mime_type||"").includes("json");
+}
+
+export function QuizDataPicker(){
+  const{language}=useLanguage(),vi=language==="vi";
+  const[open,setOpen]=useState(false);
+  const[items,setItems]=useState<DataItem[]>([]);
+  const[authenticated,setAuthenticated]=useState(false);
+  const[selectedId,setSelectedId]=useState("");
+  const[status,setStatus]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[importing,setImporting]=useState(false);
+
+  useEffect(()=>{
+    const receive=(event:MessageEvent)=>{
+      if(event.origin!==window.location.origin)return;
+      if(event.data?.type==="nlkh-quiz-data-picker-open")setOpen(true);
+    };
+    window.addEventListener("message",receive);
+    return()=>window.removeEventListener("message",receive);
+  },[]);
+
+  useEffect(()=>{
+    if(!open)return;
+    let alive=true;
+    setLoading(true);setStatus("");
+    (async()=>{
+      const a=await getMyAccess();
+      if(!alive)return;
+      setAuthenticated(a.authenticated);
+      if(!a.authenticated){setItems([]);setLoading(false);return}
+      const{data,error}=await supabase.from("data_items")
+        .select("id,title_vi,title_en,description_vi,description_en,storage_mode,external_url,item_type,media_id,media_assets(id,object_key,original_name,mime_type,public_url,visibility)")
+        .eq("visible",true).order("sort_order");
+      if(!alive)return;
+      if(error)setStatus(error.message);
+      else setItems(((data||[]) as unknown as DataItem[]).filter(looksQuiz));
+      setLoading(false);
+    })().catch(e=>{
+      if(alive){setStatus(e instanceof Error?e.message:String(e));setLoading(false)}
+    });
+    return()=>{alive=false};
+  },[open]);
+
+  const selected=useMemo(()=>items.find(x=>x.id===selectedId),[items,selectedId]);
+
+  async function importSelected(){
+    if(!selected)return;
+    setImporting(true);
+    setStatus(vi?"Đang lấy JSON từ dữ liệu…":"Loading JSON from data…");
+    try{
+      let url=selected.external_url||"";
+      if(selected.storage_mode==="r2"){
+        const m=selected.media_assets;
+        if(!m)throw new Error(vi?"Mục này chưa có file R2.":"This item has no R2 file.");
+        const out:any=await invokeEdge("r2-file",{
+          action:"presign-download",item_id:selected.id,media_id:m.id,object_key:m.object_key
+        });
+        url=out.url;
+      }
+      if(!url)throw new Error(vi?"Không tìm thấy nguồn JSON.":"JSON source not found.");
+      const r=await fetch(url,{cache:"no-store"});
+      if(!r.ok)throw new Error(`HTTP ${r.status}`);
+      const data=await r.json() as any;
+
+      window.dispatchEvent(new CustomEvent("nlkh-tool-import",{
+        detail:{
+          target:"quiz",data,
+          sourceName:vi?selected.title_vi:(selected.title_en||selected.title_vi)
+        }
+      }));
+
+      setStatus(vi?"Đã nhập Quiz từ dữ liệu.":"Quiz imported from data.");
+      setTimeout(()=>setOpen(false),450);
+    }catch(e){
+      setStatus(e instanceof Error?e.message:String(e));
+    }finally{
+      setImporting(false);
+    }
+  }
+
+  if(!open)return null;
+
+  return <div className={styles.backdrop} role="dialog" aria-modal="true" aria-label={vi?"Nhập Quiz từ dữ liệu":"Import Quiz from data"}>
+    <section className={styles.modal}>
+      <div className={styles.head}>
+        <div>
+          <span>QUIZ / DATA</span>
+          <h2>{vi?"Nhập Quiz từ dữ liệu":"Import Quiz from data"}</h2>
+          <p>{vi?"Chọn một file JSON trong các thư mục dữ liệu bạn được quyền xem.":"Choose a JSON file from data folders you can access."}</p>
+        </div>
+        <button type="button" className={styles.close} onClick={()=>setOpen(false)} aria-label={vi?"Đóng":"Close"}>×</button>
+      </div>
+
+      {loading?<p className={styles.notice}>{vi?"Đang tải dữ liệu…":"Loading data…"}</p>:
+        authenticated?(
+          items.length?<div className={styles.controls}>
+            <select value={selectedId} onChange={e=>setSelectedId(e.target.value)}>
+              <option value="">{vi?"Chọn file JSON…":"Choose a JSON file…"}</option>
+              {items.map(x=><option key={x.id} value={x.id}>{vi?x.title_vi:(x.title_en||x.title_vi)}</option>)}
+            </select>
+            <button type="button" disabled={!selected||importing} onClick={importSelected}>
+              {importing?(vi?"Đang nhập…":"Importing…"):(vi?"Nhập vào Quiz":"Import into Quiz")}
+            </button>
+          </div>:<p className={styles.notice}>{vi?"Chưa có file JSON nào trong dữ liệu bạn được xem.":"No JSON files are available in your accessible data."}</p>
+        ):<a className={styles.login} href="/login?next=/tools/quiz">{vi?"Đăng nhập để xem dữ liệu":"Sign in to view data"} →</a>
+      }
+
+      {status?<p className={styles.status}>{status}</p>:null}
+    </section>
+  </div>
+}
+
+===== FILE: components/SafeMarkdown.tsx =====
+import type { ReactNode } from "react";
+
+function inline(text:string):ReactNode[]{
+  const source=String(text||"");
+  const pattern=/(\*\*[^*]+\*\*|\[[^\]]+\]\((?:https?:\/\/[^)\s]+|\/[^)\s]+)\))/g;
+  return source.split(pattern).filter(Boolean).map((part,index)=>{
+    if(part.startsWith("**")&&part.endsWith("**")){
+      return <strong key={index}>{part.slice(2,-2)}</strong>;
+    }
+    const link=part.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)$/);
+    if(link){
+      const external=/^https?:\/\//i.test(link[2]);
+      return <a key={index} href={link[2]} {...(external?{target:"_blank",rel:"noreferrer noopener"}:{})}>{link[1]}</a>;
+    }
+    return part;
+  });
+}
+
+function tableRow(line:string){
+  return line.trim().replace(/^\||\|$/g,"").split("|").map(x=>x.trim());
+}
+function isDivider(line:string){
+  const cells=tableRow(line);
+  return cells.length>0&&cells.every(x=>/^:?-{3,}:?$/.test(x));
+}
+
+export function SafeMarkdown({content}:{content:string}){
+  const lines=String(content||"").replace(/\r/g,"").split("\n");
+  const out:ReactNode[]=[];
+  let list:{type:"ul"|"ol";items:string[]}|null=null;
+
+  const flush=()=>{
+    if(!list)return;
+    const data=list;
+    list=null;
+    const children=data.items.map((item,i)=><li key={i}>{inline(item)}</li>);
+    out.push(data.type==="ol"
+      ? <ol key={`list-${out.length}`}>{children}</ol>
+      : <ul key={`list-${out.length}`}>{children}</ul>);
+  };
+
+  let i=0;
+  while(i<lines.length){
+    const line=lines[i].trim();
+
+    if(!line){flush();i++;continue}
+
+    const image=line.match(/^!\[([^\]]*)\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)$/i);
+    if(image){
+      flush();
+      out.push(
+        <figure className="markdownImage" key={`img-${i}`}>
+          <img src={image[2]} alt={image[1]||""} loading="lazy" />
+          {image[1]?<figcaption>{image[1]}</figcaption>:null}
+        </figure>
+      );
+      i++;
+      continue;
+    }
+
+    const ul=line.match(/^[-*]\s+(.+)$/);
+    const ol=line.match(/^\d+\.\s+(.+)$/);
+    if(ul||ol){
+      const type=ol?"ol":"ul";
+      if(!list||list.type!==type){flush();list={type,items:[]}}
+      list.items.push((ol?.[1]||ul?.[1]||"").trim());
+      i++;
+      continue;
+    }
+
+    if(line.includes("|")&&i+1<lines.length&&isDivider(lines[i+1])){
+      flush();
+      const head=tableRow(line);
+      i+=2;
+      const rows:string[][]=[];
+      while(i<lines.length&&lines[i].trim()&&lines[i].includes("|")){
+        rows.push(tableRow(lines[i]));
+        i++;
+      }
+      out.push(
+        <div className="markdownTableWrap" key={`table-${i}`}>
+          <table>
+            <thead><tr>{head.map((x,j)=><th key={j}>{inline(x)}</th>)}</tr></thead>
+            <tbody>{rows.map((row,r)=><tr key={r}>{row.map((x,j)=><td key={j}>{inline(x)}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
+    flush();
+    const h=line.match(/^(#{1,3})\s+(.+)$/);
+    if(h?.[1].length===1)out.push(<h2 key={i}>{inline(h[2])}</h2>);
+    else if(h?.[1].length===2)out.push(<h3 key={i}>{inline(h[2])}</h3>);
+    else if(h)out.push(<h4 key={i}>{inline(h[2])}</h4>);
+    else if(line.startsWith("> "))out.push(<blockquote key={i}>{inline(line.slice(2))}</blockquote>);
+    else out.push(<p key={i}>{inline(line)}</p>);
+    i++;
+  }
+  flush();
+  return <>{out}</>;
+}
+
+===== FILE: components/ScrollToTop.module.css =====
+.button {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: var(--shadow-sm);
+  font-size: 20px;
+  font-weight: 750;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+  transition: opacity 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.button.visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.button:hover { background: var(--blue-600); color: white; transform: translateY(-2px); }
+
+@media (max-width: 640px) {
+  .button { right: 16px; bottom: 16px; width: 42px; height: 42px; }
+}
+
+===== FILE: components/ScrollToTop.tsx =====
+"use client";
+
+import { useEffect, useState } from "react";
+import styles from "./ScrollToTop.module.css";
+
+export function ScrollToTop() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const frames = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"));
+
+    const update = () => {
+      const frameHasScrolled = frames.some((frame) => {
+        try {
+          return (frame.contentWindow?.scrollY ?? 0) > 180;
+        } catch {
+          return false;
+        }
+      });
+      setVisible(window.scrollY > 180 || frameHasScrolled);
+    };
+
+    const attachFrameScroll = (frame: HTMLIFrameElement) => {
+      try {
+        frame.contentWindow?.addEventListener("scroll", update, { passive: true });
+      } catch {
+        // Same-origin tool frames are supported; ignore inaccessible frames.
+      }
+    };
+
+    const detachFrameScroll = (frame: HTMLIFrameElement) => {
+      try {
+        frame.contentWindow?.removeEventListener("scroll", update);
+      } catch {
+        // Ignore inaccessible frames during cleanup.
+      }
+    };
+
+    const handleFrameLoad = (event: Event) => {
+      const frame = event.currentTarget as HTMLIFrameElement;
+      attachFrameScroll(frame);
+      update();
+    };
+
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    frames.forEach((frame) => {
+      attachFrameScroll(frame);
+      frame.addEventListener("load", handleFrameLoad);
+    });
+
+    return () => {
+      window.removeEventListener("scroll", update);
+      frames.forEach((frame) => {
+        detachFrameScroll(frame);
+        frame.removeEventListener("load", handleFrameLoad);
+      });
+    };
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    document.querySelectorAll("iframe").forEach((frame) => {
+      try {
+        frame.contentWindow?.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {
+        // Same-origin tool frames allow this; ignore any inaccessible frame.
+      }
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      className={`${styles.button} ${visible ? styles.visible : ""}`}
+      onClick={scrollToTop}
+      aria-label="Cuộn lên đầu trang"
+      title="Lên đầu trang"
+    >
+      ↑
+    </button>
+  );
+}
+
+===== FILE: components/SitePresence.tsx =====
+"use client";
+
+import {
+  useEffect,
+} from "react";
+
+import {
+  supabase,
+} from "../lib/supabase-browser";
+
+const VISITOR_KEY =
+  "nlkh-visitor-id-v1";
+
+const STATUS_KEY =
+  "nlkh-site-traffic-v5";
+
+const EDGE =
+  `${String(process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "")}/functions/v1/site-traffic`;
+
+function visitorId() {
+  try {
+    let id =
+      localStorage.getItem(VISITOR_KEY) || "";
+
+    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+      id = crypto.randomUUID();
+      localStorage.setItem(VISITOR_KEY, id);
+    }
+
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+function pixelPing(
+  visitorId: string,
+  path: string,
+) {
+  if (!EDGE.startsWith("https://")) return;
+
+  const url =
+    `${EDGE}?action=ping` +
+    `&visitor_id=${encodeURIComponent(visitorId)}` +
+    `&path=${encodeURIComponent(path)}` +
+    `&_=${Date.now()}`;
+
+  // Image requests do not require CORS permission.
+  // The endpoint returns 204; the request itself is what matters.
+  const image = new Image();
+  image.referrerPolicy = "strict-origin-when-cross-origin";
+  image.src = url;
+}
+
+export function SitePresence() {
+  useEffect(() => {
+    let stopped = false;
+    let busy = false;
+
+    const id = visitorId();
+
+    const ping = async () => {
+      if (
+        stopped ||
+        busy ||
+        document.visibilityState === "hidden"
+      ) return;
+
+      busy = true;
+
+      const path =
+        (
+          location.pathname +
+          location.search
+        ).slice(0, 300);
+
+      // Guaranteed guest heartbeat first.
+      pixelPing(id, path);
+
+      try {
+        const invokePromise =
+          supabase.functions.invoke(
+            "site-traffic",
+            {
+              body: {
+                action: "ping",
+                visitor_id: id,
+                path,
+              },
+            },
+          );
+
+        const timeoutPromise =
+          new Promise<never>((_, reject) => {
+            window.setTimeout(
+              () => reject(
+                new Error("site-traffic POST timeout"),
+              ),
+              4500,
+            );
+          });
+
+        const { data, error } =
+          await Promise.race([
+            invokePromise,
+            timeoutPromise,
+          ]);
+
+        if (error) throw error;
+
+        try {
+          localStorage.setItem(
+            STATUS_KEY,
+            JSON.stringify({
+              ok: true,
+              at: new Date().toISOString(),
+              path,
+              server:
+                data?.server_time || null,
+              version:
+                data?.version || null,
+            }),
+          );
+        } catch {}
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : String(error);
+
+        console.warn(
+          "[NLKH site-traffic v5]",
+          message,
+        );
+
+        try {
+          localStorage.setItem(
+            STATUS_KEY,
+            JSON.stringify({
+              ok: false,
+              at: new Date().toISOString(),
+              error: message,
+            }),
+          );
+        } catch {}
+      } finally {
+        busy = false;
+      }
+    };
+
+    void ping();
+
+    const timer =
+      window.setInterval(
+        () => void ping(),
+        30000,
+      );
+
+    const visible = () => {
+      if (document.visibilityState === "visible") {
+        void ping();
+      }
+    };
+
+    const focus = () => void ping();
+    const pageshow = () => void ping();
+
+    document.addEventListener(
+      "visibilitychange",
+      visible,
+    );
+    window.addEventListener("focus", focus);
+    window.addEventListener("pageshow", pageshow);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+
+      document.removeEventListener(
+        "visibilitychange",
+        visible,
+      );
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("pageshow", pageshow);
+    };
+  }, []);
+
+  return null;
+}
+
+===== FILE: components/ToolFrame.module.css =====
+.frameWrap {
+  width: 100%;
+  min-height: 760px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+}
+.tall { min-height: 900px; }
+.flush { min-height: calc(100vh - 76px); border: 0; border-radius: 0; box-shadow: none; }
+.frame { display: block; width: 100%; height: 100%; min-height: inherit; border: 0; background: var(--surface); }
+
+@media (max-width: 680px) {
+  .frameWrap, .tall { min-height: 820px; border-radius: 12px; }
+  .flush { min-height: calc(100vh - 68px); border-radius: 0; }
+}
+
+===== FILE: components/ToolFrame.tsx =====
+"use client";
+
+import { useEffect, useRef } from "react";
+import { useLanguage } from "./LanguageProvider";
+import styles from "./ToolFrame.module.css";
+
+type ToolFrameProps = {
+  src: string;
+  title: string;
+  tall?: boolean;
+  flush?: boolean;
+  importTarget?: string;
+};
+
+export function ToolFrame({ src, title, tall = false, flush = false, importTarget }: ToolFrameProps) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const resizeFrameRef = useRef<(reset?: boolean) => void>(() => undefined);
+  const resizeRafRef = useRef<number | null>(null);
+  const { theme, language } = useLanguage();
+
+  const syncPreferences = () => {
+    const root = frameRef.current?.contentDocument?.documentElement;
+    if (!root) return;
+    root.dataset.theme = theme;
+    root.lang = language;
+    root.classList.toggle("dark", theme === "dark");
+  };
+
+  useEffect(syncPreferences, [theme, language]);
+
+  useEffect(() => {
+    const handleFrameMessage = (event: MessageEvent) => {
+      const frameWindow = frameRef.current?.contentWindow;
+      if (event.source !== frameWindow || event.data?.type !== "tool-frame:resize") return;
+
+      resizeFrameRef.current(true);
+
+      // Quiz doi man hinh ngay trong iframe. Iframe tu scroll len dau khong lam
+      // host page doi vi tri, nen neu nguoi dung dang o cuoi danh sach mon thi
+      // viewport co the bi giu o vi tri cu sau khi iframe thu chieu cao.
+      if (importTarget === "quiz") {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const frame = frameRef.current;
+          if (!frame) return;
+
+          const headerHeight =
+            document.querySelector("header")?.getBoundingClientRect().height ?? 0;
+          const top =
+            frame.getBoundingClientRect().top + window.scrollY - headerHeight;
+
+          window.scrollTo({
+            top: Math.max(0, top),
+            left: 0,
+            behavior: "auto",
+          });
+        }));
+      }
+    };
+
+    window.addEventListener("message", handleFrameMessage);
+    return () => {
+      window.removeEventListener("message", handleFrameMessage);
+      resizeObserverRef.current?.disconnect();
+      if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
+    };
+  }, [importTarget]);
+
+  useEffect(() => {
+    if (!importTarget) return;
+    const forwardImport = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.target !== importTarget) return;
+      frameRef.current?.contentWindow?.postMessage({
+        type: "nlkh-tool-import",
+        target: importTarget,
+        data: detail.data,
+        sourceName: detail.sourceName,
+      }, window.location.origin);
+    };
+    window.addEventListener("nlkh-tool-import", forwardImport);
+    return () => window.removeEventListener("nlkh-tool-import", forwardImport);
+  }, [importTarget]);
+
+  const prepareFrame = () => {
+    syncPreferences();
+    resizeObserverRef.current?.disconnect();
+
+    const frame = frameRef.current;
+    const document = frame?.contentDocument;
+    if (!frame || !document?.body) return;
+
+    const minimumHeight = tall ? 900 : 760;
+    const resize = (reset = false) => {
+      if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
+
+      // Thu khung về mốc chuẩn trước khi đo màn hình mới. Nếu giữ chiều cao cũ,
+      // 100vh của trang con có thể lấy chính chiều cao đã phình làm mốc mới.
+      if (reset) frame.style.height = `${minimumHeight}px`;
+
+      resizeRafRef.current = requestAnimationFrame(() => {
+        const root = document.documentElement;
+        const body = document.body;
+        const height = Math.ceil(Math.max(
+          body.scrollHeight,
+          body.offsetHeight,
+          root.scrollHeight,
+          root.offsetHeight,
+          minimumHeight,
+        ));
+
+        if (Math.abs(frame.offsetHeight - height) > 1) frame.style.height = `${height}px`;
+        resizeRafRef.current = null;
+      });
+    };
+
+    resizeFrameRef.current = resize;
+    resizeObserverRef.current = new ResizeObserver(() => resize());
+    resizeObserverRef.current.observe(document.body);
+    resizeObserverRef.current.observe(document.documentElement);
+    resize(true);
+  };
+
+  return (
+    <div className={`${styles.frameWrap} ${tall ? styles.tall : ""} ${flush ? styles.flush : ""}`}>
+      <iframe
+        ref={frameRef}
+        src={src}
+        title={title}
+        onLoad={prepareFrame}
+        className={styles.frame}
+        allow="clipboard-read; clipboard-write"
+      />
+    </div>
+  );
+}
+
+===== FILE: components/ToolOrbit/ToolOrbit.module.css =====
+.panel {
+  position: relative;
+  width: min(540px, 100%);
+  aspect-ratio: 1;
+  margin: auto;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.grid {
+  position: absolute;
+  inset: 9%;
+  border-radius: 50%;
+  background-image: radial-gradient(rgba(116, 139, 169, .42) 1px, transparent 1px);
+  background-size: 16px 16px;
+  mask-image: radial-gradient(circle, black 20%, transparent 77%);
+  opacity: .72;
+}
+
+.ring {
+  --orbit-direction: normal;
+  position: absolute;
+  z-index: 1;
+  width: var(--ring-size);
+  height: var(--ring-size);
+  border: 1px solid var(--orbit-line);
+  border-radius: 50%;
+  animation: orbitSpin var(--orbit-duration) linear infinite;
+  animation-direction: var(--orbit-direction);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.ring:nth-of-type(even) {
+  border-color: color-mix(in srgb, var(--orbit-line) 78%, var(--cyan-400));
+}
+
+.dashed { border-style: dashed; }
+
+.node,
+.dot {
+  position: absolute;
+  left: var(--node-x);
+  top: var(--node-y);
+  transform: translate(-50%, -50%);
+  animation: keepUpright var(--orbit-duration) linear infinite;
+  animation-direction: var(--orbit-direction);
+}
+
+.node {
+  z-index: 4;
+  pointer-events: auto;
+  min-height: 48px;
+  min-width: 94px;
+  padding: 7px 11px 7px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hero-ink);
+  background: color-mix(in srgb, var(--hero-surface) 92%, transparent);
+  border: 1px solid var(--hero-line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.node:hover,
+.node:focus-visible {
+  border-color: currentColor;
+  background: var(--hero-surface);
+  box-shadow: 0 18px 44px color-mix(in srgb, currentColor 20%, transparent);
+  outline: none;
+}
+
+.node strong {
+  color: currentColor;
+  font: 780 10px var(--font-mono), monospace;
+  letter-spacing: .035em;
+}
+
+.icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+  border-radius: 10px;
+}
+
+.blue { color: var(--blue-500); }
+.cyan { color: #1b9e98; }
+.orange { color: var(--orange-500); }
+.violet { color: #8d71f6; }
+
+.dot {
+  z-index: 2;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 18%, transparent), 0 0 24px currentColor;
+}
+
+.core {
+  position: relative;
+  z-index: 8;
+  width: 142px;
+  height: 142px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--hero-surface);
+  border: 14px solid var(--cyan-400);
+  box-shadow: var(--shadow-lg), 0 0 55px rgba(64, 215, 208, .16);
+}
+
+.coreHalo {
+  position: absolute;
+  inset: -27px;
+  z-index: -1;
+  border: 1px solid color-mix(in srgb, var(--cyan-400) 42%, transparent);
+  border-radius: 50%;
+  animation: haloPulse 3.6s ease-in-out infinite;
+}
+
+.core img {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: white;
+}
+
+.caption {
+  position: absolute;
+  z-index: 9;
+  bottom: 0;
+  margin: 0;
+  color: var(--hero-muted);
+  font: 700 9px var(--font-mono), monospace;
+  letter-spacing: .28em;
+}
+
+@keyframes orbitSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes keepUpright {
+  to { transform: translate(-50%, -50%) rotate(-360deg); }
+}
+
+@keyframes haloPulse {
+  0%, 100% { opacity: .36; transform: scale(.96); }
+  50% { opacity: .82; transform: scale(1.04); }
+}
+
+@media (max-width: 980px) {
+  .panel { width: min(560px, 88vw); }
+}
+
+@media (max-width: 680px) {
+  .panel { width: min(400px, 94vw); }
+  .core { width: 112px; height: 112px; border-width: 10px; }
+  .core img { width: 60px; height: 60px; }
+  .coreHalo { inset: -20px; }
+  .node { min-width: 78px; min-height: 42px; gap: 6px; padding: 5px 8px 5px 6px; border-radius: 12px; }
+  .icon { width: 28px; height: 28px; flex-basis: 28px; border-radius: 8px; }
+  .node strong { font-size: 8px; }
+  .caption { font-size: 7px; letter-spacing: .2em; }
+}
+
+@media (max-width: 420px) {
+  .node { min-width: 42px; padding: 5px; justify-content: center; }
+  .node strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .icon { width: 30px; height: 30px; flex-basis: 30px; }
+}
+/* KOHA V20.10: keep the Home orbit moving even when global reduced-motion clamps animations. */
+@media (prefers-reduced-motion: reduce) {
+  .ring {
+    animation-duration: var(--orbit-duration) !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
+
+  .node,
+  .dot {
+    animation-duration: var(--orbit-duration) !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
+
+  .coreHalo {
+    animation-duration: 3.6s !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
+}
+
+===== FILE: components/ToolOrbit/ToolOrbit.tsx =====
+"use client";
+
+import Image from "next/image";
+import type { CSSProperties } from "react";
+import { FeatureGraphic } from "../FeatureIcon";
+import type { FeatureIconName } from "../FeatureIcon";
+import { usePublicTools } from "../usePublicTools";
+import { orbitItems, orbitRings, type OrbitRing } from "./orbit.config";
+import styles from "./ToolOrbit.module.css";
+
+type ToolOrbitProps = {
+  language: "vi" | "en";
+};
+
+type OrbitStyle = CSSProperties & {
+  "--ring-size": string;
+  "--orbit-duration": string;
+  "--orbit-direction": "normal" | "reverse";
+};
+
+type NodeStyle = CSSProperties & {
+  "--node-x": string;
+  "--node-y": string;
+};
+
+function polarPosition(angle: number, radius = 49) {
+  const radians = (angle * Math.PI) / 180;
+  return {
+    x: 50 + Math.cos(radians) * radius,
+    y: 50 + Math.sin(radians) * radius,
+  };
+}
+
+function getRingStyle(ring: OrbitRing): OrbitStyle {
+  return {
+    "--ring-size": `${ring.size}%`,
+    "--orbit-duration": `${ring.duration}s`,
+    "--orbit-direction": ring.reverse ? "reverse" : "normal",
+  };
+}
+
+function getNodeStyle(angle: number): NodeStyle {
+  const position = polarPosition(angle);
+  return {
+    "--node-x": `${position.x}%`,
+    "--node-y": `${position.y}%`,
+  };
+}
+
+export function ToolOrbit({ language }: ToolOrbitProps) {
+  const remote = usePublicTools();
+  const rings = remote.rings?.length ? remote.rings.map((ring) => ({ id:ring.id,size:ring.size,duration:ring.duration,reverse:ring.reverse,dashed:ring.dashed,dot:ring.dot_angle === null || ring.dot_angle === undefined ? undefined : { angle:ring.dot_angle,tone:asTone(ring.dot_tone) } })) : orbitRings;
+  const staticPages = orbitItems.filter((item) => ["profile","software","data"].includes(item.id));
+  const items = remote.tools === null ? orbitItems : [
+    ...staticPages,
+    ...remote.tools.filter((tool) => tool.show_orbit).map((tool) => ({ id:tool.slug,href:tool.route,label:tool.code,icon:asIcon(tool.icon || tool.slug),image:tool.icon?.startsWith("/") ? tool.icon : undefined,ring:`ring-${tool.orbit_ring}`,angle:tool.orbit_angle,tone:asTone(tool.accent),title:{vi:tool.title_vi,en:tool.title_en} })),
+  ];
+  return (
+    <div
+      className={styles.panel}
+      aria-label={language === "vi" ? "Hệ sinh thái công cụ" : "Tool ecosystem"}
+    >
+      <div className={styles.grid} aria-hidden="true" />
+
+      {rings.map((ring) => (
+        <div
+          className={`${styles.ring} ${ring.dashed ? styles.dashed : ""}`}
+          style={getRingStyle(ring)}
+          key={ring.id}
+        >
+          {ring.dot ? (
+            <i
+              className={`${styles.dot} ${styles[ring.dot.tone]}`}
+              style={getNodeStyle(ring.dot.angle)}
+              aria-hidden="true"
+            />
+          ) : null}
+
+          {items
+            .filter((item) => item.ring === ring.id)
+            .map((item) => (
+              <a
+                className={`${styles.node} ${styles[item.tone]}`}
+                href={item.href}
+                style={getNodeStyle(item.angle)}
+                title={item.title[language]}
+                aria-label={item.title[language]}
+                key={item.id}
+              >
+                <span className={styles.icon}><FeatureGraphic icon={item.icon} image={item.image} size={18} /></span>
+                <strong>{item.label}</strong>
+              </a>
+            ))}
+        </div>
+      ))}
+
+      <div className={styles.core}>
+        <span className={styles.coreHalo} aria-hidden="true" />
+        <Image src="/koha-logo-320.webp" alt="KoHa" width={320} height={320} priority />
+      </div>
+</div>
+  );
+}
+
+function asTone(value: string) { return (["blue","cyan","orange","violet"].includes(value) ? value : "blue") as "blue" | "cyan" | "orange" | "violet"; }
+function asIcon(value: string): FeatureIconName { return (["profile","quiz","pdf","comtrade","software","data"].includes(value) ? value : "software") as FeatureIconName; }
+
+===== FILE: components/ToolOrbit/orbit.config.ts =====
+import type { FeatureIconName } from "../FeatureIcon";
+import { adminOrbitRings, adminTools } from "../../data/admin-generated";
+
+export type OrbitTone = "blue" | "cyan" | "orange" | "violet";
+export type OrbitRing = { id:string; size:number; duration:number; reverse?:boolean; dashed?:boolean; dot?:{angle:number;tone:OrbitTone} };
+export type OrbitItem = { id:string; href:string; label:string; icon?:FeatureIconName; image?:string; ring:string; angle:number; tone:OrbitTone; title:{vi:string;en:string} };
+
+const knownIcons=new Set<FeatureIconName>(["profile","quiz","pdf","comtrade","software","data"]);
+const tone=(v?:string):OrbitTone=>{
+  if(["blue","cyan","orange","violet"].includes(String(v)))return v as OrbitTone;
+  const m=String(v||"").match(/^#([0-9a-f]{6})$/i);if(!m)return"blue";
+  const n=parseInt(m[1],16),rgb=[(n>>16)&255,(n>>8)&255,n&255];
+  const choices:{name:OrbitTone;rgb:number[]}[]=[
+    {name:"blue",rgb:[37,99,235]},{name:"cyan",rgb:[6,182,212]},{name:"orange",rgb:[249,115,22]},{name:"violet",rgb:[139,92,246]}
+  ];
+  return choices.sort((a,b)=>a.rgb.reduce((t,x,i)=>t+(x-rgb[i])**2,0)-b.rgb.reduce((t,x,i)=>t+(x-rgb[i])**2,0))[0].name;
+};
+
+export const orbitRings: OrbitRing[] = adminOrbitRings.length ? adminOrbitRings.map((r)=>({
+  id:r.id,size:r.size,duration:r.duration,reverse:r.reverse,dashed:r.dashed,
+  ...(r.dotAngle==null?{}:{dot:{angle:Number(r.dotAngle),tone:tone(r.dotTone)}}),
+})) : [
+  {id:"ring-1",size:98,duration:42,dashed:true,dot:{angle:166,tone:"blue"}},
+  {id:"ring-2",size:82,duration:34,reverse:true,dot:{angle:22,tone:"orange"}},
+  {id:"ring-3",size:66,duration:28,dot:{angle:205,tone:"cyan"}},
+];
+
+const ringId=(n:number)=>orbitRings[Math.max(0,Math.min((n||1)-1,orbitRings.length-1))]?.id||orbitRings[0]?.id||"ring-1";
+
+export const orbitItems: OrbitItem[] = [
+  ...adminTools.filter((tool)=>tool.showOrbit).map((tool)=>{
+    const iconValue=String(tool.icon||""),isKnown=knownIcons.has(iconValue as FeatureIconName);
+    return {id:tool.id,href:tool.href,label:tool.code,...(isKnown?{icon:iconValue as FeatureIconName}:iconValue?{image:iconValue}:{}),
+      ring:ringId(tool.orbitRing),angle:Number(tool.orbitAngle||0),tone:tone(tool.accent),title:tool.title};
+  }),
+  {id:"profile",href:"/cv",label:"CV",icon:"profile",ring:ringId(2),angle:142,tone:"orange",title:{vi:"Hồ sơ năng lực",en:"Professional profile"}},
+  {id:"software",href:"/software",label:"APP",icon:"software",ring:ringId(3),angle:18,tone:"cyan",title:{vi:"Kho phần mềm",en:"Software library"}},
+  {id:"data",href:"/data",label:"DATA",icon:"data",ring:ringId(1),angle:35,tone:"blue",title:{vi:"Dữ liệu",en:"Data"}},
+];
+
+===== FILE: components/usePublicTools.ts =====
+"use client";
+
+import { adminOrbitRings, adminTools } from "../data/admin-generated";
+
+export type PublicTool = {
+  id: string;
+  slug: string;
+  code: string;
+  route: string;
+  title_vi: string;
+  title_en: string;
+  description_vi: string;
+  description_en: string;
+  icon?: string | null;
+  accent: string;
+  status: string;
+  show_home: boolean;
+  show_orbit: boolean;
+  orbit_ring: number;
+  orbit_angle: number;
+  sort_order: number;
+};
+
+export type PublicRing = {
+  id: string;
+  size: number;
+  duration: number;
+  reverse: boolean;
+  dashed: boolean;
+  dot_angle?: number | null;
+  dot_tone: string;
+};
+
+type AdminTool = (typeof adminTools)[number];
+type AdminOrbitRing = (typeof adminOrbitRings)[number];
+
+const staticTools: PublicTool[] = adminTools.map(
+  (tool: AdminTool, index: number) => ({
+    id: String(tool.id),
+    slug: String(tool.slug),
+    code: String(tool.code || "TOOL"),
+    route: String(tool.href || `/tools/${tool.slug}`),
+    title_vi: String(tool.title?.vi || tool.slug),
+    title_en: String(tool.title?.en || tool.title?.vi || tool.slug),
+    description_vi: String(tool.description?.vi || ""),
+    description_en: String(tool.description?.en || tool.description?.vi || ""),
+    icon: tool.icon || null,
+    accent: String(tool.accent || "#2563eb"),
+    status: String(tool.status || "ready"),
+    show_home: tool.showHome !== false,
+    show_orbit: tool.showOrbit !== false,
+    orbit_ring: Number(tool.orbitRing || 1),
+    orbit_angle: Number(tool.orbitAngle || 0),
+    sort_order: Number(index),
+  }),
+);
+
+const staticRings: PublicRing[] = adminOrbitRings.map((ring: AdminOrbitRing) => ({
+  id: String(ring.id),
+  size: Number(ring.size || 100),
+  duration: Number(ring.duration || 30),
+  reverse: Boolean(ring.reverse),
+  dashed: Boolean(ring.dashed),
+  dot_angle:
+    ring.dotAngle === null || ring.dotAngle === undefined ? null : Number(ring.dotAngle),
+  dot_tone: String(ring.dotTone || "blue"),
+}));
+
+// Site dùng Next static export. Dữ liệu public đã được sync ở prebuild nên không gọi
+// /api/public/tools (route này không tồn tại trong static export). Kết quả này cũng
+// giúp HTML đầu tiên có đủ tool cho crawler.
+export function usePublicTools() {
+  return { tools: staticTools, rings: staticRings };
+}
+
+===== FILE: data/home-products.ts =====
+import type { FeatureIconName } from "../components/FeatureIcon";
+import { adminTools } from "./admin-generated";
+
+export type HomeProduct = {
+  href: string; label: string; icon?: FeatureIconName; image?: string;
+  color: "orange" | "cyan" | "blue"; title: { vi: string; en: string }; description: { vi: string; en: string };
+};
+
+const knownIcons = new Set<FeatureIconName>(["profile","quiz","pdf","comtrade","software","data"]);
+const tone = (value?: string): HomeProduct["color"] => {
+  if (value === "orange" || value === "cyan" || value === "blue") return value;
+  const m=String(value||"").match(/^#([0-9a-f]{6})$/i); if(!m)return"blue";
+  const n=parseInt(m[1],16),rgb=[(n>>16)&255,(n>>8)&255,n&255];
+  const choices:{name:HomeProduct["color"];rgb:number[]}[]=[
+    {name:"orange",rgb:[249,115,22]},{name:"cyan",rgb:[6,182,212]},{name:"blue",rgb:[37,99,235]}
+  ];
+  return choices.sort((a,b)=>a.rgb.reduce((t,x,i)=>t+(x-rgb[i])**2,0)-b.rgb.reduce((t,x,i)=>t+(x-rgb[i])**2,0))[0].name;
+};
+
+const core: HomeProduct[] = [{
+  href:"/cv",label:"CV",icon:"profile",color:"orange",
+  title:{vi:"Hồ sơ năng lực",en:"Professional profile"},
+  description:{vi:"Học vấn, chứng chỉ, kinh nghiệm và kỹ năng chuyên môn.",en:"Education, certificates, experience and professional skills."},
+}];
+
+const toolProducts: HomeProduct[] = adminTools.filter((tool)=>tool.showHome).map((tool)=>{
+  const iconValue=String(tool.icon||""), isKnown=knownIcons.has(iconValue as FeatureIconName);
+  return {
+    href:tool.href,label:tool.code,...(isKnown?{icon:iconValue as FeatureIconName}:iconValue?{image:iconValue}:{}),
+    color:tone(tool.accent),title:tool.title,description:tool.description,
+  };
+});
+
+const tail: HomeProduct[] = [
+  {href:"/software",label:"APP",icon:"software",color:"cyan",title:{vi:"Kho phần mềm",en:"Software library"},description:{vi:"Kho phần mềm có tìm kiếm, phân loại, logo và liên kết tải.",en:"A searchable software library with categories, logos and download links."}},
+  {href:"/data",label:"DATA",icon:"data",color:"blue",title:{vi:"Dữ liệu",en:"Data"},description:{vi:"Tài liệu và liên kết được cấp riêng theo từng tài khoản.",en:"Documents and links assigned to each account."}},
+];
+
+export const homeProducts: HomeProduct[] = [...core,...toolProducts,...tail];
+
+===== FILE: lib/admin-seo.ts =====
+import type { Metadata } from "next";
+import { adminSeoEntries, adminSite } from "../data/admin-generated";
+
+const FALLBACK_NAME = "Nguy\u1EC5n L\u00EA Kh\u00E1nh H\u00F2a";
+
+export function seoEntry(route: string) {
+  return (
+    (adminSeoEntries as readonly any[]).find(
+      (x: any) => String(x.route) === route
+    ) || null
+  );
+}
+
+export function absoluteSiteUrl(pathOrUrl: string) {
+  const site = String(
+    (adminSite as any).site_url ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      "https://nguyenlekhanhhoa.com"
+  ).replace(/\/$/, "");
+
+  if (/^https?:\/\//i.test(pathOrUrl || "")) {
+    return pathOrUrl;
+  }
+
+  const p = String(pathOrUrl || "/");
+
+  return `${site}${
+    p === "/"
+      ? ""
+      : p.startsWith("/")
+        ? p
+        : `/${p}`
+  }`;
+}
+
+export function buildMetadata(
+  route: string,
+  fallback: {
+    title?: string;
+    description?: string;
+    image?: string;
+    type?: string;
+    index?: boolean;
+    follow?: boolean;
+  } = {}
+): Metadata {
+  const site: any = adminSite;
+  const entry: any = seoEntry(route);
+
+  const title =
+    entry?.title_vi ||
+    fallback.title ||
+    site.default_title_vi ||
+    site.site_name ||
+    FALLBACK_NAME;
+
+  const description =
+    entry?.description_vi ||
+    fallback.description ||
+    site.description_vi ||
+    "";
+
+  const canonical = absoluteSiteUrl(
+    entry?.canonical_path || route || "/"
+  );
+
+  const image =
+    entry?.og_image ||
+    fallback.image ||
+    site.default_og_image ||
+    "";
+
+  const index = entry
+    ? entry.indexable !== false
+    : fallback.index !== false;
+
+  const follow = entry
+    ? entry.follow_links !== false
+    : fallback.follow !== false;
+
+  const ogType = (
+    entry?.og_type ||
+    fallback.type ||
+    "website"
+  ) as any;
+
+  const favicon = String(site.favicon_url || "/favicon.png").trim();
+  const faviconSize = Math.min(128, Math.max(16, Number(site.favicon_size || 32)));
+
+  return {
+    metadataBase: new URL(absoluteSiteUrl("/")),
+
+    title,
+    description,
+
+    alternates: {
+      canonical,
+    },
+
+    robots: {
+      index,
+      follow,
+    },
+
+    ...(favicon
+      ? {
+          icons: {
+            icon: [{ url: favicon, sizes: `${faviconSize}x${faviconSize}` }],
+            shortcut: [{ url: favicon, sizes: `${faviconSize}x${faviconSize}` }],
+          },
+        }
+      : {}),
+
+    openGraph: {
+      type: ogType,
+      title,
+      description,
+      url: canonical,
+      ...(image
+        ? {
+            images: [{ url: image }],
+          }
+        : {}),
+    },
+  };
+}
+
+export function jsonLdFor(route: string) {
+  const entry: any = seoEntry(route);
+
+  if (!entry) return null;
+
+  const custom =
+    entry.structured_data &&
+    typeof entry.structured_data === "object"
+      ? entry.structured_data
+      : {};
+
+  return {
+    "@context": "https://schema.org",
+    "@type": entry.schema_type || "WebPage",
+    url: absoluteSiteUrl(entry.canonical_path || route),
+    name: entry.title_vi || undefined,
+    description: entry.description_vi || undefined,
+    ...custom,
+  };
+}
+
+===== FILE: lib/auth/tool-access.ts =====
+import { notFound, redirect } from "next/navigation";
+import { createSupabaseServerClient, createSupabaseServiceClient } from "../supabase/server";
+
+export async function enforceToolAccess(slug: string, returnTo: string) {
+  const service = createSupabaseServiceClient();
+  if (!service) return;
+
+  const { data: tool } = await service
+    .from("tools")
+    .select("visible,requires_auth,allowed_roles")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  // Source vẫn chạy được trước khi Admin/Supabase được cấu hình.
+  if (!tool) return;
+  if (!tool.visible) notFound();
+  if (!tool.requires_auth && !(tool.allowed_roles?.length)) return;
+
+  const client = await createSupabaseServerClient();
+  const { data: auth } = client ? await client.auth.getUser() : { data: { user: null } };
+  if (!auth.user) redirect(`/login?next=${encodeURIComponent(returnTo)}`);
+
+  const { data: profile } = await service
+    .from("profiles")
+    .select("status,role_id")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+  if (!profile || profile.status !== "active") redirect(`/account?blocked=1`);
+  if (tool.allowed_roles?.length && !tool.allowed_roles.includes(profile.role_id)) redirect(`/account?denied=1`);
+}
+
+===== FILE: lib/i18n.ts =====
+export type Language = "vi" | "en";
+
+export const translations = {
+  vi: {
+    languageName: "Tiếng Việt",
+    nav: {
+      home: "Trang chủ",
+      cv: "Hồ sơ",
+      tools: "Công cụ",
+      pdf: "PDF",
+      software: "Phần mềm",
+      data: "Dữ liệu",
+      light: "Giao diện sáng",
+      dark: "Giao diện tối",
+      menu: "Mở menu",
+      close: "Đóng menu",
+    },
+    footer: {
+      intro: "Kỹ sư điện, người xây dựng các công cụ số phục vụ công việc và học tập.",
+      explore: "Khám phá",
+      connect: "Kết nối",
+      rights: "Được thiết kế và phát triển bởi Nguyễn Lê Khánh Hòa.",
+    },
+    home: {
+      badge: "Kỹ sư điện · Product Builder",
+      hello: "Xin chào, tôi là",
+      name: "Nguyễn Lê Khánh Hòa",
+      viewCv: "Xem hồ sơ năng lực",
+      openTools: "Khám phá công cụ",
+      available: "Sẵn sàng kết nối",
+      location: "Hà Nội, Việt Nam",
+      focusLabel: "Hướng phát triển",
+      focus: "Kỹ thuật điện · Tự động hóa · Sản phẩm số",
+      education: "Kỹ sư hệ thống điện",
+      educationSub: "Đại học Điện lực · Tốt nghiệp loại Giỏi",
+      experience: "Kinh nghiệm thực tế",
+      experienceSub: "Thí nghiệm điện · Thiết kế · Chuẩn bị dự án",
+      sectionTag: "Năng lực cốt lõi",
+      sectionTitle: "Kỹ thuật vững, tư duy sản phẩm rõ ràng.",
+      capabilityOne: "Thiết kế điện",
+      capabilityOneDesc: "Thiết kế tủ điều khiển - bảo vệ và đọc hiểu tài liệu kỹ thuật trạm biến áp.",
+      capabilityTwo: "Thí nghiệm & kiểm định",
+      capabilityTwoDesc: "Kinh nghiệm với MBA, máy cắt, dao tiếp địa và thiết bị trong sân trạm.",
+      capabilityThree: "Công cụ số",
+      capabilityThreeDesc: "Xây dựng tiện ích chạy trực tiếp trên trình duyệt, ưu tiên riêng tư và tốc độ.",
+      productsTag: "Không gian làm việc",
+      productsTitle: "Mọi thứ được tách riêng, nhưng dùng chung một hệ thống.",
+      cvCard: "Hồ sơ năng lực",
+      cvCardDesc: "Học vấn, chứng chỉ, kinh nghiệm và kỹ năng chuyên môn.",
+      pdfCard: "PDF Studio",
+      pdfCardDesc: "Gộp tài liệu ngay trên thiết bị, không tải tệp lên máy chủ.",
+      softwareCard: "Kho phần mềm",
+      softwareCardDesc: "Kho phần mềm cũ có tìm kiếm, phân loại, logo và liên kết tải của tôi.",
+      open: "Mở trang",
+    },
+    cv: {
+      eyebrow: "Hồ sơ năng lực",
+      title: "Kỹ sư điện với trải nghiệm từ hiện trường đến thiết kế.",
+      intro:
+        "Tốt nghiệp loại Giỏi chuyên ngành Tự động hóa Hệ thống điện, có kinh nghiệm thí nghiệm thiết bị, thiết kế tủ điều khiển - bảo vệ và chuẩn bị dự án.",
+      download: "Tải CV bản PDF",
+      email: "Liên hệ qua email",
+      personal: "Thông tin",
+      born: "Ngày sinh",
+      address: "Khu vực",
+      phone: "Điện thoại",
+      education: "Học vấn",
+      educationSchool: "Trường Đại học Điện lực",
+      educationMajor: "Tự động hóa Hệ thống điện · Hệ kỹ sư · Tốt nghiệp loại Giỏi",
+      certificates: "Chứng chỉ",
+      certs: ["Tiếng Anh B1 - Đại học Điện lực (2023)", "ICDL 5 kỹ năng (2025)", "Giấy phép lái xe hạng B2"],
+      experience: "Kinh nghiệm",
+      jobs: [
+        { time: "11/2025 - nay", company: "Công ty TNHH Công nghệ Việt", role: "Kỹ sư điện - Phòng chuẩn bị dự án", desc: "Kiểm tra thông số thiết bị, hỗ trợ mua sắm và rà soát bảng đáp ứng yêu cầu kỹ thuật." },
+        { time: "06/2025 - 11/2025", company: "Công ty CP Entec Kỹ thuật Năng lượng", role: "Kỹ sư thiết kế", desc: "Thiết kế tủ điều khiển - bảo vệ cho trạm biến áp từ 110 kV và kiểm thử tủ sau sản xuất." },
+        { time: "05/2024 - 06/2025", company: "Công ty TNHH MTV Đo lường Thí nghiệm điện miền Bắc", role: "Kỹ sư thí nghiệm điện", desc: "Kiểm định thiết bị trạm biến áp, thí nghiệm định kỳ và hoàn thiện hồ sơ công trình." },
+        { time: "06/2023 - 10/2025", company: "Hoàng Mai Mobile", role: "Kỹ thuật viên · Quản lý từ xa", desc: "Hỗ trợ kỹ thuật và quản lý hoạt động vận hành từ xa." },
+      ],
+      skills: "Kỹ năng & công cụ",
+      skillList: ["AutoCAD", "EPLAN", "Microsoft Excel", "Microsoft Word", "Đọc tài liệu kỹ thuật", "Tiếng Anh B1"],
+    },
+    pdf: {
+      eyebrow: "Công cụ chạy trên thiết bị",
+      title: "Gộp PDF nhanh, riêng tư và không cần tải tệp lên máy chủ.",
+      intro: "Toàn bộ thao tác diễn ra trong trình duyệt. Tệp của bạn không rời khỏi máy tính.",
+      private: "Xử lý cục bộ",
+      offline: "Hoạt động sau khi trang đã tải",
+      dropTitle: "Chọn các tệp PDF cần gộp",
+      dropText: "Có thể chọn nhiều tệp cùng lúc. Thứ tự trong danh sách là thứ tự của tài liệu sau khi gộp.",
+      choose: "Chọn tệp PDF",
+      selected: "Tệp đã chọn",
+      empty: "Chưa có tệp nào.",
+      moveUp: "Đưa lên",
+      moveDown: "Đưa xuống",
+      remove: "Xóa",
+      merge: "Gộp và tải xuống",
+      merging: "Đang xử lý...",
+      clear: "Xóa danh sách",
+      success: "Đã tạo tệp PDF thành công.",
+      error: "Không thể xử lý một trong các tệp. Hãy kiểm tra tệp PDF và thử lại.",
+      needFiles: "Hãy chọn ít nhất hai tệp PDF.",
+      howTitle: "Cách sử dụng",
+      steps: ["Chọn từ hai tệp PDF trở lên.", "Sắp xếp đúng thứ tự mong muốn.", "Nhấn Gộp và tải xuống."],
+    },
+    software: {
+      eyebrow: "Danh mục phần mềm",
+      title: "Tìm đúng công cụ cho công việc của bạn.",
+      search: "Tìm theo tên hoặc công dụng...",
+      all: "Tất cả",
+      engineering: "Kỹ thuật",
+      office: "Văn phòng",
+      utility: "Tiện ích",
+      media: "Đa phương tiện",
+      official: "Mở liên kết tải",
+      found: "kết quả",
+      noResult: "Không tìm thấy phần mềm phù hợp.",
+      noteTitle: "Lưu ý trước khi tải",
+      note: "Các liên kết được giữ theo kho phần mềm cũ của chủ website. Hãy tự kiểm tra tệp, phiên bản và khả năng tương thích trước khi cài đặt.",
+    },
+  },
+  en: {
+    languageName: "English",
+    nav: { home: "Home", cv: "Profile", tools: "Tools", pdf: "PDF", software: "Software", data: "Data", light: "Light theme", dark: "Dark theme", menu: "Open menu", close: "Close menu" },
+    footer: {
+      intro: "Electrical engineer building practical digital tools for work and learning.",
+      explore: "Explore",
+      connect: "Connect",
+      rights: "Designed and developed by Nguyen Le Khanh Hoa.",
+    },
+    home: {
+      badge: "Electrical Engineer · Product Builder",
+      hello: "Hello, I am",
+      name: "Nguyen Le Khanh Hoa",
+      viewCv: "View professional profile",
+      openTools: "Explore tools",
+      available: "Open to connect",
+      location: "Hanoi, Vietnam",
+      focusLabel: "Current focus",
+      focus: "Electrical engineering · Automation · Digital products",
+      education: "Power systems engineer",
+      educationSub: "Electric Power University · Graduated with distinction",
+      experience: "Hands-on experience",
+      experienceSub: "Electrical testing · Design · Project preparation",
+      sectionTag: "Core capabilities",
+      sectionTitle: "Sound engineering with a clear product mindset.",
+      capabilityOne: "Electrical design",
+      capabilityOneDesc: "Protection and control panel design with a strong command of substation documentation.",
+      capabilityTwo: "Testing & inspection",
+      capabilityTwoDesc: "Experience with transformers, circuit breakers, earthing switches and substation equipment.",
+      capabilityThree: "Digital tools",
+      capabilityThreeDesc: "Browser-based utilities built for privacy, speed and everyday use.",
+      productsTag: "Workspace",
+      productsTitle: "Separate pages, one consistent system.",
+      cvCard: "Professional profile",
+      cvCardDesc: "Education, certificates, experience and technical skills.",
+      pdfCard: "PDF Studio",
+      pdfCardDesc: "Merge documents on your device without uploading files.",
+      softwareCard: "Software library",
+      softwareCardDesc: "My previous software library with search, filters, logos and download links.",
+      open: "Open page",
+    },
+    cv: {
+      eyebrow: "Professional profile",
+      title: "An electrical engineer experienced from field testing to design.",
+      intro: "Graduated with distinction in Power System Automation, with experience in equipment testing, protection and control panel design, and project preparation.",
+      download: "Download PDF resume",
+      email: "Contact by email",
+      personal: "Information",
+      born: "Date of birth",
+      address: "Location",
+      phone: "Phone",
+      education: "Education",
+      educationSchool: "Electric Power University",
+      educationMajor: "Power System Automation · Engineering degree · Graduated with distinction",
+      certificates: "Certificates",
+      certs: ["B1 English - Electric Power University (2023)", "ICDL 5 modules (2025)", "B2 driving license"],
+      experience: "Experience",
+      jobs: [
+        { time: "Nov 2025 - present", company: "Viet Technology Co., Ltd.", role: "Electrical Engineer - Project Preparation", desc: "Equipment specification reviews, procurement support and technical compliance checks." },
+        { time: "Jun 2025 - Nov 2025", company: "Entec Energy Engineering JSC", role: "Design Engineer", desc: "Protection and control panel design for 110 kV substations and factory acceptance testing." },
+        { time: "May 2024 - Jun 2025", company: "Northern Electrical Testing Co., Ltd.", role: "Electrical Testing Engineer", desc: "Substation equipment testing, periodic inspections and project documentation." },
+        { time: "Jun 2023 - Oct 2025", company: "Hoang Mai Mobile", role: "Technician · Remote Manager", desc: "Technical support and remote operations management." },
+      ],
+      skills: "Skills & tools",
+      skillList: ["AutoCAD", "EPLAN", "Microsoft Excel", "Microsoft Word", "Technical documentation", "B1 English"],
+    },
+    pdf: {
+      eyebrow: "On-device utility",
+      title: "Merge PDFs quickly, privately and without uploading files.",
+      intro: "Everything happens in your browser. Your files never leave your computer.",
+      private: "Local processing",
+      offline: "Works after the page is loaded",
+      dropTitle: "Choose PDF files to merge",
+      dropText: "Select multiple files at once. Their list order becomes the final document order.",
+      choose: "Choose PDF files",
+      selected: "Selected files",
+      empty: "No files selected.",
+      moveUp: "Move up",
+      moveDown: "Move down",
+      remove: "Remove",
+      merge: "Merge and download",
+      merging: "Processing...",
+      clear: "Clear list",
+      success: "Your merged PDF is ready.",
+      error: "One of the files could not be processed. Check the PDF and try again.",
+      needFiles: "Choose at least two PDF files.",
+      howTitle: "How it works",
+      steps: ["Choose two or more PDF files.", "Arrange them in the right order.", "Select Merge and download."],
+    },
+    software: {
+      eyebrow: "Software directory",
+      title: "Find the right tool for your work.",
+      search: "Search by name or purpose...",
+      all: "All",
+      engineering: "Engineering",
+      office: "Office",
+      utility: "Utilities",
+      media: "Media",
+      official: "Open download link",
+      found: "results",
+      noResult: "No matching software found.",
+      noteTitle: "Before downloading",
+      note: "These links are retained from the owner's previous software library. Check each file, version and compatibility before installing.",
+    },
+  },
+} as const;
+
+export type Translation = (typeof translations)[Language];
+
+===== FILE: lib/public/metadata.ts =====
+import type { Metadata } from "next";
+import { absoluteSiteUrl, getPublicSiteSettings, getSeoEntry } from "./site-content";
+
+type MetadataFallback = { title: string; description: string; image?: string | null };
+
+export async function buildRouteMetadata(route: string, fallback: MetadataFallback): Promise<Metadata> {
+  const [site, seo] = await Promise.all([getPublicSiteSettings(), getSeoEntry(route)]);
+  const title = seo?.title_vi || fallback.title;
+  const description = seo?.description_vi || fallback.description || site.description_vi;
+  const canonicalPath = seo?.canonical_path || route;
+  const image = seo?.og_image || fallback.image || site.default_og_image;
+
+  return {
+    metadataBase: new URL(site.site_url),
+    title,
+    description,
+    alternates: { canonical: absoluteSiteUrl(canonicalPath) },
+    robots: {
+      index: seo?.indexable ?? true,
+      follow: seo?.follow_links ?? true,
+      googleBot: { index: seo?.indexable ?? true, follow: seo?.follow_links ?? true },
+    },
+    openGraph: {
+      title,
+      description,
+      url: absoluteSiteUrl(canonicalPath),
+      siteName: site.site_name,
+      images: image ? [image] : undefined,
+      locale: "vi_VN",
+      type: seo?.og_type === "article" ? "article" : "website",
+    },
+    twitter: { card: image ? "summary_large_image" : "summary", title, description, images: image ? [image] : undefined },
+  };
+}
+
+===== FILE: lib/public/site-content.ts =====
+import { createSupabaseServiceClient } from "../supabase/server";
+
+export const fallbackSite = {
+  site_name: "Nguyễn Lê Khánh Hòa",
+  site_url: process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://nguyenlekhanhhoa.com",
+  default_title_vi: "Nguyễn Lê Khánh Hòa | Kỹ sư điện",
+  default_title_en: "Nguyen Le Khanh Hoa | Electrical Engineer",
+  title_template: "%s | Nguyễn Lê Khánh Hòa",
+  description_vi: "Website cá nhân của Nguyễn Lê Khánh Hòa - kỹ sư điện, sản phẩm số và công cụ làm việc.",
+  description_en: "The personal website of Nguyen Le Khanh Hoa - electrical engineer and digital product builder.",
+  default_og_image: null as string | null,
+  contact_email: "khanhhoa2002.hh@gmail.com",
+  footer_intro_vi: "Kỹ sư điện, người xây dựng các công cụ số phục vụ công việc và học tập.",
+  footer_intro_en: "Electrical engineer building practical digital tools for work and learning.",
+  copyright_text: "© 2025 Nguyễn Lê Khánh Hòa",
+  news_enabled: true,
+  registration_enabled: true,
+  maintenance_mode: false,
+  extra: {} as Record<string, unknown>,
+};
+
+export async function getPublicSiteSettings() {
+  const service = createSupabaseServiceClient();
+  if (!service) return fallbackSite;
+  const { data } = await service.from("site_settings").select("*").limit(1).maybeSingle();
+  return data ? { ...fallbackSite, ...data } : fallbackSite;
+}
+
+export async function getSeoEntry(route: string) {
+  const service = createSupabaseServiceClient();
+  if (!service) return null;
+  const { data } = await service.from("seo_entries").select("*").eq("route", route).maybeSingle();
+  return data;
+}
+
+export function absoluteSiteUrl(path = "") {
+  const base = (process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://nguyenlekhanhhoa.com").replace(/\/$/, "");
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+===== FILE: lib/supabase-browser.ts =====
+"use client";
+
+import { createClient } from "@supabase/supabase-js";
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
+
+export const supabase = createClient(url, key, {
+  auth: { flowType: "implicit", persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+});
+
+export type MyAccess = {
+  authenticated: boolean;
+  id?: string;
+  email?: string;
+  display_name?: string;
+  avatar_url?: string;
+  role_id?: string;
+  status?: string;
+  permissions?: string[];
+};
+
+export async function getMyAccess(): Promise<MyAccess> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { authenticated: false, permissions: [] };
+  const { data, error } = await supabase.rpc("get_my_access");
+  if (error) {
+    return { authenticated: true, id: session.user.id, email: session.user.email, status: "error", permissions: [] };
+  }
+  return { permissions: [], ...(data || {}) } as MyAccess;
+}
+
+export async function invokeEdge<T = any>(name: string, body: any = {}): Promise<T> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const response = await fetch(`${url.replace(/\/$/, "")}/functions/v1/${name}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  let parsed: any = {};
+  try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { message: text }; }
+  if (!response.ok) throw new Error(parsed.error || parsed.message || `HTTP ${response.status}`);
+  return parsed as T;
+}
+
+export async function sha256File(file: File) {
+  const hash = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(hash)).map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+export async function uploadR2(file: File, options: {
+  usageType?: "avatar" | "data";
+  folder?: string;
+  visibility?: "public" | "authenticated" | "private";
+  usageNote?: string;
+  itemId?: string;
+  collectionId?: string;
+} = {}) {
+  const sha256 = await sha256File(file);
+  const isJson = file.name.toLowerCase().endsWith(".json");
+  const uploadMime = isJson ? "application/octet-stream" : (file.type || "application/octet-stream");
+
+  let prepared: any;
+  try {
+    prepared = await invokeEdge<any>("r2-file", {
+      action: "prepare-upload",
+      usage_type: options.usageType || "data",
+      folder: options.folder || (options.usageType === "avatar" ? "avatars" : "data"),
+      visibility: options.visibility || (options.usageType === "avatar" ? "public" : "private"),
+      usage_note: options.usageNote || "",
+      item_id: options.itemId || null,
+      collection_id: options.collectionId || null,
+      original_name: file.name,
+      mime_type: uploadMime,
+      size_bytes: file.size,
+      sha256,
+    });
+  } catch (error) {
+    throw new Error(`R2 prepare-upload: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (prepared.duplicate) return prepared.asset;
+
+  let put: Response;
+  try {
+    put = await fetch(prepared.url, {
+      method: "PUT",
+      headers: { "Content-Type": uploadMime },
+      body: file,
+    });
+  } catch (error) {
+    throw new Error(`R2 PUT network: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!put.ok) throw new Error(`R2 PUT: HTTP ${put.status} (${uploadMime})`);
+
+  try {
+    const completed = await invokeEdge<any>("r2-file", { action: "complete-upload", media_id: prepared.asset.id });
+    return completed.asset;
+  } catch (error) {
+    throw new Error(`R2 complete-upload: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export function initials(name?: string, email?: string) {
+  const source = (name || email?.split("@")[0] || "U").trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
+}
+
+===== FILE: lib/supabase/server.ts =====
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+
+type CookieToSet = { name: string; value: string; options?: { domain?: string; expires?: Date; httpOnly?: boolean; maxAge?: number; path?: string; sameSite?: boolean | "lax" | "strict" | "none"; secure?: boolean; priority?: "low" | "medium" | "high" } };
+
+export async function createSupabaseServerClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  if (!url || !key) return null;
+
+  const cookieStore = await cookies();
+  return createServerClient(url, key, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet: CookieToSet[]) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+        } catch {
+          // Server Component không được ghi cookie; proxy.ts sẽ làm mới phiên.
+        }
+      },
+    },
+  });
+}
+
+export function createSupabaseServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+===== FILE: styles/base.css =====
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-size: 16px;
+  line-height: 1.55;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font: inherit; }
+button, a, label { -webkit-tap-highlight-color: transparent; }
+img { display: block; max-width: 100%; }
+main { min-height: calc(100vh - 160px); }
+.container { width: min(1160px, calc(100% - 40px)); margin-inline: auto; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+:focus-visible { outline: 3px solid var(--orange-500); outline-offset: 3px; }
+
+@media (max-width: 640px) {
+  .container { width: min(100% - 28px, 1160px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+===== FILE: styles/tokens.css =====
+:root {
+  color-scheme: light;
+  --font-sans: Inter, "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --navy-950: #07111f;
+  --navy-900: #0b1728;
+  --navy-800: #13243b;
+  --blue-600: #1769e0;
+  --blue-500: #2f80ed;
+  --blue-100: #dcecff;
+  --cyan-400: #40d7d0;
+  --orange-500: #ff7a3d;
+  --orange-100: #ffebe1;
+  --paper: #ffffff;
+  --surface: #ffffff;
+  --surface-soft: #f4f6f9;
+  --ink: #090f1c;
+  --muted: #536071;
+  --line: #d9e0e9;
+  --header: rgba(255, 255, 255, 0.94);
+  --hero-bg: #ffffff;
+  --hero-surface: #f3f6fa;
+  --hero-ink: #090f1c;
+  --hero-muted: #536071;
+  --hero-line: #d9e0e9;
+  --hero-grid: rgba(15, 31, 53, 0.08);
+  --orbit-line: rgba(52, 80, 116, 0.3);
+  --footer-bg: #ffffff;
+  --footer-ink: #090f1c;
+  --footer-muted: #5d6979;
+  --footer-line: #d9e0e9;
+  --radius-sm: 12px;
+  --radius-md: 20px;
+  --radius-lg: 30px;
+  --shadow-sm: 0 10px 30px rgba(14, 31, 53, 0.08);
+  --shadow-lg: 0 24px 70px rgba(7, 17, 31, 0.16);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #050b14;
+  --surface: #0a1422;
+  --surface-soft: #101e31;
+  --ink: #f4f7fb;
+  --muted: #a7b4c7;
+  --line: #253750;
+  --header: rgba(5, 11, 20, 0.94);
+  --hero-bg: #050b14;
+  --hero-surface: #101e31;
+  --hero-ink: #f8fafc;
+  --hero-muted: #a7b4c7;
+  --hero-line: #2b3d57;
+  --hero-grid: rgba(255, 255, 255, 0.1);
+  --orbit-line: rgba(134, 158, 188, 0.35);
+  --footer-bg: #050b14;
+  --footer-ink: #f4f7fb;
+  --footer-muted: #96a5ba;
+  --footer-line: #253750;
+  --blue-100: #17365f;
+  --orange-100: #4a2b21;
+  --shadow-sm: 0 14px 34px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 28px 80px rgba(0, 0, 0, 0.36);
+}

@@ -1,0 +1,3153 @@
+
+===== FILE: supabase/migrations/202608090001_initial_cms.sql =====
+-- NLKH Portal CMS - schema khởi tạo
+-- Chạy trong Supabase SQL Editor hoặc bằng Supabase CLI.
+
+create extension if not exists pgcrypto;
+
+create table if not exists public.roles (
+  id text primary key,
+  name text not null,
+  permissions text[] not null default '{}',
+  description text not null default '',
+  created_at timestamptz not null default now()
+);
+
+insert into public.roles (id, name, permissions, description) values
+  ('owner', 'Chủ sở hữu', array['*'], 'Toàn quyền hệ thống'),
+  ('admin', 'Quản trị viên', array['site.manage','content.manage','news.manage','tools.manage','software.manage','data.manage','media.manage','seo.manage','users.manage','api.manage'], 'Quản trị gần như toàn bộ website'),
+  ('editor', 'Biên tập viên', array['content.manage','news.manage','media.manage','seo.manage'], 'Biên tập nội dung và SEO'),
+  ('news_editor', 'Biên tập tin tức', array['news.manage','media.manage'], 'Viết và xuất bản tin tức'),
+  ('software_manager', 'Quản lý phần mềm', array['software.manage','media.manage'], 'Quản lý kho phần mềm'),
+  ('data_manager', 'Quản lý dữ liệu', array['data.manage','media.manage'], 'Quản lý nhóm và tài liệu'),
+  ('member', 'Thành viên', array[]::text[], 'Tài khoản người dùng thông thường')
+on conflict (id) do update set
+  name = excluded.name,
+  permissions = excluded.permissions,
+  description = excluded.description;
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  display_name text not null default '',
+  avatar_url text,
+  role_id text not null default 'member' references public.roles(id),
+  status text not null default 'pending' check (status in ('pending','active','suspended')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create or replace function public.current_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select role_id from public.profiles where id = auth.uid();
+$$;
+
+create or replace function public.has_permission(permission_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles p
+    join public.roles r on r.id = p.role_id
+    where p.id = auth.uid()
+      and p.status = 'active'
+      and ('*' = any(r.permissions) or permission_name = any(r.permissions))
+  );
+$$;
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, display_name, role_id, status)
+  values (
+    new.id,
+    coalesce(new.email, ''),
+    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(coalesce(new.email, ''), '@', 1)),
+    case when lower(coalesce(new.email, '')) = 'khanhhoa2002.hh@gmail.com' then 'owner' else 'member' end,
+    case when lower(coalesce(new.email, '')) = 'khanhhoa2002.hh@gmail.com' then 'active' else 'pending' end
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+create or replace function public.set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create table if not exists public.site_settings (
+  id uuid primary key default gen_random_uuid(),
+  site_name text not null default 'Nguyễn Lê Khánh Hòa',
+  site_url text not null default 'https://nguyenlekhanhhoa.com',
+  default_title_vi text not null default 'Nguyễn Lê Khánh Hòa | Kỹ sư điện',
+  default_title_en text not null default 'Nguyen Le Khanh Hoa | Electrical Engineer',
+  title_template text not null default '%s | Nguyễn Lê Khánh Hòa',
+  description_vi text not null default '',
+  description_en text not null default '',
+  default_og_image text,
+  contact_email text not null default 'khanhhoa2002.hh@gmail.com',
+  footer_intro_vi text not null default '',
+  footer_intro_en text not null default '',
+  copyright_text text not null default '© 2025 Nguyễn Lê Khánh Hòa',
+  news_enabled boolean not null default true,
+  registration_enabled boolean not null default true,
+  maintenance_mode boolean not null default false,
+  extra jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.site_settings (
+  site_name, site_url, description_vi, description_en, footer_intro_vi, footer_intro_en
+)
+select
+  'Nguyễn Lê Khánh Hòa',
+  'https://nguyenlekhanhhoa.com',
+  'Website cá nhân của Nguyễn Lê Khánh Hòa - kỹ sư điện, sản phẩm số và công cụ làm việc.',
+  'The personal website of Nguyen Le Khanh Hoa - electrical engineer and digital product builder.',
+  'Kỹ sư điện, người xây dựng các công cụ số phục vụ công việc và học tập.',
+  'Electrical engineer building practical digital tools for work and learning.'
+where not exists (select 1 from public.site_settings);
+
+create table if not exists public.navigation_items (
+  id uuid primary key default gen_random_uuid(),
+  label_vi text not null,
+  label_en text not null,
+  href text not null,
+  location text not null default 'header' check (location in ('header','footer','both')),
+  parent_id uuid references public.navigation_items(id) on delete set null,
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  requires_auth boolean not null default false,
+  allowed_roles text[] not null default '{}',
+  open_new_tab boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.navigation_items (label_vi, label_en, href, location, sort_order)
+select * from (values
+  ('Trang chủ','Home','/','both',10),
+  ('Hồ sơ','Profile','/cv','both',20),
+  ('Công cụ','Tools','/tools','both',30),
+  ('Phần mềm','Software','/software','both',40),
+  ('Dữ liệu','Data','/data','both',50),
+  ('Tin tức','News','/news','both',60)
+) as seed(label_vi,label_en,href,location,sort_order)
+where not exists (select 1 from public.navigation_items);
+
+create table if not exists public.social_links (
+  id uuid primary key default gen_random_uuid(),
+  platform text not null,
+  label text not null,
+  url text not null,
+  icon text,
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.social_links (platform,label,url,sort_order)
+select * from (values
+  ('email','Email','mailto:khanhhoa2002.hh@gmail.com',10),
+  ('facebook','Facebook','https://www.facebook.com/koha2002/',20),
+  ('youtube','YouTube','https://www.youtube.com/channel/UCH-j549S-5EHFTchh0deQmQ',30),
+  ('instagram','Instagram','https://www.instagram.com/koha__2002/',40),
+  ('linkedin','LinkedIn','https://www.linkedin.com/in/koha2002/',50),
+  ('tiktok','TikTok','https://www.tiktok.com/@koha_2002',60)
+) as seed(platform,label,url,sort_order)
+where not exists (select 1 from public.social_links);
+
+create table if not exists public.content_pages (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  title_vi text not null,
+  title_en text not null default '',
+  excerpt_vi text not null default '',
+  excerpt_en text not null default '',
+  content_vi text not null default '',
+  content_en text not null default '',
+  template text not null default 'standard',
+  status text not null default 'draft' check (status in ('draft','published','archived')),
+  requires_auth boolean not null default false,
+  allowed_roles text[] not null default '{}',
+  published_at timestamptz,
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Các khối nội dung nhỏ (hero, thống kê, CTA...) có thể sửa từ Admin mà không đổi JSX.
+create table if not exists public.content_blocks (
+  id uuid primary key default gen_random_uuid(),
+  page_key text not null,
+  block_key text not null,
+  label text not null default '',
+  content jsonb not null default '{}'::jsonb,
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  updated_at timestamptz not null default now(),
+  unique(page_key, block_key)
+);
+
+insert into public.content_blocks (page_key,block_key,label,content,sort_order)
+values
+  ('home','hero','Trang chủ / Hero','{"badge_vi":"KỸ SƯ ĐIỆN · PRODUCT BUILDER","badge_en":"ELECTRICAL ENGINEER · PRODUCT BUILDER","hello_vi":"Xin chào, tôi là","hello_en":"Hello, I am","name_vi":"Nguyễn Lê Khánh Hòa","name_en":"Nguyen Le Khanh Hoa","primary_label_vi":"Xem hồ sơ năng lực","primary_label_en":"View profile","primary_href":"/cv","secondary_label_vi":"Khám phá công cụ","secondary_label_en":"Explore tools","secondary_href":"#workspace"}'::jsonb,10),
+  ('home','facts','Trang chủ / Thông tin nhanh','{"education_period":"2020—2025","education_vi":"Kỹ sư hệ thống điện","education_en":"Power systems engineer","education_sub_vi":"Đại học Điện lực · Tốt nghiệp loại Giỏi","education_sub_en":"Electric Power University · Honors","experience_period":"04+ YEARS","experience_vi":"Kinh nghiệm thực tế","experience_en":"Practical experience","experience_sub_vi":"Thí nghiệm điện · Thiết kế · Chuẩn bị dự án","experience_sub_en":"Electrical testing · Design · Project preparation"}'::jsonb,20),
+  ('home','capabilities','Trang chủ / Năng lực','{}'::jsonb,30),
+  ('home','workspace','Trang chủ / Không gian làm việc','{}'::jsonb,40)
+on conflict (page_key,block_key) do nothing;
+
+create table if not exists public.seo_entries (
+  id uuid primary key default gen_random_uuid(),
+  route text unique not null,
+  title_vi text not null default '',
+  title_en text not null default '',
+  description_vi text not null default '',
+  description_en text not null default '',
+  canonical_path text,
+  og_image text,
+  og_type text not null default 'website',
+  indexable boolean not null default true,
+  follow_links boolean not null default true,
+  schema_type text not null default 'WebPage',
+  structured_data jsonb not null default '{}'::jsonb,
+  change_frequency text not null default 'weekly',
+  priority numeric(2,1) not null default 0.7,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.tools (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  code text not null,
+  route text unique not null,
+  title_vi text not null,
+  title_en text not null,
+  description_vi text not null default '',
+  description_en text not null default '',
+  icon text,
+  accent text not null default 'blue',
+  status text not null default 'ready',
+  visible boolean not null default true,
+  show_home boolean not null default true,
+  show_orbit boolean not null default true,
+  orbit_ring integer not null default 1,
+  orbit_angle integer not null default 0,
+  sort_order integer not null default 0,
+  requires_auth boolean not null default false,
+  allowed_roles text[] not null default '{}',
+  settings jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.orbit_rings (
+  id text primary key,
+  size integer not null check (size between 20 and 120),
+  duration integer not null check (duration between 5 and 180),
+  reverse boolean not null default false,
+  dashed boolean not null default false,
+  dot_angle integer,
+  dot_tone text not null default 'blue',
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.orbit_rings (id,size,duration,reverse,dashed,dot_angle,dot_tone,sort_order)
+values
+  ('ring-1',98,42,false,true,166,'blue',10),
+  ('ring-2',82,34,true,false,22,'orange',20),
+  ('ring-3',66,28,false,false,205,'cyan',30),
+  ('ring-4',51,22,true,true,318,'violet',40),
+  ('ring-5',39,17,false,false,null,'blue',50)
+on conflict (id) do nothing;
+
+insert into public.tools (slug,code,route,title_vi,title_en,description_vi,description_en,icon,accent,orbit_ring,orbit_angle,sort_order)
+select * from (values
+  ('quiz','QUIZ','/tools/quiz','Ôn thi & tạo đề','Quiz & exam practice','Tạo, nhập, chỉnh sửa và luyện đề ngay trên trình duyệt.','Create, import, edit and practise quizzes in the browser.','quiz','cyan',1,222,10),
+  ('pdf','PDF','/tools/pdf','PDF Studio','PDF Studio','Xử lý PDF cục bộ, ưu tiên riêng tư.','Local-first PDF processing.','pdf','blue',2,326,20),
+  ('comtrade','CFG','/tools/comtrade','COMTRADE','COMTRADE','Đọc CFG/DAT và biểu diễn kênh analog, digital.','Read CFG/DAT and plot analog and digital channels.','comtrade','violet',3,198,30)
+) as seed(slug,code,route,title_vi,title_en,description_vi,description_en,icon,accent,orbit_ring,orbit_angle,sort_order)
+where not exists (select 1 from public.tools);
+
+create table if not exists public.news_categories (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  name_vi text not null,
+  name_en text not null default '',
+  description_vi text not null default '',
+  description_en text not null default '',
+  color text not null default 'blue',
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.news_articles (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  category_id uuid references public.news_categories(id) on delete set null,
+  title_vi text not null,
+  title_en text not null default '',
+  subtitle_vi text not null default '',
+  subtitle_en text not null default '',
+  excerpt_vi text not null default '',
+  excerpt_en text not null default '',
+  content_vi text not null default '',
+  content_en text not null default '',
+  cover_image text,
+  cover_alt_vi text not null default '',
+  cover_alt_en text not null default '',
+  author_name text not null,
+  translator_name text,
+  editor_name text,
+  source_name text,
+  source_url text,
+  tags text[] not null default '{}',
+  status text not null default 'draft' check (status in ('draft','review','scheduled','published','archived')),
+  featured boolean not null default false,
+  allow_comments boolean not null default false,
+  published_at timestamptz,
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.software_categories (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  name_vi text not null,
+  name_en text not null default '',
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.software_items (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text unique not null,
+  category_id uuid references public.software_categories(id) on delete set null,
+  description_vi text not null default '',
+  description_en text not null default '',
+  icon_url text,
+  cover_url text,
+  download_url text not null,
+  price_label_vi text not null default 'Miễn phí',
+  price_label_en text not null default 'Free',
+  version text,
+  compatibility text,
+  visible boolean not null default true,
+  featured boolean not null default false,
+  sort_order integer not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.data_collections (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  name_vi text not null,
+  name_en text not null default '',
+  description_vi text not null default '',
+  description_en text not null default '',
+  icon text,
+  visibility text not null default 'private' check (visibility in ('public','authenticated','private')),
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.data_items (
+  id uuid primary key default gen_random_uuid(),
+  collection_id uuid references public.data_collections(id) on delete cascade,
+  title_vi text not null,
+  title_en text not null default '',
+  description_vi text not null default '',
+  description_en text not null default '',
+  item_type text not null default 'link' check (item_type in ('link','r2_file','quiz_json','document','video')),
+  external_url text,
+  object_key text,
+  media_id uuid,
+  visibility text not null default 'private' check (visibility in ('public','authenticated','private')),
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.user_data_access (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  item_id uuid not null references public.data_items(id) on delete cascade,
+  granted_by uuid references public.profiles(id) on delete set null,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (user_id, item_id)
+);
+
+create table if not exists public.cv_profiles (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  role_vi text not null default '',
+  role_en text not null default '',
+  headline_vi text not null default '',
+  headline_en text not null default '',
+  summary_vi text not null default '',
+  summary_en text not null default '',
+  birth_date text,
+  address_vi text not null default '',
+  address_en text not null default '',
+  phone text,
+  email text,
+  photo_url text,
+  pdf_url text,
+  theme jsonb not null default '{}'::jsonb,
+  published boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.cv_sections (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.cv_profiles(id) on delete cascade,
+  section_type text not null check (section_type in ('experience','education','certificate','skill','project','language','custom')),
+  title_vi text not null,
+  title_en text not null default '',
+  subtitle_vi text not null default '',
+  subtitle_en text not null default '',
+  period text not null default '',
+  description_vi text not null default '',
+  description_en text not null default '',
+  organization text not null default '',
+  url text,
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.media_assets (
+  id uuid primary key default gen_random_uuid(),
+  object_key text unique not null,
+  public_url text,
+  original_name text not null,
+  mime_type text not null,
+  size_bytes bigint not null default 0,
+  title text not null default '',
+  alt_vi text not null default '',
+  alt_en text not null default '',
+  folder text not null default 'uploads',
+  visibility text not null default 'public' check (visibility in ('public','authenticated','private')),
+  owner_id uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.data_items
+  drop constraint if exists data_items_media_id_fkey;
+alter table public.data_items
+  add constraint data_items_media_id_fkey foreign key (media_id) references public.media_assets(id) on delete set null;
+
+create table if not exists public.redirects (
+  id uuid primary key default gen_random_uuid(),
+  source_path text unique not null,
+  target_url text not null,
+  status_code integer not null default 301 check (status_code in (301,302,307,308)),
+  active boolean not null default true,
+  preserve_query boolean not null default true,
+  note text not null default '',
+  hit_count bigint not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.api_integrations (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  name text not null,
+  description text not null default '',
+  base_url text not null,
+  allowed_host text not null,
+  endpoint_template text not null default '/',
+  method text not null default 'POST' check (method in ('GET','POST','PUT','PATCH','DELETE')),
+  headers_template jsonb not null default '{"Authorization":"Bearer {{API_KEY}}","Content-Type":"application/json"}'::jsonb,
+  query_template jsonb not null default '{}'::jsonb,
+  body_template jsonb not null default '{}'::jsonb,
+  key_placeholder text not null default '{{API_KEY}}',
+  -- Giá trị API được mã hóa AES-256-GCM ở server Render; không bao giờ trả ra client.
+  secret_ciphertext text,
+  secret_updated_at timestamptz,
+  scope text not null default 'authenticated' check (scope in ('public','authenticated','admin')),
+  timeout_ms integer not null default 30000,
+  active boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+-- An toàn khi chạy lại migration sau một lần cài đặt bị dừng giữa chừng.
+alter table public.api_integrations add column if not exists secret_ciphertext text;
+alter table public.api_integrations add column if not exists secret_updated_at timestamptz;
+
+create table if not exists public.scheduled_api_jobs (
+  id uuid primary key default gen_random_uuid(),
+  integration_id uuid references public.api_integrations(id) on delete cascade,
+  name text not null,
+  handler text not null default 'integration' check (handler in ('integration','supabase_keepalive')),
+  endpoint_path text not null default '',
+  request_payload jsonb not null default '{}'::jsonb,
+  interval_minutes integer not null default 1440 check (interval_minutes between 15 and 525600),
+  enabled boolean not null default true,
+  next_run_at timestamptz not null default now(),
+  last_run_at timestamptz,
+  last_status text,
+  last_message text,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.scheduled_api_jobs (name,handler,interval_minutes,enabled,next_run_at)
+select 'Giữ Supabase hoạt động mỗi ngày','supabase_keepalive',1440,true,now()
+where not exists (select 1 from public.scheduled_api_jobs where handler = 'supabase_keepalive');
+
+create table if not exists public.audit_logs (
+  id bigint generated always as identity primary key,
+  actor_id uuid references public.profiles(id) on delete set null,
+  action text not null,
+  resource_type text not null,
+  resource_id text,
+  details jsonb not null default '{}'::jsonb,
+  ip_address inet,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists news_articles_status_published_idx on public.news_articles(status, published_at desc);
+create index if not exists software_items_category_idx on public.software_items(category_id, sort_order);
+create index if not exists data_items_collection_idx on public.data_items(collection_id, sort_order);
+create index if not exists scheduled_jobs_due_idx on public.scheduled_api_jobs(enabled, next_run_at);
+create index if not exists audit_logs_created_idx on public.audit_logs(created_at desc);
+
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array[
+    'profiles','site_settings','navigation_items','social_links','content_pages','seo_entries','tools',
+    'content_blocks','orbit_rings',
+    'news_categories','news_articles','software_categories','software_items','data_collections','data_items',
+    'cv_profiles','cv_sections','media_assets','redirects','api_integrations','scheduled_api_jobs'
+  ] loop
+    execute format('drop trigger if exists set_%I_updated_at on public.%I', table_name, table_name);
+    execute format('create trigger set_%I_updated_at before update on public.%I for each row execute procedure public.set_updated_at()', table_name, table_name);
+  end loop;
+end $$;
+
+-- API secret được mã hóa AES-256-GCM tại Render bằng INTEGRATION_SECRETS_KEY.
+-- Không dùng extension vault để migration hoạt động trên mọi project Supabase Cloud.
+drop function if exists public.service_store_api_secret(uuid,text);
+drop function if exists public.service_get_api_secret(uuid);
+
+-- RLS
+alter table public.roles enable row level security;
+alter table public.profiles enable row level security;
+alter table public.site_settings enable row level security;
+alter table public.navigation_items enable row level security;
+alter table public.social_links enable row level security;
+alter table public.content_pages enable row level security;
+alter table public.content_blocks enable row level security;
+alter table public.seo_entries enable row level security;
+alter table public.tools enable row level security;
+alter table public.orbit_rings enable row level security;
+alter table public.news_categories enable row level security;
+alter table public.news_articles enable row level security;
+alter table public.software_categories enable row level security;
+alter table public.software_items enable row level security;
+alter table public.data_collections enable row level security;
+alter table public.data_items enable row level security;
+alter table public.user_data_access enable row level security;
+alter table public.cv_profiles enable row level security;
+alter table public.cv_sections enable row level security;
+alter table public.media_assets enable row level security;
+alter table public.redirects enable row level security;
+alter table public.api_integrations enable row level security;
+alter table public.scheduled_api_jobs enable row level security;
+alter table public.audit_logs enable row level security;
+
+create policy roles_read on public.roles for select to authenticated using (true);
+create policy roles_manage on public.roles for all to authenticated using (public.has_permission('users.manage')) with check (public.has_permission('users.manage'));
+create policy profiles_self_read on public.profiles for select to authenticated using (id = auth.uid() or public.has_permission('users.manage'));
+create policy profiles_self_update on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+create policy profiles_manage on public.profiles for all to authenticated using (public.has_permission('users.manage')) with check (public.has_permission('users.manage'));
+
+create policy site_public_read on public.site_settings for select using (true);
+create policy site_manage on public.site_settings for all to authenticated using (public.has_permission('site.manage')) with check (public.has_permission('site.manage'));
+create policy nav_public_read on public.navigation_items for select using (visible or public.has_permission('site.manage'));
+create policy nav_manage on public.navigation_items for all to authenticated using (public.has_permission('site.manage')) with check (public.has_permission('site.manage'));
+create policy social_public_read on public.social_links for select using (visible or public.has_permission('site.manage'));
+create policy social_manage on public.social_links for all to authenticated using (public.has_permission('site.manage')) with check (public.has_permission('site.manage'));
+
+create policy pages_public_read on public.content_pages for select using (
+  (status = 'published' and coalesce(published_at, now()) <= now() and not requires_auth)
+  or public.has_permission('content.manage')
+);
+create policy pages_manage on public.content_pages for all to authenticated using (public.has_permission('content.manage')) with check (public.has_permission('content.manage'));
+create policy blocks_public_read on public.content_blocks for select using (visible or public.has_permission('content.manage'));
+create policy blocks_manage on public.content_blocks for all to authenticated using (public.has_permission('content.manage')) with check (public.has_permission('content.manage'));
+create policy seo_public_read on public.seo_entries for select using (true);
+create policy seo_manage on public.seo_entries for all to authenticated using (public.has_permission('seo.manage')) with check (public.has_permission('seo.manage'));
+create policy tools_public_read on public.tools for select using (visible or public.has_permission('tools.manage'));
+create policy tools_manage on public.tools for all to authenticated using (public.has_permission('tools.manage')) with check (public.has_permission('tools.manage'));
+create policy orbit_public_read on public.orbit_rings for select using (visible or public.has_permission('tools.manage'));
+create policy orbit_manage on public.orbit_rings for all to authenticated using (public.has_permission('tools.manage')) with check (public.has_permission('tools.manage'));
+
+create policy news_categories_public_read on public.news_categories for select using (visible or public.has_permission('news.manage'));
+create policy news_categories_manage on public.news_categories for all to authenticated using (public.has_permission('news.manage')) with check (public.has_permission('news.manage'));
+create policy news_public_read on public.news_articles for select using (
+  (status = 'published' and coalesce(published_at, now()) <= now()) or public.has_permission('news.manage')
+);
+create policy news_manage on public.news_articles for all to authenticated using (public.has_permission('news.manage')) with check (public.has_permission('news.manage'));
+
+create policy software_categories_public_read on public.software_categories for select using (visible or public.has_permission('software.manage'));
+create policy software_categories_manage on public.software_categories for all to authenticated using (public.has_permission('software.manage')) with check (public.has_permission('software.manage'));
+create policy software_public_read on public.software_items for select using (visible or public.has_permission('software.manage'));
+create policy software_manage on public.software_items for all to authenticated using (public.has_permission('software.manage')) with check (public.has_permission('software.manage'));
+
+create policy data_collections_read on public.data_collections for select using (
+  (visible and visibility = 'public')
+  or (visible and visibility = 'authenticated' and auth.uid() is not null)
+  or exists (
+    select 1
+    from public.data_items di
+    join public.user_data_access uda on uda.item_id = di.id
+    where di.collection_id = data_collections.id
+      and di.visible
+      and uda.user_id = auth.uid()
+      and (uda.expires_at is null or uda.expires_at > now())
+  )
+  or public.has_permission('data.manage')
+);
+create policy data_collections_manage on public.data_collections for all to authenticated using (public.has_permission('data.manage')) with check (public.has_permission('data.manage'));
+create policy data_items_read on public.data_items for select using (
+  (visible and visibility = 'public')
+  or (visible and visibility = 'authenticated' and auth.uid() is not null)
+  or exists (select 1 from public.user_data_access uda where uda.item_id = data_items.id and uda.user_id = auth.uid() and (uda.expires_at is null or uda.expires_at > now()))
+  or public.has_permission('data.manage')
+);
+create policy data_items_manage on public.data_items for all to authenticated using (public.has_permission('data.manage')) with check (public.has_permission('data.manage'));
+create policy data_access_self_read on public.user_data_access for select to authenticated using (user_id = auth.uid() or public.has_permission('data.manage'));
+create policy data_access_manage on public.user_data_access for all to authenticated using (public.has_permission('data.manage')) with check (public.has_permission('data.manage'));
+
+create policy cv_public_read on public.cv_profiles for select using (published or public.has_permission('content.manage'));
+create policy cv_manage on public.cv_profiles for all to authenticated using (public.has_permission('content.manage')) with check (public.has_permission('content.manage'));
+create policy cv_sections_public_read on public.cv_sections for select using (visible or public.has_permission('content.manage'));
+create policy cv_sections_manage on public.cv_sections for all to authenticated using (public.has_permission('content.manage')) with check (public.has_permission('content.manage'));
+
+create policy media_public_read on public.media_assets for select using (
+  visibility = 'public'
+  or (visibility = 'authenticated' and auth.uid() is not null)
+  or owner_id = auth.uid()
+  or exists (
+    select 1
+    from public.data_items di
+    join public.user_data_access uda on uda.item_id = di.id
+    where di.media_id = media_assets.id
+      and uda.user_id = auth.uid()
+      and (uda.expires_at is null or uda.expires_at > now())
+  )
+  or public.has_permission('media.manage')
+);
+create policy media_manage on public.media_assets for all to authenticated using (public.has_permission('media.manage')) with check (public.has_permission('media.manage'));
+create policy redirects_public_read on public.redirects for select using (active or public.has_permission('seo.manage'));
+create policy redirects_manage on public.redirects for all to authenticated using (public.has_permission('seo.manage')) with check (public.has_permission('seo.manage'));
+
+create policy integrations_manage on public.api_integrations for all to authenticated using (public.has_permission('api.manage')) with check (public.has_permission('api.manage'));
+create policy jobs_manage on public.scheduled_api_jobs for all to authenticated using (public.has_permission('api.manage')) with check (public.has_permission('api.manage'));
+create policy audit_read on public.audit_logs for select to authenticated using (public.has_permission('users.manage'));
+
+-- Không cho profile tự nâng quyền hoặc tự active. Trigger này chạy sau policy.
+create or replace function public.protect_profile_privileges()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() = old.id and not public.has_permission('users.manage') then
+    new.role_id = old.role_id;
+    new.status = old.status;
+    new.email = old.email;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists protect_profile_privileges on public.profiles;
+create trigger protect_profile_privileges before update on public.profiles
+for each row execute procedure public.protect_profile_privileges();
+
+-- Routes SEO mặc định. Có thể sửa toàn bộ từ Admin.
+insert into public.seo_entries (route,title_vi,title_en,description_vi,description_en,priority,change_frequency)
+values
+  ('/','Nguyễn Lê Khánh Hòa | Kỹ sư điện','Nguyen Le Khanh Hoa | Electrical Engineer','Hồ sơ, công cụ và sản phẩm số của Nguyễn Lê Khánh Hòa.','Profile, tools and digital products by Nguyen Le Khanh Hoa.',1.0,'weekly'),
+  ('/cv','Hồ sơ năng lực','Professional profile','Học vấn, kinh nghiệm và kỹ năng chuyên môn.','Education, experience and professional skills.',0.9,'monthly'),
+  ('/tools','Công cụ','Tools','Các công cụ chạy trực tiếp trên trình duyệt.','Browser-based tools.',0.9,'weekly'),
+  ('/software','Kho phần mềm','Software library','Kho phần mềm có tìm kiếm và phân loại.','Searchable software library.',0.8,'weekly'),
+  ('/data','Dữ liệu','Data','Tài liệu và liên kết được phân quyền.','Permission-based documents and links.',0.4,'weekly'),
+  ('/news','Tin tức','News','Tin tức, bài viết và nội dung chuyên môn.','News, articles and professional content.',0.9,'daily')
+on conflict (route) do nothing;
+
+===== FILE: supabase/migrations/202608090002_content_pages_access.sql =====
+-- Cho phép trang published áp dụng đăng nhập/vai trò thay vì chỉ công khai hoàn toàn.
+drop policy if exists pages_public_read on public.content_pages;
+create policy pages_public_read on public.content_pages for select using (
+  (
+    status = 'published'
+    and coalesce(published_at, now()) <= now()
+    and (
+      not requires_auth
+      or (
+        auth.uid() is not null
+        and (
+          cardinality(allowed_roles) = 0
+          or exists (
+            select 1 from public.profiles p
+            where p.id = auth.uid() and p.status = 'active' and p.role_id = any(allowed_roles)
+          )
+        )
+      )
+    )
+  )
+  or public.has_permission('content.manage')
+);
+
+===== FILE: supabase/migrations/202608100001_static_split.sql =====
+-- NLKH STATIC V2
+-- RPC tiện cho frontend/admin tĩnh. Không chứa secret.
+
+create or replace function public.get_my_access()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when auth.uid() is null then
+      jsonb_build_object('authenticated', false)
+    else
+      coalesce(
+        (
+          select jsonb_build_object(
+            'authenticated', true,
+            'id', p.id,
+            'email', p.email,
+            'display_name', p.display_name,
+            'avatar_url', p.avatar_url,
+            'role_id', p.role_id,
+            'status', p.status,
+            'permissions', r.permissions
+          )
+          from public.profiles p
+          join public.roles r on r.id = p.role_id
+          where p.id = auth.uid()
+        ),
+        jsonb_build_object('authenticated', true, 'status', 'missing_profile')
+      )
+  end;
+$$;
+
+revoke all on function public.get_my_access() from public;
+grant execute on function public.get_my_access() to authenticated;
+
+revoke delete, update, insert on public.audit_logs from anon, authenticated;
+
+create index if not exists tools_visible_sort_idx
+  on public.tools(visible, sort_order);
+create index if not exists nav_visible_sort_idx
+  on public.navigation_items(visible, location, sort_order);
+create index if not exists content_blocks_page_sort_idx
+  on public.content_blocks(page_key, visible, sort_order);
+create index if not exists cv_sections_profile_sort_idx
+  on public.cv_sections(profile_id, visible, sort_order);
+
+comment on column public.api_integrations.secret_ciphertext is
+  'AES-GCM ciphertext; chỉ Edge Functions có INTEGRATION_SECRETS_KEY mới giải mã được.';
+
+===== FILE: supabase/migrations/202608100002_admin_ux_v4.sql =====
+-- NLKH STATIC V4 - Admin UX, R2 asset IDs, inline tools, comments, simplified permissions.
+-- Chạy sau 202608100001_static_split.sql.
+
+alter table public.media_assets add column if not exists asset_no bigserial;
+alter table public.media_assets add column if not exists sha256 text;
+alter table public.media_assets add column if not exists status text not null default 'ready';
+alter table public.media_assets add column if not exists usage_note text not null default '';
+alter table public.media_assets add column if not exists uploaded_from text not null default 'admin';
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'media_assets_status_check') then
+    alter table public.media_assets
+      add constraint media_assets_status_check check (status in ('pending','ready','failed'));
+  end if;
+end $$;
+
+create unique index if not exists media_assets_asset_no_uq on public.media_assets(asset_no);
+drop index if exists public.media_assets_sha256_ready_uq;
+create unique index if not exists media_assets_sha256_visibility_ready_uq
+  on public.media_assets(sha256, visibility) where sha256 is not null and status = 'ready';
+
+create or replace function public.r2_asset_code(n bigint)
+returns text language sql immutable as $$
+  select 'R2-' || lpad(n::text, 6, '0');
+$$;
+
+alter table public.site_settings add column if not exists og_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.site_settings add column if not exists favicon_url text;
+alter table public.site_settings add column if not exists favicon_media_id uuid references public.media_assets(id) on delete set null;
+
+alter table public.navigation_items add column if not exists icon_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.social_links add column if not exists icon_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.seo_entries add column if not exists og_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.tools add column if not exists icon_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.tools add column if not exists inline_html text;
+alter table public.tools add column if not exists admin_note text not null default '';
+
+update public.tools set accent = case lower(accent)
+  when 'blue' then '#2563eb'
+  when 'cyan' then '#06b6d4'
+  when 'orange' then '#f97316'
+  when 'violet' then '#8b5cf6'
+  else accent end
+where lower(accent) in ('blue','cyan','orange','violet');
+
+alter table public.profiles add column if not exists avatar_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.news_articles add column if not exists cover_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.news_articles add column if not exists allow_comments boolean not null default false;
+alter table public.software_items add column if not exists icon_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.software_items add column if not exists cover_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.software_items add column if not exists download_access text not null default 'public';
+alter table public.software_items add column if not exists download_source text not null default 'link';
+alter table public.software_items add column if not exists download_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.cv_profiles add column if not exists photo_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.cv_profiles add column if not exists pdf_media_id uuid references public.media_assets(id) on delete set null;
+alter table public.cv_profiles add column if not exists pdf_access text not null default 'public';
+alter table public.cv_sections add column if not exists organization_en text;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'cv_profiles_pdf_access_check') then
+    alter table public.cv_profiles
+      add constraint cv_profiles_pdf_access_check check (pdf_access in ('public','authenticated','hidden'));
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'software_items_download_access_check') then
+    alter table public.software_items
+      add constraint software_items_download_access_check check (download_access in ('public','authenticated'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'software_items_download_source_check') then
+    alter table public.software_items
+      add constraint software_items_download_source_check check (download_source in ('link','r2'));
+  end if;
+end $$;
+
+alter table public.data_items add column if not exists storage_mode text not null default 'link';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'data_items_storage_mode_check') then
+    alter table public.data_items
+      add constraint data_items_storage_mode_check check (storage_mode in ('link','r2'));
+  end if;
+end $$;
+
+alter table public.user_data_access add column if not exists permission_level text not null default 'read';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'user_data_access_permission_level_check') then
+    alter table public.user_data_access
+      add constraint user_data_access_permission_level_check check (permission_level in ('read','add','full'));
+  end if;
+end $$;
+
+create table if not exists public.news_comments (
+  id uuid primary key default gen_random_uuid(),
+  article_id uuid not null references public.news_articles(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete set null,
+  display_name text not null,
+  email text,
+  body text not null,
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  r2_object_key text,
+  ip_hash text,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  reviewed_by uuid references public.profiles(id) on delete set null
+);
+
+alter table public.news_comments enable row level security;
+drop policy if exists comments_public_read on public.news_comments;
+create policy comments_public_read on public.news_comments
+  for select using (status = 'approved' or public.has_permission('news.manage'));
+drop policy if exists comments_manage on public.news_comments;
+create policy comments_manage on public.news_comments
+  for all to authenticated
+  using (public.has_permission('news.manage'))
+  with check (public.has_permission('news.manage'));
+
+with ranked as (select id,row_number() over(order by sort_order,id)::int n from public.navigation_items)
+update public.navigation_items x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(order by sort_order,id)::int n from public.social_links)
+update public.social_links x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(order by sort_order,id)::int n from public.tools)
+update public.tools x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(order by sort_order,id)::int n from public.software_categories)
+update public.software_categories x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(partition by category_id order by sort_order,id)::int n from public.software_items)
+update public.software_items x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(order by sort_order,id)::int n from public.data_collections)
+update public.data_collections x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(partition by collection_id order by sort_order,id)::int n from public.data_items)
+update public.data_items x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(partition by profile_id order by sort_order,id)::int n from public.cv_sections)
+update public.cv_sections x set sort_order=ranked.n from ranked where x.id=ranked.id;
+
+do $$
+declare p uuid;
+begin
+  select id into p from public.cv_profiles order by updated_at desc limit 1;
+  if p is null then
+    insert into public.cv_profiles(
+      name,role_vi,role_en,headline_vi,headline_en,summary_vi,summary_en,birth_date,
+      address_vi,address_en,phone,email,photo_url,pdf_url,theme,published
+    ) values (
+      'Nguyễn Lê Khánh Hòa','Kỹ sư điện','Electrical Engineer',
+      'Kỹ sư điện với trải nghiệm từ hiện trường đến thiết kế.',
+      'An electrical engineer experienced from field testing to design.',
+      'Tốt nghiệp loại Giỏi chuyên ngành Tự động hóa Hệ thống điện, có kinh nghiệm thí nghiệm thiết bị, thiết kế tủ điều khiển - bảo vệ và chuẩn bị dự án.',
+      'Graduated with distinction in Power System Automation, with experience in equipment testing, protection and control panel design, and project preparation.',
+      '15/05/2002','Thanh Xuân, Hà Nội','Thanh Xuan, Hanoi','0343 434 584',
+      'khanhhoa2002.hh@gmail.com','/profile.jpg','/content/cv/current.pdf',
+      '{"layout":"source-default","accent":"blue","show_photo":true}'::jsonb,true
+    ) returning id into p;
+
+    insert into public.cv_sections(profile_id,section_type,title_vi,title_en,subtitle_vi,subtitle_en,period,description_vi,description_en,organization,organization_en,sort_order,visible,data)
+    values
+      (p,'education','Tự động hóa Hệ thống điện','Power System Automation','Hệ kỹ sư · Tốt nghiệp loại Giỏi','Engineering degree · Graduated with distinction','2020—2025','','','Trường Đại học Điện lực','Electric Power University',1,true,'{}'),
+      (p,'certificate','Tiếng Anh B1 - Đại học Điện lực (2023)','B1 English - Electric Power University (2023)','','','','','','','',2,true,'{}'),
+      (p,'certificate','ICDL 5 kỹ năng (2025)','ICDL 5 modules (2025)','','','','','','','',3,true,'{}'),
+      (p,'certificate','Giấy phép lái xe hạng B2','B2 driving license','','','','','','','',4,true,'{}'),
+      (p,'experience','Kỹ sư điện - Phòng chuẩn bị dự án','Electrical Engineer - Project Preparation','','','11/2025 - nay','Kiểm tra thông số thiết bị, hỗ trợ mua sắm và rà soát bảng đáp ứng yêu cầu kỹ thuật.','Equipment specification reviews, procurement support and technical compliance checks.','Công ty TNHH Công nghệ Việt','Viet Technology Co., Ltd.',5,true,'{}'),
+      (p,'experience','Kỹ sư thiết kế','Design Engineer','','','06/2025 - 11/2025','Thiết kế tủ điều khiển - bảo vệ cho trạm biến áp từ 110 kV và kiểm thử tủ sau sản xuất.','Protection and control panel design for 110 kV substations and factory acceptance testing.','Công ty CP Entec Kỹ thuật Năng lượng','Entec Energy Engineering JSC',6,true,'{}'),
+      (p,'experience','Kỹ sư thí nghiệm điện','Electrical Testing Engineer','','','05/2024 - 06/2025','Kiểm định thiết bị trạm biến áp, thí nghiệm định kỳ và hoàn thiện hồ sơ công trình.','Substation equipment testing, periodic inspections and project documentation.','Công ty TNHH MTV Đo lường Thí nghiệm điện miền Bắc','Northern Electrical Testing Co., Ltd.',7,true,'{}'),
+      (p,'experience','Kỹ thuật viên · Quản lý từ xa','Technician · Remote Manager','','','06/2023 - 10/2025','Hỗ trợ kỹ thuật và quản lý hoạt động vận hành từ xa.','Technical support and remote operations management.','Hoàng Mai Mobile','Hoang Mai Mobile',8,true,'{}'),
+      (p,'skill','AutoCAD','AutoCAD','','','','','','','',9,true,'{}'),
+      (p,'skill','EPLAN','EPLAN','','','','','','','',10,true,'{}'),
+      (p,'skill','Microsoft Excel','Microsoft Excel','','','','','','','',11,true,'{}'),
+      (p,'skill','Microsoft Word','Microsoft Word','','','','','','','',12,true,'{}'),
+      (p,'skill','Đọc tài liệu kỹ thuật','Technical documentation','','','','','','','',13,true,'{}'),
+      (p,'skill','Tiếng Anh B1','B1 English','','','','','','','',14,true,'{}');
+  end if;
+end $$;
+
+
+-- Danh sách slug trang CMS để Static Export tạo route shell mà không làm lộ nội dung private.
+create or replace function public.list_content_page_routes()
+returns table(slug text)
+language sql stable security definer set search_path=public as $$
+  select cp.slug
+  from public.content_pages cp
+  where cp.status='published'
+    and coalesce(cp.published_at, now()) <= now()
+  order by cp.slug;
+$$;
+revoke all on function public.list_content_page_routes() from public;
+grant execute on function public.list_content_page_routes() to anon, authenticated;
+
+create or replace function public.get_my_data_permissions()
+returns table(item_id uuid, permission_level text, expires_at timestamptz)
+language sql stable security definer set search_path = public as $$
+  select uda.item_id, uda.permission_level, uda.expires_at
+  from public.user_data_access uda
+  where uda.user_id = auth.uid()
+    and (uda.expires_at is null or uda.expires_at > now());
+$$;
+revoke all on function public.get_my_data_permissions() from public;
+grant execute on function public.get_my_data_permissions() to authenticated;
+
+-- CV section chỉ public khi hồ sơ cha đang được hiển thị; Admin vẫn đọc/sửa được.
+drop policy if exists cv_sections_public_read on public.cv_sections;
+create policy cv_sections_public_read on public.cv_sections
+  for select using (
+    (visible and exists (
+      select 1 from public.cv_profiles cp
+      where cp.id = cv_sections.profile_id and cp.published = true
+    ))
+    or public.has_permission('content.manage')
+  );
+
+-- Chỉ có một CV được hiển thị công khai tại một thời điểm.
+with newest as (
+  select id from public.cv_profiles order by updated_at desc limit 1
+)
+update public.cv_profiles set published = false
+where id not in (select id from newest) and published = true;
+create unique index if not exists cv_one_published_uq on public.cv_profiles((published)) where published = true;
+
+-- Quyền dữ liệu: read = xem; add = được tạo thêm trong cùng nhóm; full = sửa/xóa mục đã cấp.
+drop policy if exists data_items_manage on public.data_items;
+drop policy if exists data_items_admin_insert on public.data_items;
+drop policy if exists data_items_update on public.data_items;
+drop policy if exists data_items_delete on public.data_items;
+create policy data_items_admin_insert on public.data_items for insert to authenticated
+with check (public.has_permission('data.manage') or exists (
+  select 1 from public.user_data_access uda
+  join public.data_items existing on existing.id = uda.item_id
+  where uda.user_id = auth.uid()
+    and uda.permission_level in ('add','full')
+    and existing.collection_id is not distinct from data_items.collection_id
+    and (uda.expires_at is null or uda.expires_at > now())
+));
+create policy data_items_update on public.data_items for update to authenticated
+using (public.has_permission('data.manage') or exists (
+  select 1 from public.user_data_access uda
+  where uda.user_id = auth.uid() and uda.item_id = data_items.id
+    and uda.permission_level = 'full'
+    and (uda.expires_at is null or uda.expires_at > now())
+))
+with check (public.has_permission('data.manage') or exists (
+  select 1 from public.user_data_access uda
+  where uda.user_id = auth.uid() and uda.item_id = data_items.id
+    and uda.permission_level = 'full'
+    and (uda.expires_at is null or uda.expires_at > now())
+));
+create policy data_items_delete on public.data_items for delete to authenticated
+using (public.has_permission('data.manage') or exists (
+  select 1 from public.user_data_access uda
+  where uda.user_id = auth.uid() and uda.item_id = data_items.id
+    and uda.permission_level = 'full'
+    and (uda.expires_at is null or uda.expires_at > now())
+));
+
+create or replace function public.get_media_usage_summary()
+returns table(media_id uuid, usage_count bigint, usage_labels text[])
+language sql stable security definer set search_path=public as $$
+  with refs as (
+    select og_media_id media_id,'OG website' label from public.site_settings where og_media_id is not null
+    union all select favicon_media_id,'Favicon' from public.site_settings where favicon_media_id is not null
+    union all select icon_media_id,'Menu' from public.navigation_items where icon_media_id is not null
+    union all select icon_media_id,'Social' from public.social_links where icon_media_id is not null
+    union all select og_media_id,'SEO' from public.seo_entries where og_media_id is not null
+    union all select icon_media_id,'Tool' from public.tools where icon_media_id is not null
+    union all select avatar_media_id,'Avatar' from public.profiles where avatar_media_id is not null
+    union all select cover_media_id,'Tin tức' from public.news_articles where cover_media_id is not null
+    union all select icon_media_id,'Icon phần mềm' from public.software_items where icon_media_id is not null
+    union all select cover_media_id,'Cover phần mềm' from public.software_items where cover_media_id is not null
+    union all select download_media_id,'File tải phần mềm' from public.software_items where download_media_id is not null
+    union all select photo_media_id,'Ảnh CV' from public.cv_profiles where photo_media_id is not null
+    union all select pdf_media_id,'PDF CV' from public.cv_profiles where pdf_media_id is not null
+    union all select media_id,'Dữ liệu' from public.data_items where media_id is not null
+  )
+  select refs.media_id,count(*)::bigint,array_agg(distinct refs.label order by refs.label)
+  from refs
+  where public.has_permission('media.manage')
+  group by refs.media_id;
+$$;
+revoke all on function public.get_media_usage_summary() from public;
+grant execute on function public.get_media_usage_summary() to authenticated;
+
+-- Không để email bình luận lộ qua API public. Public chỉ đọc view đã lọc cột/trạng thái.
+revoke select, insert, update, delete on public.news_comments from anon, authenticated;
+create or replace view public.approved_news_comments with (security_barrier=true) as
+select id, article_id, display_name, body, created_at
+from public.news_comments
+where status = 'approved' and r2_object_key is not null;
+grant select on public.approved_news_comments to anon, authenticated;
+
+with ranked as (select id,row_number() over(order by sort_order,id)::int n from public.orbit_rings)
+update public.orbit_rings x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(order by sort_order,id)::int n from public.news_categories)
+update public.news_categories x set sort_order=ranked.n from ranked where x.id=ranked.id;
+with ranked as (select id,row_number() over(partition by page_key order by sort_order,id)::int n from public.content_blocks)
+update public.content_blocks x set sort_order=ranked.n from ranked where x.id=ranked.id;
+alter table public.navigation_items add column if not exists icon_url text;
+
+-- /data chứa dữ liệu phân quyền: mặc định không index cho đến khi Admin chủ động bật.
+update public.seo_entries set indexable=false, follow_links=false where route='/data';
+
+-- Khi người dùng có quyền Add/Full tự thêm tài liệu, tự cấp quyền cho mục vừa tạo.
+-- Add -> mục mới ở mức Read (không thể sửa/xóa); Full -> giữ Full.
+create or replace function public.grant_creator_access_to_new_data_item()
+returns trigger
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  uid uuid := auth.uid();
+  lvl text;
+begin
+  if uid is null or public.has_permission('data.manage') then
+    return new;
+  end if;
+
+  select case
+    when exists (
+      select 1 from public.user_data_access uda
+      join public.data_items d on d.id=uda.item_id
+      where uda.user_id=uid
+        and uda.permission_level='full'
+        and d.id<>new.id
+        and d.collection_id is not distinct from new.collection_id
+        and (uda.expires_at is null or uda.expires_at>now())
+    ) then 'full'
+    else 'read'
+  end into lvl;
+
+  insert into public.user_data_access(user_id,item_id,permission_level,granted_by)
+  values(uid,new.id,lvl,uid)
+  on conflict(user_id,item_id) do update set permission_level=excluded.permission_level;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_grant_creator_access_to_new_data_item on public.data_items;
+create trigger trg_grant_creator_access_to_new_data_item
+after insert on public.data_items
+for each row execute function public.grant_creator_access_to_new_data_item();
+
+===== FILE: supabase/migrations/202608100003_software_r2_only.sql =====
+-- V4.1: Kho phần mềm lấy metadata từ Supabase và toàn bộ icon/cover/file tải từ R2.
+-- Không còn yêu cầu download_url khi dùng R2.
+alter table public.software_items alter column download_url drop not null;
+alter table public.software_items alter column download_source set default 'r2';
+
+-- Bất kỳ bản ghi cũ nào chưa có file R2 sẽ tạm ẩn để frontend không hiển thị dữ liệu/source cũ.
+update public.software_items
+set visible = false
+where download_media_id is null;
+
+===== FILE: supabase/migrations/202608100004_software_link_or_r2.sql =====
+-- V4.2: file cài đặt có thể dùng link ngoài hoặc Cloudflare R2.
+-- Metadata vẫn ở Supabase; source frontend không chứa file cài đặt.
+alter table public.software_items alter column download_source set default 'link';
+
+-- Nếu dữ liệu cũ đã có URL tải nhưng chưa có media R2, nhận diện lại là link.
+update public.software_items
+set download_source = 'link'
+where download_media_id is null
+  and nullif(btrim(download_url), '') is not null;
+
+-- Bảo vệ dữ liệu mới/cập nhật: phải có đúng đích tải tương ứng.
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'software_items_download_target_check'
+      and conrelid = 'public.software_items'::regclass
+  ) then
+    alter table public.software_items drop constraint software_items_download_target_check;
+  end if;
+
+  alter table public.software_items
+    add constraint software_items_download_target_check
+    check (
+      (download_source = 'link' and nullif(btrim(download_url), '') is not null)
+      or
+      (download_source = 'r2' and download_media_id is not null)
+    ) not valid;
+end $$;
+
+===== FILE: supabase/migrations/202608100005_legacy_import_cloudflare_redirects.sql =====
+-- NLKH V4.6: nhập dữ liệu legacy + redirect đa miền đồng bộ Cloudflare.
+
+alter table public.redirects
+  add column if not exists source_host text not null default 'nguyenlekhanhhoa.com',
+  add column if not exists include_subdomains boolean not null default false,
+  add column if not exists subpath_matching boolean not null default false,
+  add column if not exists preserve_path_suffix boolean not null default false,
+  add column if not exists cloudflare_synced_at timestamptz,
+  add column if not exists cloudflare_error text;
+
+update public.redirects
+set source_host='nguyenlekhanhhoa.com'
+where source_host is null or btrim(source_host)='';
+
+alter table public.redirects drop constraint if exists redirects_source_path_key;
+drop index if exists redirects_source_path_key;
+create unique index if not exists redirects_source_host_path_uq
+  on public.redirects (lower(source_host), source_path);
+
+-- Chuẩn hóa path để Admin/Cloudflare dùng ổn định.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname='redirects_source_path_check') then
+    alter table public.redirects add constraint redirects_source_path_check
+      check (left(source_path,1)='/' and position('..' in source_path)=0);
+  end if;
+end $$;
+
+-- Nhật ký nhập dữ liệu cũ để biết lần nào đã chạy, không chứa mật khẩu legacy.
+create table if not exists public.legacy_import_runs (
+  id uuid primary key default gen_random_uuid(),
+  source_repo text not null default 'koha2002/NLKH_KOHA',
+  status text not null default 'completed' check (status in ('completed','partial','failed')),
+  report jsonb not null default '{}'::jsonb,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table public.legacy_import_runs enable row level security;
+drop policy if exists legacy_import_runs_read on public.legacy_import_runs;
+drop policy if exists legacy_import_runs_manage on public.legacy_import_runs;
+create policy legacy_import_runs_read on public.legacy_import_runs for select to authenticated
+  using (public.has_permission('site.manage'));
+create policy legacy_import_runs_manage on public.legacy_import_runs for all to authenticated
+  using (public.has_permission('site.manage')) with check (public.has_permission('site.manage'));
+
+===== FILE: supabase/migrations/202608110001_v48_system_update.sql =====
+﻿-- V4.8: favicon metadata + folder-level Data/R2 permissions
+alter table public.site_settings add column if not exists favicon_size integer not null default 32;
+do $$ begin if not exists(select 1 from pg_constraint where conname='site_settings_favicon_size_check') then alter table public.site_settings add constraint site_settings_favicon_size_check check(favicon_size between 16 and 128); end if; end $$;
+alter table public.data_collections add column if not exists r2_prefix text;
+update public.data_collections set r2_prefix='data/'||slug where coalesce(r2_prefix,'')='';
+create table if not exists public.user_collection_access(
+ id uuid primary key default gen_random_uuid(),user_id uuid not null references public.profiles(id) on delete cascade,collection_id uuid not null references public.data_collections(id) on delete cascade,permission_level text not null default 'read' check(permission_level in('read','add','full')),granted_by uuid references public.profiles(id) on delete set null,expires_at timestamptz,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),unique(user_id,collection_id)
+);
+alter table public.user_collection_access enable row level security;
+drop policy if exists collection_access_self_read on public.user_collection_access;create policy collection_access_self_read on public.user_collection_access for select to authenticated using(user_id=auth.uid() or public.has_permission('data.manage'));
+drop policy if exists collection_access_manage on public.user_collection_access;create policy collection_access_manage on public.user_collection_access for all to authenticated using(public.has_permission('data.manage')) with check(public.has_permission('data.manage'));
+drop trigger if exists set_user_collection_access_updated_at on public.user_collection_access;create trigger set_user_collection_access_updated_at before update on public.user_collection_access for each row execute procedure public.set_updated_at();
+-- carry legacy item permissions to the whole collection, strongest level wins
+insert into public.user_collection_access(user_id,collection_id,permission_level,granted_by,expires_at)
+select uda.user_id,di.collection_id,case max(case uda.permission_level when 'full' then 3 when 'add' then 2 else 1 end) when 3 then 'full' when 2 then 'add' else 'read' end,max(uda.granted_by::text)::uuid,max(uda.expires_at)
+from public.user_data_access uda join public.data_items di on di.id=uda.item_id where di.collection_id is not null group by uda.user_id,di.collection_id
+on conflict(user_id,collection_id) do update set permission_level=excluded.permission_level,granted_by=excluded.granted_by,expires_at=excluded.expires_at;
+create or replace function public.get_my_collection_permissions() returns table(collection_id uuid,permission_level text,expires_at timestamptz) language sql stable security definer set search_path=public as $$ select uca.collection_id,uca.permission_level,uca.expires_at from public.user_collection_access uca where uca.user_id=auth.uid() and(uca.expires_at is null or uca.expires_at>now()); $$;
+revoke all on function public.get_my_collection_permissions() from public;grant execute on function public.get_my_collection_permissions() to authenticated;
+-- collection visibility includes direct folder grants
+drop policy if exists data_collections_read on public.data_collections;create policy data_collections_read on public.data_collections for select using((visible and visibility='public') or(visible and visibility='authenticated' and auth.uid() is not null) or exists(select 1 from public.user_collection_access u where u.collection_id=data_collections.id and u.user_id=auth.uid() and(u.expires_at is null or u.expires_at>now())) or public.has_permission('data.manage'));
+-- item read inherits collection grants; legacy per-item grants remain compatible
+drop policy if exists data_items_read on public.data_items;create policy data_items_read on public.data_items for select using((visible and visibility='public') or(visible and visibility='authenticated' and auth.uid() is not null) or exists(select 1 from public.user_collection_access u where u.collection_id=data_items.collection_id and u.user_id=auth.uid() and(u.expires_at is null or u.expires_at>now())) or exists(select 1 from public.user_data_access u where u.item_id=data_items.id and u.user_id=auth.uid() and(u.expires_at is null or u.expires_at>now())) or public.has_permission('data.manage'));
+drop policy if exists data_items_admin_insert on public.data_items;create policy data_items_admin_insert on public.data_items for insert to authenticated with check(public.has_permission('data.manage') or exists(select 1 from public.user_collection_access u where u.collection_id=data_items.collection_id and u.user_id=auth.uid() and u.permission_level in('add','full') and(u.expires_at is null or u.expires_at>now())));
+drop policy if exists data_items_update on public.data_items;create policy data_items_update on public.data_items for update to authenticated using(public.has_permission('data.manage') or exists(select 1 from public.user_collection_access u where u.collection_id=data_items.collection_id and u.user_id=auth.uid() and u.permission_level='full' and(u.expires_at is null or u.expires_at>now()))) with check(public.has_permission('data.manage') or exists(select 1 from public.user_collection_access u where u.collection_id=data_items.collection_id and u.user_id=auth.uid() and u.permission_level='full' and(u.expires_at is null or u.expires_at>now())));
+drop policy if exists data_items_delete on public.data_items;create policy data_items_delete on public.data_items for delete to authenticated using(public.has_permission('data.manage') or exists(select 1 from public.user_collection_access u where u.collection_id=data_items.collection_id and u.user_id=auth.uid() and u.permission_level='full' and(u.expires_at is null or u.expires_at>now())));
+-- media access also inherits folder grants
+drop policy if exists media_public_read on public.media_assets;create policy media_public_read on public.media_assets for select using(visibility='public' or(visibility='authenticated' and auth.uid() is not null) or owner_id=auth.uid() or exists(select 1 from public.data_items di join public.user_collection_access u on u.collection_id=di.collection_id where di.media_id=media_assets.id and u.user_id=auth.uid() and(u.expires_at is null or u.expires_at>now())) or exists(select 1 from public.data_items di join public.user_data_access u on u.item_id=di.id where di.media_id=media_assets.id and u.user_id=auth.uid() and(u.expires_at is null or u.expires_at>now())) or public.has_permission('media.manage') or public.has_permission('data.manage'));
+drop trigger if exists trg_grant_creator_access_to_new_data_item on public.data_items;
+
+===== FILE: supabase/migrations/202608110003_html_tool_combined.sql =====
+-- Admin HTML Tool runtime mode.
+alter table public.tools
+  add column if not exists tool_type text not null default 'source';
+
+update public.tools
+set tool_type = 'html'
+where coalesce(btrim(inline_html), '') <> '';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'tools_tool_type_check'
+      and conrelid = 'public.tools'::regclass
+  ) then
+    alter table public.tools
+      add constraint tools_tool_type_check check (tool_type in ('source','html'));
+  end if;
+end $$;
+
+-- Với HTML thuần, Admin không phải điền code/route/accent/status.
+-- Trigger chạy BEFORE INSERT/UPDATE để đáp ứng các NOT NULL hiện có của bảng tools.
+create or replace function public.nlkh_prepare_html_tool()
+returns trigger
+language plpgsql
+as $$
+begin
+  if coalesce(new.tool_type,'source') = 'html' then
+    new.slug := lower(trim(new.slug));
+    new.route := '/tools/' || new.slug;
+    new.code := upper(left(regexp_replace(new.slug, '[^a-zA-Z0-9]+', '', 'g'), 12));
+    if coalesce(new.code,'') = '' then new.code := 'HTML'; end if;
+    if coalesce(new.accent,'') = '' then new.accent := '#3157f6'; end if;
+    if coalesce(new.status,'') = '' then new.status := 'ready'; end if;
+    new.show_orbit := false;
+    new.requires_auth := false;
+    new.allowed_roles := '{}'::uuid[];
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_nlkh_prepare_html_tool on public.tools;
+create trigger trg_nlkh_prepare_html_tool
+before insert or update on public.tools
+for each row execute function public.nlkh_prepare_html_tool();
+
+===== FILE: supabase/migrations/20260812095600_admin_system_usage.sql =====
+create or replace function public.admin_system_usage()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  db_bytes bigint := 0;
+  st_bytes bigint := 0;
+  st_objects bigint := 0;
+begin
+  select pg_database_size(current_database()) into db_bytes;
+
+  begin
+    execute $q$
+      select
+        coalesce(sum(case
+          when coalesce(metadata->>'size','') ~ '^[0-9]+$'
+          then (metadata->>'size')::bigint else 0 end),0)::bigint,
+        count(*)::bigint
+      from storage.objects
+    $q$ into st_bytes, st_objects;
+  exception when others then
+    st_bytes := 0;
+    st_objects := 0;
+  end;
+
+  return jsonb_build_object(
+    'database_bytes',db_bytes,
+    'storage_bytes',st_bytes,
+    'storage_objects',st_objects
+  );
+end;
+$$;
+
+revoke all on function public.admin_system_usage() from public,anon,authenticated;
+grant execute on function public.admin_system_usage() to service_role;
+
+===== FILE: supabase/migrations/20260813083500_technology_news_ingest.sql =====
+-- Technology News V1
+-- Tạo bảng ingest RIÊNG. Không sửa cấu trúc news_articles hiện có.
+-- Worker chỉ ghi bài vào news_articles ở status='draft'.
+
+create table if not exists public.technology_news_ingest (
+  id uuid primary key default gen_random_uuid(),
+  source_name text not null,
+  source_url text not null unique,
+  source_title text,
+  source_published_at text,
+  relevance_score integer not null default 0,
+  article_id uuid null references public.news_articles(id) on delete set null,
+  ai_model text,
+  state text not null default 'seen'
+    check (state in ('seen','processing','draft_created','error','ignored')),
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists technology_news_ingest_created_idx
+  on public.technology_news_ingest (created_at desc);
+
+create index if not exists technology_news_ingest_state_idx
+  on public.technology_news_ingest (state, created_at desc);
+
+alter table public.technology_news_ingest enable row level security;
+
+-- Không tạo policy public.
+-- Browser/Admin hiện tại không cần truy cập bảng này.
+-- Worker dùng service_role qua secret server-side.
+
+===== FILE: supabase/migrations/20260813152000_news_article_media.sql =====
+create table if not exists public.news_article_media (
+  id uuid primary key default gen_random_uuid(),
+  article_id uuid not null references public.news_articles(id) on delete cascade,
+  media_id uuid not null references public.media_assets(id) on delete cascade,
+  role text not null default 'inline' check (role in ('cover','inline')),
+  sort_order integer not null default 0,
+  source_url text,
+  created_at timestamptz not null default now(),
+  unique(article_id,media_id)
+);
+
+create index if not exists news_article_media_article_idx
+  on public.news_article_media(article_id,sort_order);
+
+create index if not exists news_article_media_media_idx
+  on public.news_article_media(media_id);
+
+alter table public.news_article_media enable row level security;
+
+drop policy if exists "news_article_media_admin_read" on public.news_article_media;
+create policy "news_article_media_admin_read"
+on public.news_article_media for select
+to authenticated
+using (public.has_permission('news.manage'));
+
+===== FILE: supabase/migrations/20260813154500_news_article_auto_datetime.sql =====
+alter table public.news_articles
+  alter column published_at set default now();
+
+update public.news_articles
+set published_at = coalesce(created_at, now())
+where published_at is null;
+
+create or replace function public.ensure_news_article_datetime()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.published_at is null then
+    new.published_at := coalesce(new.created_at, now());
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_news_article_datetime on public.news_articles;
+
+create trigger trg_news_article_datetime
+before insert or update on public.news_articles
+for each row
+execute function public.ensure_news_article_datetime();
+
+===== FILE: supabase/migrations/20260813160000_technology_news_ingest_deleted_draft_reset.sql =====
+-- A deleted News article uses ON DELETE SET NULL on technology_news_ingest.article_id.
+-- Previously the ingest row could remain state='draft_created', so the Worker treated
+-- that source item as a permanent duplicate even though the draft no longer existed.
+
+-- Repair already-stale ingest rows now.
+update public.technology_news_ingest
+set
+  state = 'seen',
+  last_error = null,
+  updated_at = now()
+where state = 'draft_created'
+  and article_id is null;
+
+-- Keep future deletes from becoming permanent false duplicates.
+create or replace function public.reset_technology_news_ingest_after_article_delete()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if old.article_id is not null
+     and new.article_id is null
+     and new.state = 'draft_created' then
+    new.state := 'seen';
+    new.last_error := null;
+    new.updated_at := now();
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_reset_technology_news_ingest_after_article_delete
+on public.technology_news_ingest;
+
+create trigger trg_reset_technology_news_ingest_after_article_delete
+before update of article_id
+on public.technology_news_ingest
+for each row
+execute function public.reset_technology_news_ingest_after_article_delete();
+
+===== FILE: supabase/migrations/20260813163000_news_existing_draft_repair.sql =====
+update public.news_articles
+set published_at = coalesce(created_at, now())
+where status = 'draft'
+  and published_at is null;
+
+===== FILE: supabase/migrations/20260814090000_perf_access_presence.sql =====
+-- NLKH V2: catalog performance/access + visitor presence.
+
+create table if not exists public.tool_categories(
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  name_vi text not null,
+  name_en text not null default '',
+  description_vi text not null default '',
+  description_en text not null default '',
+  sort_order integer not null default 0,
+  visible boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.tools
+  add column if not exists category_id uuid references public.tool_categories(id) on delete set null;
+
+create index if not exists tools_category_sort_idx
+  on public.tools(category_id,sort_order);
+
+alter table public.tool_categories enable row level security;
+drop policy if exists tool_categories_public_read on public.tool_categories;
+create policy tool_categories_public_read on public.tool_categories
+  for select using(visible or public.has_permission('tools.manage'));
+drop policy if exists tool_categories_manage on public.tool_categories;
+create policy tool_categories_manage on public.tool_categories
+  for all to authenticated
+  using(public.has_permission('tools.manage'))
+  with check(public.has_permission('tools.manage'));
+
+alter table public.software_items
+  add column if not exists download_allowed_roles text[] not null default '{}';
+
+comment on column public.software_items.download_allowed_roles is
+  'Empty = every ACTIVE authenticated account. Non-empty = only these role_id values.';
+
+create table if not exists public.site_presence(
+  visitor_id uuid primary key,
+  user_id uuid references public.profiles(id) on delete set null,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  current_path text not null default '/',
+  page_views bigint not null default 1,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists site_presence_last_seen_idx
+  on public.site_presence(last_seen_at desc);
+create index if not exists site_presence_user_idx
+  on public.site_presence(user_id,last_seen_at desc);
+
+alter table public.site_presence enable row level security;
+drop policy if exists site_presence_admin_manage on public.site_presence;
+create policy site_presence_admin_manage on public.site_presence
+  for all to authenticated
+  using(public.has_permission('users.manage'))
+  with check(public.has_permission('users.manage'));
+
+create or replace function public.touch_site_presence(
+  p_visitor_id uuid,
+  p_path text
+)
+returns void
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  v_user uuid;
+  v_path text;
+begin
+  if p_visitor_id is null then return; end if;
+  v_path := left(coalesce(nullif(trim(p_path),''),'/'),300);
+
+  select p.id into v_user
+  from public.profiles p
+  where p.id=auth.uid()
+  limit 1;
+
+  insert into public.site_presence(
+    visitor_id,user_id,first_seen_at,last_seen_at,current_path,page_views,updated_at
+  )
+  values(
+    p_visitor_id,v_user,now(),now(),v_path,1,now()
+  )
+  on conflict(visitor_id) do update set
+    user_id=coalesce(excluded.user_id,public.site_presence.user_id),
+    last_seen_at=now(),
+    current_path=excluded.current_path,
+    page_views=public.site_presence.page_views+1,
+    updated_at=now();
+end;
+$$;
+
+revoke all on function public.touch_site_presence(uuid,text) from public;
+grant execute on function public.touch_site_presence(uuid,text) to anon,authenticated;
+
+===== FILE: supabase/migrations/20260814093000_google_drive_backup.sql =====
+-- NLKH Google Drive backup.
+-- Refresh token is encrypted by existing INTEGRATION_SECRETS_KEY before storage.
+
+create table if not exists public.backup_settings(
+  id text primary key default 'default' check(id='default'),
+  destination_folder_url text not null default '',
+  backup_mode text not null default 'database' check(backup_mode in('database','full')),
+  enabled boolean not null default false,
+  retention_days integer not null default 30 check(retention_days between 1 and 3650),
+  refresh_token_ciphertext text,
+  connected_email text,
+  connected_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.backup_settings(id)
+values('default')
+on conflict(id) do nothing;
+
+create table if not exists public.backup_oauth_states(
+  state text primary key,
+  user_id uuid references public.profiles(id) on delete cascade,
+  return_to text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.backup_runs(
+  id uuid primary key default gen_random_uuid(),
+  status text not null default 'running' check(status in('running','completed','failed')),
+  mode text not null default 'database' check(mode in('database','full')),
+  drive_folder_id text,
+  drive_r2_folder_id text,
+  database_file_id text,
+  manifest_file_id text,
+  r2_cursor text,
+  r2_uploaded integer not null default 0,
+  error_message text,
+  started_at timestamptz not null default now(),
+  completed_at timestamptz,
+  created_by uuid references public.profiles(id) on delete set null
+);
+
+create table if not exists public.backup_run_items(
+  run_id uuid not null references public.backup_runs(id) on delete cascade,
+  object_key text not null,
+  drive_file_id text not null,
+  size_bytes bigint not null default 0,
+  etag text,
+  created_at timestamptz not null default now(),
+  primary key(run_id,object_key)
+);
+
+alter table public.backup_settings enable row level security;
+alter table public.backup_oauth_states enable row level security;
+alter table public.backup_runs enable row level security;
+alter table public.backup_run_items enable row level security;
+
+drop policy if exists backup_settings_manage on public.backup_settings;
+create policy backup_settings_manage on public.backup_settings
+ for all to authenticated using(public.has_permission('api.manage')) with check(public.has_permission('api.manage'));
+
+drop policy if exists backup_runs_manage on public.backup_runs;
+create policy backup_runs_manage on public.backup_runs
+ for all to authenticated using(public.has_permission('api.manage')) with check(public.has_permission('api.manage'));
+
+drop policy if exists backup_run_items_manage on public.backup_run_items;
+create policy backup_run_items_manage on public.backup_run_items
+ for all to authenticated using(public.has_permission('api.manage')) with check(public.has_permission('api.manage'));
+
+-- OAuth state is intentionally service-role only. No client policy.
+
+alter table public.scheduled_api_jobs
+  drop constraint if exists scheduled_api_jobs_handler_check;
+alter table public.scheduled_api_jobs
+  add constraint scheduled_api_jobs_handler_check
+  check(handler in('integration','supabase_keepalive','website_backup')) not valid;
+alter table public.scheduled_api_jobs
+  validate constraint scheduled_api_jobs_handler_check;
+
+insert into public.scheduled_api_jobs(name,handler,interval_minutes,enabled,next_run_at,request_payload)
+select 'Google Drive website backup','website_backup',1440,false,now()+interval '1 day','{}'::jsonb
+where not exists(select 1 from public.scheduled_api_jobs where handler='website_backup');
+
+===== FILE: supabase/migrations/20260814100000_manual_full_backup.sql =====
+-- NLKH Manual Full Backup V1
+-- Manual-only backup helpers. Google Drive scheduler is disabled/removed.
+
+delete from public.scheduled_api_jobs where handler='website_backup';
+
+alter table public.scheduled_api_jobs
+  drop constraint if exists scheduled_api_jobs_handler_check;
+alter table public.scheduled_api_jobs
+  add constraint scheduled_api_jobs_handler_check
+  check(handler in('integration','supabase_keepalive')) not valid;
+alter table public.scheduled_api_jobs
+  validate constraint scheduled_api_jobs_handler_check;
+
+create or replace function public.manual_backup_table_inventory()
+returns table(table_name text,row_count bigint)
+language plpgsql
+security definer
+set search_path=pg_catalog,public
+as $$
+declare r record;
+declare c bigint;
+begin
+  for r in
+    select tablename
+    from pg_catalog.pg_tables
+    where schemaname='public'
+    order by tablename
+  loop
+    execute format('select count(*) from public.%I',r.tablename) into c;
+    table_name:=r.tablename;
+    row_count:=c;
+    return next;
+  end loop;
+end
+$$;
+
+create or replace function public.manual_backup_table_page(
+  p_table text,
+  p_offset integer default 0,
+  p_limit integer default 250
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path=pg_catalog,public
+as $$
+declare out_data jsonb;
+begin
+  if not exists(
+    select 1 from pg_catalog.pg_tables
+    where schemaname='public' and tablename=p_table
+  ) then
+    raise exception 'Unknown public table: %',p_table;
+  end if;
+
+  execute format(
+    'select coalesce(jsonb_agg(to_jsonb(q)),''[]''::jsonb)
+       from (
+         select * from public.%I
+         offset $1 limit $2
+       ) q',
+    p_table
+  )
+  into out_data
+  using greatest(0,p_offset),least(greatest(1,p_limit),500);
+
+  return coalesce(out_data,'[]'::jsonb);
+end
+$$;
+
+create or replace function public.manual_backup_storage_buckets()
+returns jsonb
+language sql
+security definer
+set search_path=pg_catalog,public
+as $$
+  select coalesce(jsonb_agg(to_jsonb(b) order by b.id),'[]'::jsonb)
+  from storage.buckets b
+$$;
+
+create or replace function public.manual_backup_storage_objects_page(
+  p_offset integer default 0,
+  p_limit integer default 250
+)
+returns jsonb
+language sql
+security definer
+set search_path=pg_catalog,public
+as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id',x.id,
+        'bucket_id',x.bucket_id,
+        'name',x.name,
+        'owner',x.owner,
+        'created_at',x.created_at,
+        'updated_at',x.updated_at,
+        'last_accessed_at',x.last_accessed_at,
+        'metadata',x.metadata
+      )
+      order by x.bucket_id,x.name
+    ),
+    '[]'::jsonb
+  )
+  from (
+    select o.*
+    from storage.objects o
+    order by o.bucket_id,o.name
+    offset greatest(0,p_offset)
+    limit least(greatest(1,p_limit),500)
+  ) x
+$$;
+
+create or replace function public.manual_backup_schema_metadata()
+returns jsonb
+language plpgsql
+security definer
+set search_path=pg_catalog,public
+as $$
+declare out_data jsonb;
+begin
+  select jsonb_build_object(
+    'generated_at',now(),
+    'database',current_database(),
+    'postgres_version',version(),
+
+    'columns',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.table_name,x.ordinal_position)
+      from (
+        select
+          table_schema,table_name,column_name,ordinal_position,
+          data_type,udt_schema,udt_name,is_nullable,column_default,
+          is_identity,identity_generation,is_generated,generation_expression
+        from information_schema.columns
+        where table_schema='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'constraints',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.table_name,x.constraint_name)
+      from (
+        select
+          c.relname as table_name,
+          con.conname as constraint_name,
+          con.contype as constraint_type,
+          pg_get_constraintdef(con.oid,true) as definition
+        from pg_constraint con
+        join pg_class c on c.oid=con.conrelid
+        join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'indexes',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.tablename,x.indexname)
+      from (
+        select schemaname,tablename,indexname,indexdef
+        from pg_indexes
+        where schemaname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'policies',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.tablename,x.policyname)
+      from (
+        select schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check
+        from pg_policies
+        where schemaname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'triggers',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.table_name,x.trigger_name)
+      from (
+        select
+          c.relname as table_name,
+          t.tgname as trigger_name,
+          pg_get_triggerdef(t.oid,true) as definition
+        from pg_trigger t
+        join pg_class c on c.oid=t.tgrelid
+        join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public' and not t.tgisinternal
+      ) x
+    ),'[]'::jsonb),
+
+    'functions',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.function_name)
+      from (
+        select
+          p.proname as function_name,
+          pg_get_function_identity_arguments(p.oid) as identity_arguments,
+          pg_get_functiondef(p.oid) as definition
+        from pg_proc p
+        join pg_namespace n on n.oid=p.pronamespace
+        where n.nspname='public' and p.prokind in('f','p')
+      ) x
+    ),'[]'::jsonb),
+
+    'sequences',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.sequencename)
+      from (
+        select
+          schemaname,sequencename,sequenceowner,data_type,start_value,
+          min_value,max_value,increment_by,cycle,cache_size,last_value
+        from pg_sequences
+        where schemaname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'extensions',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.extname)
+      from (
+        select e.extname,e.extversion,n.nspname as schema_name
+        from pg_extension e
+        join pg_namespace n on n.oid=e.extnamespace
+      ) x
+    ),'[]'::jsonb),
+
+    'migration_history',coalesce((
+      select jsonb_agg(to_jsonb(m) order by m.version)
+      from supabase_migrations.schema_migrations m
+    ),'[]'::jsonb)
+  )
+  into out_data;
+
+  return out_data;
+end
+$$;
+
+revoke all on function public.manual_backup_table_inventory() from public,anon,authenticated;
+revoke all on function public.manual_backup_table_page(text,integer,integer) from public,anon,authenticated;
+revoke all on function public.manual_backup_storage_buckets() from public,anon,authenticated;
+revoke all on function public.manual_backup_storage_objects_page(integer,integer) from public,anon,authenticated;
+revoke all on function public.manual_backup_schema_metadata() from public,anon,authenticated;
+
+grant execute on function public.manual_backup_table_inventory() to service_role;
+grant execute on function public.manual_backup_table_page(text,integer,integer) to service_role;
+grant execute on function public.manual_backup_storage_buckets() to service_role;
+grant execute on function public.manual_backup_storage_objects_page(integer,integer) to service_role;
+grant execute on function public.manual_backup_schema_metadata() to service_role;
+
+===== FILE: supabase/migrations/20260814103000_manual_full_backup_v2.sql =====
+-- NLKH Manual Full Backup V2
+-- Deterministic paging + richer restore metadata.
+
+create or replace function public.manual_backup_table_page(
+  p_table text,
+  p_offset integer default 0,
+  p_limit integer default 250
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path=pg_catalog,public
+as $$
+declare out_data jsonb;
+declare order_sql text;
+begin
+  if not exists(
+    select 1
+    from pg_catalog.pg_tables
+    where schemaname='public' and tablename=p_table
+  ) then
+    raise exception 'Unknown public table: %',p_table;
+  end if;
+
+  select string_agg(format('%I',a.attname),',' order by k.ord)
+  into order_sql
+  from pg_index i
+  cross join lateral unnest(i.indkey) with ordinality as k(attnum,ord)
+  join pg_attribute a on a.attrelid=i.indrelid and a.attnum=k.attnum
+  join pg_class c on c.oid=i.indrelid
+  join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public'
+    and c.relname=p_table
+    and i.indisprimary;
+
+  if coalesce(order_sql,'')<>'' then
+    execute format(
+      'select coalesce(jsonb_agg(to_jsonb(q)),''[]''::jsonb)
+       from (
+         select *
+         from public.%I
+         order by %s
+         offset $1 limit $2
+       ) q',
+      p_table,order_sql
+    )
+    into out_data
+    using greatest(0,p_offset),least(greatest(1,p_limit),500);
+  else
+    execute format(
+      'select coalesce(jsonb_agg(to_jsonb(q)),''[]''::jsonb)
+       from (
+         select *
+         from public.%I t
+         order by to_jsonb(t)::text
+         offset $1 limit $2
+       ) q',
+      p_table
+    )
+    into out_data
+    using greatest(0,p_offset),least(greatest(1,p_limit),500);
+  end if;
+
+  return coalesce(out_data,'[]'::jsonb);
+end
+$$;
+
+create or replace function public.manual_backup_schema_metadata()
+returns jsonb
+language plpgsql
+security definer
+set search_path=pg_catalog,public
+as $$
+declare out_data jsonb;
+begin
+  select jsonb_build_object(
+    'generated_at',now(),
+    'database',current_database(),
+    'postgres_version',version(),
+
+    'tables',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.table_name)
+      from (
+        select
+          c.relname as table_name,
+          c.relrowsecurity as rls_enabled,
+          c.relforcerowsecurity as rls_forced,
+          obj_description(c.oid,'pg_class') as comment
+        from pg_class c
+        join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public' and c.relkind in('r','p')
+      ) x
+    ),'[]'::jsonb),
+
+    'columns',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.table_name,x.ordinal_position)
+      from (
+        select
+          table_schema,table_name,column_name,ordinal_position,
+          data_type,udt_schema,udt_name,is_nullable,column_default,
+          is_identity,identity_generation,is_generated,generation_expression
+        from information_schema.columns
+        where table_schema='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'constraints',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.table_name,x.constraint_name)
+      from (
+        select
+          c.relname as table_name,
+          con.conname as constraint_name,
+          con.contype as constraint_type,
+          pg_get_constraintdef(con.oid,true) as definition
+        from pg_constraint con
+        join pg_class c on c.oid=con.conrelid
+        join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'indexes',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.tablename,x.indexname)
+      from (
+        select schemaname,tablename,indexname,indexdef
+        from pg_indexes
+        where schemaname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'policies',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.tablename,x.policyname)
+      from (
+        select schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check
+        from pg_policies
+        where schemaname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'triggers',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.table_name,x.trigger_name)
+      from (
+        select
+          c.relname as table_name,
+          t.tgname as trigger_name,
+          pg_get_triggerdef(t.oid,true) as definition
+        from pg_trigger t
+        join pg_class c on c.oid=t.tgrelid
+        join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public' and not t.tgisinternal
+      ) x
+    ),'[]'::jsonb),
+
+    'functions',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.function_name,x.identity_arguments)
+      from (
+        select
+          p.proname as function_name,
+          pg_get_function_identity_arguments(p.oid) as identity_arguments,
+          pg_get_functiondef(p.oid) as definition
+        from pg_proc p
+        join pg_namespace n on n.oid=p.pronamespace
+        where n.nspname='public' and p.prokind in('f','p')
+      ) x
+    ),'[]'::jsonb),
+
+    'views',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.viewname)
+      from (
+        select schemaname,viewname,viewowner,definition
+        from pg_views
+        where schemaname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'materialized_views',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.matviewname)
+      from (
+        select schemaname,matviewname,matviewowner,tablespace,hasindexes,ispopulated,definition
+        from pg_matviews
+        where schemaname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'sequences',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.sequencename)
+      from (
+        select
+          schemaname,sequencename,sequenceowner,data_type,start_value,
+          min_value,max_value,increment_by,cycle,cache_size,last_value
+        from pg_sequences
+        where schemaname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'enums',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.type_name,x.sort_order)
+      from (
+        select
+          t.typname as type_name,
+          e.enumsortorder as sort_order,
+          e.enumlabel as value
+        from pg_type t
+        join pg_namespace n on n.oid=t.typnamespace
+        join pg_enum e on e.enumtypid=t.oid
+        where n.nspname='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'table_grants',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.table_name,x.grantee,x.privilege_type)
+      from (
+        select table_schema,table_name,grantor,grantee,privilege_type,is_grantable
+        from information_schema.table_privileges
+        where table_schema='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'routine_grants',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.routine_name,x.grantee,x.privilege_type)
+      from (
+        select routine_schema,routine_name,grantor,grantee,privilege_type,is_grantable
+        from information_schema.routine_privileges
+        where routine_schema='public'
+      ) x
+    ),'[]'::jsonb),
+
+    'extensions',coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.extname)
+      from (
+        select e.extname,e.extversion,n.nspname as schema_name
+        from pg_extension e
+        join pg_namespace n on n.oid=e.extnamespace
+      ) x
+    ),'[]'::jsonb),
+
+    'migration_history',coalesce((
+      select jsonb_agg(to_jsonb(m) order by m.version)
+      from supabase_migrations.schema_migrations m
+    ),'[]'::jsonb)
+  )
+  into out_data;
+
+  return out_data;
+end
+$$;
+
+revoke all on function public.manual_backup_table_page(text,integer,integer) from public,anon,authenticated;
+revoke all on function public.manual_backup_schema_metadata() from public,anon,authenticated;
+grant execute on function public.manual_backup_table_page(text,integer,integer) to service_role;
+grant execute on function public.manual_backup_schema_metadata() to service_role;
+
+===== FILE: supabase/migrations/20260814133000_presence_v3_reliable.sql =====
+-- NLKH Presence V3 - reliable website heartbeat.
+-- Separate RPC name avoids stale PostgREST/function-cache issues from the older implementation.
+
+create or replace function public.touch_site_presence_v3(
+  p_visitor_id uuid,
+  p_path text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  v_user uuid;
+  v_path text;
+  v_now timestamptz := now();
+begin
+  if p_visitor_id is null then
+    return jsonb_build_object('ok',false,'error','missing visitor id');
+  end if;
+
+  v_path := left(coalesce(nullif(trim(p_path),''),'/'),300);
+
+  select p.id
+    into v_user
+  from public.profiles p
+  where p.id = auth.uid()
+  limit 1;
+
+  insert into public.site_presence(
+    visitor_id,
+    user_id,
+    first_seen_at,
+    last_seen_at,
+    current_path,
+    page_views,
+    updated_at
+  )
+  values(
+    p_visitor_id,
+    v_user,
+    v_now,
+    v_now,
+    v_path,
+    1,
+    v_now
+  )
+  on conflict(visitor_id) do update set
+    user_id = coalesce(excluded.user_id, public.site_presence.user_id),
+    last_seen_at = v_now,
+    current_path = excluded.current_path,
+    page_views = public.site_presence.page_views + 1,
+    updated_at = v_now;
+
+  return jsonb_build_object(
+    'ok', true,
+    'visitor_id', p_visitor_id,
+    'user_id', v_user,
+    'path', v_path,
+    'server_time', v_now
+  );
+end;
+$$;
+
+revoke all on function public.touch_site_presence_v3(uuid,text) from public;
+grant execute on function public.touch_site_presence_v3(uuid,text) to anon, authenticated;
+
+===== FILE: supabase/migrations/20260817105000_detailed_web_cv.sql =====
+-- Detailed WEB CV for nguyenlekhanhhoa.com
+-- 2026-08-17
+-- The short PDF résumé remains separate.
+-- DO NOT modify pdf_url / pdf_media_id / pdf_access / photo / theme here.
+
+do $$
+declare
+  p uuid;
+begin
+  select id
+  into p
+  from public.cv_profiles
+  where published = true
+  order by updated_at desc
+  limit 1;
+
+  if p is null then
+    select id
+    into p
+    from public.cv_profiles
+    order by updated_at desc
+    limit 1;
+  end if;
+
+  if p is null then
+    raise exception 'No cv_profiles row exists';
+  end if;
+
+  update public.cv_profiles
+  set
+    name = 'Nguyễn Lê Khánh Hòa',
+    role_vi = 'Kỹ sư điện · Tự động hóa hệ thống điện',
+    role_en = 'Electrical Engineer · Power System Automation',
+    headline_vi = 'Kỹ sư điện • Tự động hóa hệ thống điện',
+    headline_en = 'Electrical Engineer • Power System Automation',
+    summary_vi = 'Kỹ sư điện có nền tảng Tự động hóa Hệ thống điện, kinh nghiệm từ thí nghiệm – bảo dưỡng thiết bị điện, thiết kế hệ thống bảo vệ/tủ bảng đến chuẩn bị dự án, bóc tách khối lượng, mua sắm vật tư và nghiệm thu. Đồng thời có kinh nghiệm vận hành website, thương mại điện tử và quản lý kỹ thuật.',
+    summary_en = 'Electrical engineer with a Power System Automation background and hands-on experience spanning electrical testing and maintenance, protection and control panel design, project preparation, quantity take-off, procurement and acceptance documentation. Also experienced in website operations, e-commerce and technical management.',
+    birth_date = '15/05/2002',
+    address_vi = 'Hà Nội, Việt Nam',
+    address_en = 'Hanoi, Vietnam',
+    phone = '+84 343 43 45 84',
+    email = 'Khanhhoa2002.hh@gmail.com',
+    published = true,
+    updated_at = now()
+  where id = p;
+
+  -- Replace only the website detail sections.
+  delete from public.cv_sections
+  where profile_id = p;
+
+  -- EDUCATION
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'education',
+    'Tự động hóa Hệ thống điện',
+    'Power System Automation',
+    'Tốt nghiệp loại Giỏi',
+    'Graduated with Good honors',
+    '2020 – 2025',
+    '',
+    '',
+    'Trường Đại học Điện lực',
+    'Electric Power University',
+    null, 10, true
+  );
+
+  -- CERTIFICATES / LICENSES
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values
+  (
+    p, 'certificate',
+    'Giấy phép lái xe A1, B2',
+    'A1, B2 Driving Licenses',
+    'Do Bộ Giao thông Vận tải cấp',
+    'Issued by the transport authority',
+    '2020',
+    '', '',
+    '', '',
+    null, 20, true
+  ),
+  (
+    p, 'certificate',
+    'Chứng chỉ Tin học văn phòng ICDL',
+    'ICDL Office Computing Certificate',
+    'International Certification of Digital Literacy',
+    'International Certification of Digital Literacy',
+    '2025',
+    '', '',
+    'ICDL', 'ICDL',
+    null, 21, true
+  );
+
+  -- CORE CAPABILITIES
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values
+  (
+    p, 'skill',
+    'Thí nghiệm & kiểm định thiết bị điện',
+    'Electrical Testing & Inspection',
+    '', '', '',
+    '', '', '', '',
+    null, 30, true
+  ),
+  (
+    p, 'skill',
+    'Thiết kế bảo vệ & tủ bảng điện',
+    'Protection & Control Panel Design',
+    '', '', '',
+    '', '', '', '',
+    null, 31, true
+  ),
+  (
+    p, 'skill',
+    'Hệ thống nhị thứ TBA 110–500kV',
+    '110–500kV Substation Secondary Systems',
+    '', '', '',
+    '', '', '', '',
+    null, 32, true
+  ),
+  (
+    p, 'skill',
+    'Bóc tách khối lượng & quản lý vật tư',
+    'Quantity Take-off & Material Management',
+    '', '', '',
+    '', '', '', '',
+    null, 33, true
+  ),
+  (
+    p, 'skill',
+    'Hồ sơ dự thầu, nghiệm thu & CBDA',
+    'Tendering, Acceptance & Project Preparation',
+    '', '', '',
+    '', '', '', '',
+    null, 34, true
+  ),
+  (
+    p, 'skill',
+    'Website & thương mại điện tử',
+    'Website & E-commerce Operations',
+    '', '', '',
+    '', '', '', '',
+    null, 35, true
+  );
+
+  -- EXPERIENCE 1: CURRENT
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'experience',
+    'Kỹ sư điện phòng CBDA',
+    'Electrical Engineer – Project Preparation Department',
+    'Chuẩn bị dự án · Vật tư · Nhị thứ · Nghiệm thu',
+    'Project preparation · Procurement · Secondary systems · Acceptance',
+    '11/2025 – Nay',
+$cv$
+• Lên khối lượng vật tư phục vụ thi công, lắp đặt các hệ thống điện: solar, hệ thống nhị thứ, công tơ và các hạng mục liên quan.
+• Thi công, lắp đặt hệ thống nhị thứ cho trạm biến áp 110kV.
+• Hỗ trợ giám sát và hướng dẫn đội thí nghiệm thầu phụ bên ngoài công ty.
+• Phối hợp khảo giá thực tế để xây dựng giá cho hồ sơ dự thầu.
+• Lập danh sách thiết bị cho các trạm biến áp 500kV triển khai mới.
+• Hỗ trợ mua sắm thiết bị, vật tư và theo dõi các đầu việc phục vụ triển khai.
+• Thực hiện thủ tục và hồ sơ nghiệm thu cho dự án.
+## Công trình đã tham gia
+◦ Nhà máy Điện mặt trời Issyk-Kul – Giai đoạn 1.
+◦ Trạm biến áp 110kV cho Nhà máy Điện mặt trời Issyk-Kul – Giai đoạn 1.
+◦ Trạm biến áp 220kV Yên Dũng – Bắc Giang.
+◦ Trạm biến áp 110kV Bảo Thạnh.
+$cv$,
+$cv$
+• Prepare material quantity take-offs for electrical installation scopes including solar, secondary systems, metering and related packages.
+• Install secondary systems for 110kV substations.
+• Support supervision and technical guidance for external testing subcontractors.
+• Coordinate market-price research for tender cost preparation.
+• Prepare equipment lists for newly developed 500kV substations.
+• Support equipment/material procurement and deployment activities.
+• Prepare project acceptance procedures and documentation.
+## Selected projects
+◦ Issyk-Kul Solar Power Plant – Phase 1.
+◦ 110kV substation for Issyk-Kul Solar Power Plant – Phase 1.
+◦ 220kV Yen Dung Substation – Bac Giang.
+◦ 110kV Bao Thanh Substation.
+$cv$,
+    'Công ty TNHH Công nghệ Việt',
+    'Viet Technology Co., Ltd.',
+    null, 100, true
+  );
+
+  -- EXPERIENCE 2
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'experience',
+    'Kỹ sư thiết kế',
+    'Design Engineer',
+    'Thiết kế bảo vệ · Tủ bảng · Hồ sơ kỹ thuật',
+    'Protection design · Panels · Technical documentation',
+    '06/2025 – 11/2025',
+$cv$
+• Kiểm tra phần đáp ứng kỹ thuật của thiết bị trong hồ sơ thầu do phòng kinh doanh lập.
+• Lập khối lượng vật tư dự trù cho dự án trước giai đoạn triển khai.
+• Thiết kế tủ bảo vệ và hệ thống bảo vệ cho trạm biến áp 110kV.
+• Phối hợp cùng bộ phận KCS test tủ bảng điện trước khi bàn giao thiết bị cho chủ đầu tư.
+## Công trình đã tham gia
+◦ Thiết kế trạm biến áp 110kV Đông Triều – ngăn lộ mở rộng đi đường dây Tràng Bạch – Thủy Nguyên.
+◦ Thiết kế hệ thống tủ SC cho trạm biến áp 110kV Gia Nghĩa.
+$cv$,
+$cv$
+• Review equipment technical-compliance sections in tender documentation prepared by the sales team.
+• Prepare preliminary material quantities before project execution.
+• Design protection panels and protection systems for 110kV substations.
+• Coordinate with QC/KCS to test electrical panels before delivery to the investor.
+## Selected projects
+◦ 110kV Dong Trieu Substation – extension bay for the Trang Bach – Thuy Nguyen line.
+◦ SC panel system for 110kV Gia Nghia Substation.
+$cv$,
+    'Công ty Cổ phần Entec Kỹ thuật Năng lượng',
+    'Entec Energy Engineering JSC',
+    null, 101, true
+  );
+
+  -- EXPERIENCE 3
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'experience',
+    'Thí nghiệm viên',
+    'Electrical Testing Engineer',
+    'Thí nghiệm · Bảo dưỡng · Thi công điện',
+    'Testing · Maintenance · Electrical installation',
+    '05/2024 – 06/2025',
+$cv$
+• Kiểm định máy biến áp, máy cắt, dao tiếp địa và điện trở tiếp địa tại các trạm biến áp.
+• Thí nghiệm định kỳ máy biến áp 110kV và các thiết bị trong sân trạm.
+• Thi công cáp ngầm, đấu nối thiết bị điện và phối hợp quản lý công việc tại công trình.
+• Thực hiện hồ sơ nghiệm thu theo quy trình cho công trình thuộc GENCO2 – Nhiệt điện Hải Phòng.
+## Công trình thí nghiệm / bảo dưỡng tiêu biểu
+◦ Thí nghiệm máy biến áp khô lắp mới trước khi vận hành tại Công ty Tonly; vệ sinh, kiểm tra TI và máy cắt sau bão 09/2024 tại Quảng Ninh.
+◦ Thí nghiệm máy biến áp AT4 Nhiệt điện Cẩm Phả trước và sau bảo dưỡng.
+◦ Thí nghiệm định kỳ và bảo dưỡng 13 trạm biến áp turbine điện gió Phương Mai.
+◦ Bảo dưỡng định kỳ sân trạm 220kV Điện mặt trời Thiên Thiên Tân 1.4 và 14 trạm kiosk.
+◦ Thí nghiệm định kỳ sân trạm 110kV Phước Hữu – Duyên Hải 1 và 9 trạm turbine.
+◦ Thi công lắp đặt, thí nghiệm trạm 110kV Cộng Hòa 2 – Hải Dương.
+◦ Thí nghiệm định kỳ tổ máy 2 T2/TD92 Nhiệt điện Đông Triều.
+◦ Thay mới, thí nghiệm phòng DC1 và DC2 Nhiệt điện Đông Triều.
+◦ Thí nghiệm, bảo dưỡng định kỳ tổ máy 1 và các ngăn kéo 6,6kV Nhiệt điện Uông Bí.
+◦ Thí nghiệm, bảo dưỡng định kỳ toàn bộ tổ máy số 2 Nhiệt điện Hải Phòng; thực hiện hồ sơ lĩnh vật tư, quản lý tồn kho và hồ sơ nghiệm thu kỹ thuật – tài chính cho gói sửa chữa lớn năm 2024.
+## Thiết bị đã sử dụng
+◦ Kyoritsu 3125A – đo điện trở cách điện (thành thạo).
+◦ ZC302 và HYHL-200A – đo điện trở tiếp xúc (thành thạo).
+◦ Kvtester PCT 386I Analyzer – hợp bộ Analyzer (thành thạo).
+◦ HYBC-901 – cầu đo tỉ số biến (thành thạo).
+◦ HZ-3320D – cầu đo điện trở một chiều (thành thạo).
+◦ ZC221 – cầu đo tang; ZC-300B – hợp bộ chụp sóng máy cắt (đã sử dụng).
+◦ YDJZ-50/70 và TC-YDJ-YDJZ 200kV – hợp bộ thử cao áp (đã sử dụng).
+$cv$,
+$cv$
+• Inspect transformers, circuit breakers, earthing switches and grounding resistance at substations.
+• Perform periodic testing of 110kV transformers and switchyard equipment.
+• Install underground cables, connect electrical equipment and coordinate site work.
+• Prepare acceptance documentation for GENCO2 projects at Hai Phong Thermal Power Plant.
+## Selected testing / maintenance projects
+◦ Commissioning tests for a newly installed dry transformer at Tonly; post-storm inspection of CTs and circuit breakers in Quang Ninh (09/2024).
+◦ Pre- and post-maintenance testing of AT4 transformer at Cam Pha Thermal Power Plant.
+◦ Periodic testing and maintenance for 13 transformer stations at Phuong Mai Wind Farm.
+◦ Periodic maintenance of the 220kV switchyard at Thien Thien Tan 1.4 Solar Plant and 14 kiosk substations.
+◦ Periodic testing at 110kV Phuoc Huu – Duyen Hai 1 switchyard and 9 turbine substations.
+◦ Installation and testing for 110kV Cong Hoa 2 Substation – Hai Duong.
+◦ Periodic testing of Unit 2 T2/TD92 at Dong Trieu Thermal Power Plant.
+◦ Replacement and testing of DC1 and DC2 rooms at Dong Trieu Thermal Power Plant.
+◦ Periodic testing and maintenance of Unit 1 and 6.6kV drawers at Uong Bi Thermal Power Plant.
+◦ Periodic testing and maintenance of Unit 2 at Hai Phong Thermal Power Plant, including material issue records, inventory management, and technical/financial acceptance documentation for the 2024 major-overhaul package.
+## Test equipment used
+◦ Kyoritsu 3125A insulation resistance tester – proficient.
+◦ ZC302 and HYHL-200A contact resistance testers – proficient.
+◦ Kvtester PCT 386I Analyzer – proficient.
+◦ HYBC-901 transformer ratio tester – proficient.
+◦ HZ-3320D DC resistance tester – proficient.
+◦ ZC221 tan-delta tester and ZC-300B circuit-breaker timing/waveform set – working experience.
+◦ YDJZ-50/70 and TC-YDJ-YDJZ 200kV high-voltage test sets – working experience.
+$cv$,
+    'Công ty TNHH MTV Đo lường Thí nghiệm điện miền Bắc',
+    'Northern Electrical Measurement & Testing Co., Ltd.',
+    null, 102, true
+  );
+
+  -- EXPERIENCE 4
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'experience',
+    'Kỹ thuật viên – Quản lý (remote)',
+    'Technician – Remote Operations Manager',
+    'Kỹ thuật · Website · TMĐT · Vận hành',
+    'Technical service · Website · E-commerce · Operations',
+    '06/2023 – 10/2025',
+$cv$
+• Tiếp nhận bảo hành sản phẩm, thiết bị và vật tư; kiểm tra tình trạng hỏng hóc.
+• Sửa chữa bo mạch và đấu nối lại các đường mạch bị đứt đoạn.
+• Kiểm soát quỹ cửa hàng và lập bảng lương nhân viên cuối tháng.
+• Thiết kế website bán hàng hoangmaimobile.vn, xây dựng dữ liệu sao lưu, kiểm tra chức năng và xử lý lỗi tồn đọng.
+• Tích hợp vận hành giữa Meta/Facebook và Shopee Seller; quản lý Zalo OA và các chức năng liên quan.
+• Viết nội dung quảng cáo sản phẩm mới, lên lịch và phối hợp chạy chiến dịch.
+• Quản lý dữ liệu sản phẩm và bán hàng trên Shopee, Lazada, Tiki và TikTok.
+• Theo dõi tồn kho, tính thời điểm nhập hàng để duy trì khả năng cung ứng.
+• Theo dõi giá thị trường, điều chỉnh giá bán để tăng khả năng cạnh tranh.
+• Làm việc trực tiếp với nhà cung cấp về vấn đề kỹ thuật, số lượng và hàng hóa.
+$cv$,
+$cv$
+• Handle product/equipment warranty intake and fault inspection.
+• Repair circuit boards and reconnect damaged PCB traces.
+• Control store cash flow and prepare monthly payroll.
+• Design and operate hoangmaimobile.vn, maintain backups, test website functions and resolve outstanding issues.
+• Integrate Meta/Facebook workflows with Shopee Seller and manage Zalo OA.
+• Write advertising content for new products and schedule campaign activities.
+• Manage product data and sales across Shopee, Lazada, Tiki and TikTok.
+• Monitor inventory and determine replenishment timing to maintain availability.
+• Monitor market prices and adjust selling prices for competitiveness.
+• Work directly with suppliers on technical issues, quantities and merchandise.
+$cv$,
+    'Hoàng Mai Mobile',
+    'Hoang Mai Mobile',
+    'https://hoangmaimobile.vn',
+    103, true
+  );
+
+  -- EXPERIENCE 5
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'experience',
+    'Kỹ thuật viên',
+    'Technician',
+    'Thiết bị di động · Laptop · Bán hàng kỹ thuật',
+    'Mobile devices · Laptops · Technical sales',
+    '09/2021 – 06/2023',
+$cv$
+• Tiếp nhận bảo hành sản phẩm.
+• Xử lý các lỗi cơ bản về phần mềm và phần cứng.
+• Thay pin iPhone, vệ sinh và sửa chữa các lỗi nhẹ của linh kiện bên trong điện thoại.
+• Cài đặt, kiểm tra và sửa chữa laptop.
+• Tìm hiểu chức năng của các sản phẩm công nghệ mới để hỗ trợ tư vấn khách hàng.
+• Tư vấn bán hàng thiết bị điện tử.
+• Kiểm kê hàng hóa và kiểm quỹ cửa hàng.
+$cv$,
+$cv$
+• Handle product warranty intake.
+• Troubleshoot common software and hardware issues.
+• Replace iPhone batteries, clean devices and repair minor internal component faults.
+• Install, inspect and repair laptops.
+• Study new technology products to support customer consultation.
+• Provide technical sales consultation for electronic devices.
+• Perform inventory checks and store cash reconciliation.
+$cv$,
+    'Công ty Cổ phần Xây dựng và Đầu tư Thương mại Hoàng Hà',
+    'Hoang Ha Construction & Trading Investment JSC',
+    null, 104, true
+  );
+end $$;
+
+===== FILE: supabase/migrations/20260817111500_restore_cv_left_column.sql =====
+-- Restore CV LEFT COLUMN exactly from the profile version before detailed-web CV.
+-- Right-side experience remains detailed.
+-- Short CV PDF fields are untouched.
+
+do $$
+declare
+  p uuid;
+begin
+  select id into p
+  from public.cv_profiles
+  where published = true
+  order by updated_at desc
+  limit 1;
+
+  if p is null then
+    select id into p
+    from public.cv_profiles
+    order by updated_at desc
+    limit 1;
+  end if;
+
+  if p is null then
+    raise exception 'No cv_profiles row exists';
+  end if;
+
+  update public.cv_profiles
+  set
+    birth_date = '15/05/2002',
+    address_vi = 'Thanh Xu├ón, H├á Nß╗Öi',
+    address_en = 'Thanh Xuan, Hanoi',
+    phone = '0343 434 584',
+    email = 'khanhhoa2002.hh@gmail.com',
+    updated_at = now()
+  where id = p;
+
+  delete from public.cv_sections
+  where profile_id = p
+    and section_type in ('education','certificate','skill');
+
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'education',
+    'Tß╗▒ ─æß╗Öng h├│a Hß╗ç thß╗æng ─æiß╗çn', 'Power System Automation',
+    'Kß╗╣ s╞░', 'Engineer''s Degree',
+    '2020ΓÇö2025',
+    '', '',
+    'Tr╞░ß╗¥ng ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c', 'Electric Power University',
+    null,
+    10, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'education',
+    'Quß║ún trß╗ï kinh doanh', 'Business Administration',
+    'Hß╗ç cß╗¡ nh├ón - GPA 3.86', 'Bachelor''s Degree - GPA 3.86',
+    '2025-2028',
+    '', '',
+    '─Éß║íi hß╗ìc Th╞░╞íng Mß║íi', 'Thuongmai University',
+    null,
+    11, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'education',
+    'Kß╗╣ thuß║¡t n─âng l╞░ß╗úng', 'Energy Engineering',
+    'Thß║íc Sß╗╣', 'Master''s Degree',
+    '2025-2027',
+    '', '',
+    'Tr╞░ß╗¥ng ─æß║íi hß╗ìc ─Éiß╗çn Lß╗▒c', 'Electric Power University',
+    null,
+    12, true
+  );
+
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'certificate',
+    'Tiß║┐ng Anh B1 - ─Éß║íi hß╗ìc ─Éiß╗çn lß╗▒c (2023)', 'B1 English - Electric Power University (2023)',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    20, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'certificate',
+    'ICDL 5 kß╗╣ n─âng (2025)', 'ICDL 5 modules (2025)',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    21, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'certificate',
+    'Giß║Ñy ph├⌐p l├íi xe hß║íng B2', 'B2 driving license',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    22, true
+  );
+
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'AutoCAD', 'AutoCAD',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    30, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'EPLAN', 'EPLAN',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    31, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'Microsoft Excel', 'Microsoft Excel',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    32, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'Microsoft Word', 'Microsoft Word',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    33, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    '─Éß╗ìc t├ái liß╗çu kß╗╣ thuß║¡t', 'Technical documentation',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    34, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'Tiß║┐ng Anh B1', 'B1 English',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    35, true
+  );
+end
+$$;
+
+===== FILE: supabase/migrations/20260817113000_fix_cv_left_utf8.sql =====
+-- V4 robust UTF-8 repair for the OLD LEFT COLUMN only.
+-- Detailed experience and short CV PDF are intentionally untouched.
+
+do $$
+declare
+  p uuid;
+begin
+  select id into p
+  from public.cv_profiles
+  where published = true
+  order by updated_at desc
+  limit 1;
+
+  if p is null then
+    select id into p
+    from public.cv_profiles
+    order by updated_at desc
+    limit 1;
+  end if;
+
+  if p is null then
+    raise exception 'No cv_profiles row exists';
+  end if;
+
+  update public.cv_profiles
+  set
+    birth_date = '15/05/2002',
+    address_vi = 'Thanh Xuân, Hà Nội',
+    address_en = 'Thanh Xuan, Hanoi',
+    phone = '0343 434 584',
+    email = 'khanhhoa2002.hh@gmail.com',
+    updated_at = now()
+  where id = p;
+
+  delete from public.cv_sections
+  where profile_id = p
+    and section_type in ('education','certificate','skill');
+
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'education',
+    'Tự động hóa Hệ thống điện', 'Power System Automation',
+    'Kỹ sư', 'Engineer''s Degree',
+    '2020—2025',
+    '', '',
+    'Trường Đại học Điện lực', 'Electric Power University',
+    null,
+    10, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'education',
+    'Quản trị kinh doanh', 'Business Administration',
+    'Hệ cử nhân - GPA 3.86', 'Bachelor''s Degree - GPA 3.86',
+    '2025-2028',
+    '', '',
+    'Đại học Thương Mại', 'Thuongmai University',
+    null,
+    11, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'education',
+    'Kỹ thuật năng lượng', 'Energy Engineering',
+    'Thạc Sỹ', 'Master''s Degree',
+    '2025-2027',
+    '', '',
+    'Trường đại học Điện Lực', 'Electric Power University',
+    null,
+    12, true
+  );
+
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'certificate',
+    'Tiếng Anh B1 - Đại học Điện lực (2023)', 'B1 English - Electric Power University (2023)',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    20, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'certificate',
+    'ICDL 5 kỹ năng (2025)', 'ICDL 5 modules (2025)',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    21, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'certificate',
+    'Giấy phép lái xe hạng B2', 'B2 driving license',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    22, true
+  );
+
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'AutoCAD', 'AutoCAD',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    30, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'EPLAN', 'EPLAN',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    31, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'Microsoft Excel', 'Microsoft Excel',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    32, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'Microsoft Word', 'Microsoft Word',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    33, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'Đọc tài liệu kỹ thuật', 'Technical documentation',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    34, true
+  );
+  insert into public.cv_sections(
+    profile_id, section_type,
+    title_vi, title_en,
+    subtitle_vi, subtitle_en,
+    period,
+    description_vi, description_en,
+    organization, organization_en,
+    url, sort_order, visible
+  ) values (
+    p, 'skill',
+    'Tiếng Anh B1', 'B1 English',
+    '', '',
+    '',
+    '', '',
+    '', '',
+    null,
+    35, true
+  );
+end
+$$;
